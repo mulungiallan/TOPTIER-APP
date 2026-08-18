@@ -1,0 +1,28 @@
+:81 {
+	encode gzip zstd
+
+	@api {
+		path /api/*
+	}
+
+	@socket {
+		path /api/socket/*
+	}
+
+	handle {
+		header {
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+			Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+		}
+
+		reverse_proxy localhost:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+}

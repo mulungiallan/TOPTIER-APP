@@ -1,0 +1,298 @@
+// =============================================================================
+// Additional Prisma Models for Batch 2 features
+// APPEND to your existing prisma/schema.prisma
+// Then run: npx prisma db push && npx prisma generate
+// =============================================================================
+
+// ============ AUTH: 2FA, Sessions, Email Verification ============
+model TwoFactor {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  secret       String
+  backupCodes  String[]
+  enabled      Boolean  @default(false)
+  enabledAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  userAgent    String?
+  ip           String?
+  location     String?
+  expiresAt    DateTime
+  lastUsedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// ============ SOCIAL TRADING ============
+model Follow {
+  id           String   @id @default(cuid())
+  followerId   String
+  followingId  String
+  createdAt    DateTime @default(now())
+
+  follower User @relation("FollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("FollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
+
+model CopyTradeConfig {
+  id               String   @id @default(cuid())
+  followerId       String
+  traderId         String
+  allocationUsd    Float
+  maxPositions     Int      @default(5)
+  copyStopLoss     Boolean  @default(true)
+  copyTakeProfit   Boolean  @default(true)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  follower User @relation("CopyFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  trader   User @relation("CopyTrader", fields: [traderId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, traderId])
+}
+
+model Post {
+  id                String   @id @default(cuid())
+  userId            String
+  content           String
+  attachedSignalId  String?
+  attachedChartUrl  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes    Like[]
+  comments Comment[]
+
+  @@index([userId, createdAt])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+model Competition {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  startDate      DateTime
+  endDate        DateTime
+  startingCapital Float   @default(100000)
+  entryFee       Float?
+  prizes         Json     // [{rank: 1, amount: 1000}, ...]
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  entries CompetitionEntry[]
+}
+
+model CompetitionEntry {
+  id            String   @id @default(cuid())
+  competitionId String
+  userId        String
+  joinedAt      DateTime @default(now())
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([competitionId, userId])
+}
+
+// ============ TRADING BOTS ============
+model TradingBot {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String
+  strategy       String   // ema_cross | rsi_reversion | breakout | signal_generator | custom
+  symbols        String[]
+  timeframe      String   @default("1H")
+  riskPerTrade   Float    @default(1.0)
+  maxPositions   Int      @default(5)
+  autoExecute    Boolean  @default(false)
+  active         Boolean  @default(true)
+  lastRunAt      DateTime?
+  totalTrades    Int      @default(0)
+  winningTrades  Int      @default(0)
+  totalPnl       Float    @default(0)
+  config         Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trades BotTrade[]
+
+  @@index([userId, active])
+}
+
+model BotTrade {
+  id          String   @id @default(cuid())
+  botId       String
+  pair        String
+  direction   String
+  entryPrice  Float
+  size        Float
+  confidence  Float
+  reason      String
+  createdAt   DateTime @default(now())
+
+  bot TradingBot @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId, createdAt])
+}
+
+// ============ WEBHOOKS ============
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String
+  botId     String?
+  name      String
+  url       String
+  secret    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bot  TradingBot? @relation(fields: [botId], references: [id], onDelete: Cascade)
+}
+
+model OutgoingWebhook {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  url       String
+  secret    String?
+  events    String[] // ["trade_opened", "trade_closed", "signal", "scheduled_report"]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============ PAYMENTS ============
+model Payment {
+  id              String   @id @default(cuid())
+  userId          String
+  stripeInvoiceId String?
+  stripeChargeId  String?
+  amount          Float
+  currency        String   @default("usd")
+  status          String   // PENDING | PAID | FAILED | REFUNDED
+  description     String?
+  paidAt          DateTime?
+  refundedAt      DateTime?
+  refundAmount    Float?
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// ============ ADD RELATIONS TO EXISTING User MODEL ============
+// Add these fields to your existing User model:
+//
+// model User {
+//   // ... existing fields ...
+//
+//   // Auth
+//   twoFactor          TwoFactor?
+//   sessions           Session[]
+//   emailVerifications EmailVerification[]
+//   accounts           Account[]
+//
+//   // Social
+//   following          Follow[]      @relation("FollowFollower")
+//   followers          Follow[]      @relation("FollowFollowing")
+//   copyTradersFollowing CopyTradeConfig[] @relation("CopyFollower")
+//   copyTraderFollowers CopyTradeConfig[]  @relation("CopyTrader")
+//   posts              Post[]
+//   likes              Like[]
+//   comments           Comment[]
+//   competitionEntries CompetitionEntry[]
+//
+//   // Trading
+//   tradingBots        TradingBot[]
+//   webhooks           Webhook[]
+//   outgoingWebhooks   OutgoingWebhook[]
+//
+//   // Payments
+//   payments           Payment[]
+//
+//   // Stripe
+//   stripeCustomerId   String?
+//   subscriptionPlan   String     @default("FREE")
+//   subscriptionStatus String?
+//   subscriptionId     String?
+//   trialEndsAt        DateTime?
+//   currentPeriodEnd   DateTime?
+//   canceledAt         DateTime?
+// }

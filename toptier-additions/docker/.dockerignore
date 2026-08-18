@@ -1,0 +1,25 @@
+# =============================================================================
+# TOPTIER — .dockerignore
+# Place at: C:\Users\ravenz\Desktop\ANALYSER\.dockerignore
+# =============================================================================
+
+node_modules
+.next
+.git
+.gitignore
+README.md
+*.md
+.env
+.env.local
+.env.*.local
+Dockerfile
+docker-compose.yml
+.dockerignore
+coverage
+.nyc_output
+*.log
+.vscode
+.idea
+backups
+toptier-additions
+download

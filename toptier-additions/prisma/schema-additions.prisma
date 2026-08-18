@@ -1,0 +1,129 @@
+// =============================================================================
+// TOPTIER — Additional Prisma Models
+// Add these to your existing prisma/schema.prisma
+// Then run: npx prisma db push
+// =============================================================================
+
+model PushSubscription {
+  id          String   @id @default(cuid())
+  endpoint    String   @unique
+  userId      String
+  keysP256dh  String
+  keysAuth    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PaperAccount {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Float    @default(100000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positions PaperPosition[]
+  trades    PaperTrade[]
+}
+
+model PaperPosition {
+  id           String   @id @default(cuid())
+  userId       String
+  pair         String
+  direction    String   // BUY | SELL
+  size         Float
+  entryPrice   Float
+  currentPrice Float
+  stopLoss     Float?
+  takeProfit   Float?
+  pnl          Float    @default(0)
+  pnlPercent   Float    @default(0)
+  margin       Float
+  status       String   @default("OPEN") // OPEN | CLOSED
+  openedAt     DateTime @default(now())
+  closedAt     DateTime?
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account PaperAccount? @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model PaperTrade {
+  id          String   @id @default(cuid())
+  userId      String
+  pair        String
+  direction   String
+  size        Float
+  entryPrice  Float
+  exitPrice   Float
+  pnl         Float
+  pnlPercent  Float
+  reason      String   @default("manual") // manual | stop_loss | take_profit
+  openedAt    DateTime
+  closedAt    DateTime @default(now())
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account PaperAccount? @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, closedAt])
+}
+
+model PriceAlert {
+  id         String   @id @default(cuid())
+  userId     String
+  symbol     String
+  condition  String   // above | below
+  target     Float
+  current    Float?
+  active     Boolean  @default(true)
+  triggered  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  triggeredAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+}
+
+model BacktestRun {
+  id          String   @id @default(cuid())
+  userId      String?
+  symbol      String
+  strategy    String
+  params      String   // JSON string
+  result      String   // JSON string
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model NewsCache {
+  id          String   @id @default(cuid())
+  category    String
+  articleHash String   @unique
+  title       String
+  url         String
+  publishedAt DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([category, publishedAt])
+}
+
+// =============================================================================
+// ADD THIS RELATION TO YOUR EXISTING User MODEL:
+// =============================================================================
+//
+// model User {
+//   // ... existing fields
+//   pushSubscriptions PushSubscription[]
+//   paperAccount      PaperAccount?
+//   paperPositions    PaperPosition[]
+//   paperTrades       PaperTrade[]
+//   priceAlerts       PriceAlert[]
+//   backtestRuns      BacktestRun[]
+// }

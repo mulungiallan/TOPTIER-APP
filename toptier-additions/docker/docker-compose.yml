@@ -1,0 +1,194 @@
+# =============================================================================
+# TOPTIER — docker-compose.yml (full production stack)
+# Place at: C:\Users\ravenz\Desktop\ANALYSER\docker-compose.yml
+# Run: docker-compose up -d
+# =============================================================================
+
+version: "3.9"
+
+services:
+  # ---------- Next.js App ----------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: toptier-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./data/custom.db
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - app-data:/app/data
+      - app-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - toptier-net
+
+  # ---------- PostgreSQL (production database) ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: toptier-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: toptier
+      POSTGRES_USER: toptier
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_prod}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toptier"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    networks:
+      - toptier-net
+
+  # ---------- Redis (caching + sessions) ----------
+  redis:
+    image: redis:7-alpine
+    container_name: toptier-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+    networks:
+      - toptier-net
+
+  # ---------- Nginx Reverse Proxy (SSL termination, load balancing) ----------
+  nginx:
+    image: nginx:alpine
+    container_name: toptier-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - toptier-net
+
+  # ---------- Prometheus (metrics) ----------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: toptier-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - toptier-net
+
+  # ---------- Grafana (dashboards) ----------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: toptier-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - toptier-net
+
+  # ---------- Loki (log aggregation) ----------
+  loki:
+    image: grafana/loki:latest
+    container_name: toptier-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - toptier-net
+
+  # ---------- Promtail (log shipper) ----------
+  promtail:
+    image: grafana/promtail:latest
+    container_name: toptier-promtail
+    restart: unless-stopped
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - toptier-net
+
+  # ---------- Uptime Kuma (uptime monitoring) ----------
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: toptier-uptime
+    restart: unless-stopped
+    volumes:
+      - uptime-data:/app/data
+    ports:
+      - "3002:3001"
+    networks:
+      - toptier-net
+
+  # ---------- Backup service (daily DB backups) ----------
+  backup:
+    image: prodrigestivill/postgres-backup-local:16
+    container_name: toptier-backup
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=toptier
+      - POSTGRES_USER=toptier
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me_in_prod}
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      - postgres
+    networks:
+      - toptier-net
+
+volumes:
+  app-data:
+  app-logs:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  uptime-data:
+
+networks:
+  toptier-net:
+    driver: bridge

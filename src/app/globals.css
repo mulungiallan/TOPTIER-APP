@@ -1,0 +1,196 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #16202b;
+  --card: #f8f9fb;
+  --card-foreground: #16202b;
+  --popover: #ffffff;
+  --popover-foreground: #16202b;
+  --primary: #1b4f9c;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f7fa;
+  --secondary-foreground: #0f2a4a;
+  --muted: #f5f7fa;
+  --muted-foreground: #5b6774;
+  --accent: #e8eff9;
+  --accent-foreground: #0f2a4a;
+  --destructive: #c23b3b;
+  --border: #e2e6eb;
+  --input: #e2e6eb;
+  --ring: #1b4f9c;
+  --chart-1: #1b4f9c;
+  --chart-2: #0f2a4a;
+  --chart-3: #5b8dd6;
+  --chart-4: #0f8f5f;
+  --chart-5: #c23b3b;
+  --sidebar: #f5f7fa;
+  --sidebar-foreground: #16202b;
+  --sidebar-primary: #1b4f9c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8eff9;
+  --sidebar-accent-foreground: #0f2a4a;
+  --sidebar-border: #e2e6eb;
+  --sidebar-ring: #1b4f9c;
+  --profit: #0f8f5f;
+  --loss: #c23b3b;
+}
+
+.dark {
+  --background: #0f2a4a;
+  --foreground: #eaf0f8;
+  --card: #16385e;
+  --card-foreground: #eaf0f8;
+  --popover: #16385e;
+  --popover-foreground: #eaf0f8;
+  --primary: #5b8dd6;
+  --primary-foreground: #0f2a4a;
+  --secondary: #1b4f9c;
+  --secondary-foreground: #eaf0f8;
+  --muted: #1b4f9c;
+  --muted-foreground: #a9c0dc;
+  --accent: #1b4f9c;
+  --accent-foreground: #ffffff;
+  --destructive: #e07b7b;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #5b8dd6;
+  --chart-1: #5b8dd6;
+  --chart-2: #e07b7b;
+  --chart-3: #8fb4e8;
+  --chart-4: #3bc98a;
+  --chart-5: #f0b3b3;
+  --sidebar: #16385e;
+  --sidebar-foreground: #eaf0f8;
+  --sidebar-primary: #5b8dd6;
+  --sidebar-primary-foreground: #0f2a4a;
+  --sidebar-accent: #1b4f9c;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #5b8dd6;
+  --profit: #3bc98a;
+  --loss: #e07b7b;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* Custom scrollbar for dark theme */
+.dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(91, 141, 214, 0.35);
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(91, 141, 214, 0.55);
+}
+
+/* ─── Mobile / PWA polish ─────────────────────────────────────────────────── */
+
+/* Use dynamic viewport height so the URL bar / tab bar don't cause jumps. */
+html {
+  min-height: 100%;
+}
+
+/* iOS Safari: 16px+ inputs/selects stop the auto-zoom-on-focus behaviour. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Remove the grey tap flash on mobile taps. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Safe-area helpers for notch / home-indicator devices (standalone PWA). */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* The app shell: let the page area scroll under the notch/home bar cleanly. */
+body {
+  min-height: 100dvh;
+  min-height: 100vh;
+}

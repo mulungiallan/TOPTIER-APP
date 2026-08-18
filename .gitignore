@@ -1,0 +1,91 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+.venv
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files — .env contains real secrets, NEVER commit it.
+# .env.example is safe to commit (has no real values).
+.env
+.env.local
+.env.production
+!.env.example
+
+# vercel
+.vercel
+
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+local-*
+.claude
+.z-ai-config
+*.log
+dev.log
+dev.out.log
+test
+prompt
+
+server.log
+# Skills directory
+/skills/
+
+# Prisma generated client
+/src/generated/
+
+# Android signing material — never commit
+/android/keystore.properties
+/android/keystore/
+
+# Android build output
+/android/.gradle/
+/android/app/build/
+/android/build/
+/android/capacitor-cordova-android-plugins/build/
+
+# Build artifacts
+/.next-build/
+/.next-prod/
+
+# Binary archives — should not be in repo
+*.zip
+
+# SQLite database — never commit user data
+/db/custom.db
+
+# User uploads — never commit
+/upload/
+
+# Dev logs
+dev-server.log
+
+# Secrets
+tokens.txt

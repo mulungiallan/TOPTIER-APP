@@ -1,0 +1,4 @@
+# Runtime instance state (per-account configs contain broker credentials)
+/data/
+__pycache__/
+*.pyc

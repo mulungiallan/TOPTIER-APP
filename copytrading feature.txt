@@ -1,0 +1,40 @@
+Given the heterogeneity (different account sizes, intervals, lot sizes), the single most important principle is: **never copy by lot size — copy by risk percentage.** Fixed-lot or fixed-ratio copying breaks the moment the accounts and trading styles diverge, which they always will with 5 different people. Here's the full rule set:
+
+## 1. Position sizing — risk-normalized, not lot-normalized
+
+- For every incoming trade, calculate the provider's **risk as a % of their own equity** (using their lot size, symbol, and SL distance — not just lot size alone, since 0.1 lots on gold and 0.1 lots on EURUSD are very different risk amounts).
+- Replicate that **same % risk** against your master account's equity, not a fixed ratio. This is the only way it stays sane as account sizes diverge over time.
+- **Hard cap per trade**, regardless of what the % risk math says: no single trade risks more than a fixed ceiling (e.g. 1-2% of master equity), even if a provider's own sizing implies more. Their risk tolerance isn't automatically yours.
+- **Minimum lot floor rule**: if your master equity is much smaller than a provider's, risk-normalized sizing can round down to a lot size below your broker's minimum. Decide in advance whether you skip that trade entirely or floor it at the minimum (which then over-risks relative to intent) — skipping is usually safer.
+
+## 2. Handling different trading intervals/frequency
+
+- **Per-provider concurrent trade caps.** A scalper firing 20 trades a day and a swing trader holding for a week can't share the same margin pool without rules — cap how many trades from each provider can be open simultaneously.
+- **Margin reservation by provider**, not first-come-first-served. If a high-frequency scalper eats all your available margin, your swing trader's next entry gets rejected. Reserve a margin budget per provider based on their intended weight.
+- **No cross-provider netting assumption.** If two providers are both mid-trade when a third fires, don't assume the system self-balances — check margin headroom before allowing a new copy through.
+
+## 3. Correlation and conflict rules
+
+- **Per-symbol net exposure cap**, checked across all 5 providers combined, not per-provider. Two crypto traders both long BTC is one concentrated bet, not two diversified ones.
+- **Per-asset-class exposure cap** (forex / metals / crypto combined), separate from per-symbol, since correlated moves (e.g. dollar-driven moves hitting metals and majors simultaneously) aren't always the same symbol.
+- **Opposing-signal rule**: decide explicitly whether conflicting trades on the same symbol from two providers both execute (net exposure ends up smaller/hedged) or whether one is held back. Don't leave this to default MT5 behavior.
+
+## 4. Time-based rules
+
+- **Weekend/gap rule**: crypto trades 24/7, forex and metals don't. If a crypto provider opens or holds through the weekend and a forex-driven gap hits Monday, that's a different risk profile than intraday crypto volatility — treat crypto weekend exposure with a tighter cap than weekday.
+- **News blackout window** for metals/forex providers around major releases (NFP, CPI, rate decisions) if slippage/latency in the relay could mean you get filled at a materially worse price than the provider did.
+
+## 5. Drawdown and circuit breakers
+
+- **Per-provider soft pause**: if one provider's copied trades hit a drawdown threshold (e.g. -8% of their allocated slice), auto-pause new copies from just that provider — don't wait for it to drag the whole account.
+- **Account-wide hard stop**: a single non-negotiable number (e.g. -15% master equity in a rolling week) that pauses ALL five and forces manual review before resuming. Set this number now, not during a drawdown.
+
+## 6. Rebalancing
+
+- **Scheduled re-weighting** (e.g. monthly): providers' own accounts grow/shrink at different rates, so a ratio that was correct on day one drifts. Recalculate each provider's actual contribution vs. intended weight and adjust.
+
+## 7. Reconciliation
+
+- Daily check: does each provider's realized contribution match what your sizing rules intended? Drift here usually means a sizing bug or a provider's behavior has changed (bigger lots, more frequent trades) without you noticing.
+
+IMPLEMENT THESE ABOVE IN COPY TRADING FEATURES

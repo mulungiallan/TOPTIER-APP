@@ -1,0 +1,1349 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  password              String
+  name                  String?
+  phone                 String?
+  profilePicture        String?
+  dateOfBirth           String?
+  country               String?
+  role                  String    @default("user") // user, admin, super_admin, moderator, support, analyst
+  subscriptionTier      String    @default("free") // free, trial, premium, lifetime
+  trialStartDate        DateTime?
+  trialEndDate          DateTime?
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  isEmailVerified       Boolean   @default(false)
+  twoFactorEnabled      Boolean   @default(false)
+  twoFactorSecret       String?
+  onboardingCompleted   Boolean   @default(false)
+  onboardingStep        Int       @default(0)
+  referralCode          String    @unique
+  referredBy            String?
+  referralCount         Int       @default(0)
+  earnedPremiumDays     Int       @default(0)
+
+  // ─── Premium Package System ────────────────────────────────────────
+  // `plan` is the authoritative field for the new packages system
+  // (free | starter | premium | pro | enterprise | unlimited)
+  // `subscriptionTier` (above) is kept for legacy compat / older UI flows.
+  plan             String     @default("free")
+  analysesLimit    Int        @default(5) // 0 = unlimited
+  analysesUsed     Int        @default(0)
+  analysesResetAt  DateTime?
+  planExpiresAt    DateTime?
+  stripeCustomerId String?
+  orders           Order[]
+  analyses         Analysis[]
+
+  tradingStyle      String? // scalp, swing, both
+  riskLevel         String? // conservative, moderate, aggressive
+  preferredMarkets  String? // comma-separated: forex,crypto,stocks,indices,commodities
+  preferredSessions String? // comma-separated: asian,european,us
+  notificationPrefs String? // JSON string
+  language          String    @default("en")
+  darkMode          Boolean   @default(true)
+  analyticsOptOut   Boolean   @default(false)
+  isBanned          Boolean   @default(false)
+  banReason         String?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  signals             Signal[]
+  screenshotAnalyses  ScreenshotAnalysis[]
+  watchlists          Watchlist[]
+  priceAlerts         PriceAlert[]
+  customAlerts        CustomAlert[]
+  signalFilters       SignalFilter[]
+  notifications       Notification[]
+  activityLogs        ActivityLog[]
+  badges              UserBadge[]
+  bookmarkedArticles  BookmarkedArticle[]
+  calendarReminders   CalendarReminder[]
+  signalComments      SignalComment[]
+  signalReactions     SignalReaction[]
+  supportTickets      SupportTicket[]
+  reviews             Review[]
+  paymentTransactions PaymentTransaction[]
+  referralRewards     ReferralReward[]
+  educationProgress   EducationProgress[]
+  consentRecords      ConsentRecord[]
+
+  // ─── Batch 2: Social / Trading / AI models ────────────────────────────
+  following            Follow[]              @relation("FollowFollower")
+  followers            Follow[]              @relation("FollowFollowing")
+  posts                Post[]
+  postLikes            PostLike[]
+  postComments         Comment[]
+  conversationsP1      Conversation[]        @relation("ConvP1")
+  conversationsP2      Conversation[]        @relation("ConvP2")
+  directMessages       DirectMessage[]
+  groupsOwned          Group[]               @relation("GroupOwner")
+  groupMemberships     GroupMember[]
+  competitionsCreated  Competition[]         @relation("CompCreator")
+  competitionEntries   CompetitionEntry[]
+  paperTrades          PaperTrade[]
+  copyTradesExecuted   CopyTrade[]           @relation("CopyFollower")
+  copyTradesTriggered  CopyTrade[]           @relation("CopyTrader")
+  pricePredictions     PricePrediction[]
+  backtests            Backtest[]
+  patternDetections    PatternDetection[]
+  strategies           Strategy[]
+  pushSubscriptions    PushSubscription[]
+  biometricCredentials BiometricCredential[]
+
+  // ─── Auto-trading bot (MT5/MT4) ────────────────────────────────────────
+  botConnections BotConnection[]
+  botInstances   BotInstance[]
+  botTrades      BotTrade[]
+  botSettlements BotProfitShare[]
+
+  // ─── App usage tracking ────────────────────────────────────────────────
+  usageSessions UsageSession[]
+  usageEvents   UsageEvent[]
+
+  copyTraderProfile CopyTrader?
+  copySettlements   CopySettlement[]
+}
+
+model Signal {
+  id              String    @id @default(cuid())
+  type            String // BUY, SELL, NEUTRAL
+  asset           String
+  entryPrice      Float
+  stopLoss        Float
+  takeProfit1     Float
+  takeProfit2     Float?
+  takeProfit3     Float?
+  trailingStop    Float?
+  riskRewardRatio Float
+  confidence      Int // 0-100
+  strategy        String // scalp, swing
+  timeframe       String
+  reason          String
+  status          String    @default("active") // active, hit_tp, hit_sl, expired, ignored
+  resultPrice     Float?
+  resultType      String? // tp1, tp2, tp3, sl, expired
+  expiryDate      DateTime
+  marketType      String // forex, crypto, stocks, indices, commodities
+  tradingSession  String? // asian, european, us
+  generatedAt     DateTime  @default(now())
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id])
+  comments  SignalComment[]
+  reactions SignalReaction[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ScreenshotAnalysis {
+  id            String   @id @default(cuid())
+  userId        String
+  imageUrl      String
+  signalType    String? // BUY, SELL, NEUTRAL
+  entryPrice    Float?
+  stopLoss      Float?
+  takeProfit1   Float?
+  takeProfit2   Float?
+  takeProfit3   Float?
+  confidence    Int?
+  timeframe     String?
+  detectedAsset String?
+  pattern       String?
+  explanation   String?
+  status        String   @default("pending") // pending, completed, failed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id])
+  items WatchlistItem[]
+}
+
+model WatchlistItem {
+  id          String   @id @default(cuid())
+  watchlistId String
+  asset       String
+  assetName   String
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, asset])
+}
+
+model PriceAlert {
+  id          String    @id @default(cuid())
+  userId      String
+  asset       String
+  alertType   String // above, below, crosses
+  targetPrice Float
+  isRecurring Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  isTriggered Boolean   @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model CustomAlert {
+  id          String    @id @default(cuid())
+  userId      String
+  asset       String
+  alertType   String // rsi, macd, ma_cross, volume_spike, support_resistance
+  condition   String // JSON with threshold params
+  isActive    Boolean   @default(true)
+  isTriggered Boolean   @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model SignalFilter {
+  id             String   @id @default(cuid())
+  userId         String
+  marketTypes    String? // comma-separated
+  assets         String? // comma-separated
+  strategies     String? // comma-separated
+  sessions       String? // comma-separated
+  minConfidence  Int      @default(50)
+  maxSignalsHour Int?
+  maxSignalsDay  Int?
+  mutedAssets    String? // comma-separated
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String // signal, signal_result, news, calendar, price_alert, custom_alert, system, subscription, referral
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  actionUrl String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  details    String?
+  ipAddress  String?
+  deviceInfo String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeType String
+  badgeName String
+  earnedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model BookmarkedArticle {
+  id         String   @id @default(cuid())
+  userId     String
+  articleUrl String
+  title      String
+  source     String?
+  savedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model CalendarReminder {
+  id              String   @id @default(cuid())
+  userId          String
+  eventId         String
+  eventName       String
+  eventDate       DateTime
+  reminderMinutes Int // 5, 15, 30, 60
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, eventDate])
+}
+
+model SignalComment {
+  id        String   @id @default(cuid())
+  signalId  String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([signalId])
+  @@index([userId])
+}
+
+model SignalReaction {
+  id        String   @id @default(cuid())
+  signalId  String
+  userId    String
+  reaction  String // thumbs_up, thumbs_down
+  createdAt DateTime @default(now())
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([signalId, userId])
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  userId      String
+  subject     String
+  description String
+  category    String // bug, feature_request, improvement, praise, complaint, support
+  status      String   @default("open") // open, in_progress, resolved, closed
+  priority    String   @default("medium") // low, medium, high, critical
+  attachments String? // JSON string array of data-URL images
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  rating    Int // 1-5
+  title     String?
+  comment   String?
+  category  String   @default("general") // general, signals, analysis, support, app
+  status    String   @default("pending") // pending, approved, rejected
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model PaymentTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+  amount          Float
+  currency        String   @default("USD")
+  planType        String // premium_monthly, premium_annual, lifetime
+  paymentMethod   String?
+  paymentProvider String? // stripe, revenuecat
+  status          String   @default("pending") // pending, completed, failed, refunded
+  stripeSessionId String?
+  invoiceUrl      String?
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model ReferralReward {
+  id             String   @id @default(cuid())
+  userId         String // the referrer
+  referredUserId String? // the person who was referred
+  rewardType     String // premium_days
+  rewardAmount   Int // number of days
+  status         String   @default("pending") // pending, granted, revoked
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model EducationProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  contentId   String
+  contentType String // guide, glossary, video, quiz
+  completed   Boolean  @default(false)
+  score       Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ConsentRecord {
+  id          String    @id @default(cuid())
+  userId      String
+  consentType String // terms, privacy, cookies, analytics, marketing
+  granted     Boolean
+  grantedAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model EconomicEvent {
+  id            String   @id @default(cuid())
+  eventName     String
+  eventDate     DateTime
+  currency      String
+  impactLevel   String // high, medium, low
+  previousValue String?
+  forecastValue String?
+  actualValue   String?
+  eventType     String? // central_bank, employment, inflation, gdp, etc.
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([eventDate])
+  @@index([currency])
+}
+
+model NewsArticle {
+  id           String    @id @default(cuid())
+  title        String
+  summary      String?
+  content      String?
+  source       String
+  url          String?
+  sentiment    String? // bullish, bearish, neutral
+  taggedAssets String? // comma-separated
+  category     String?
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([publishedAt])
+  @@index([category])
+}
+
+model CouponCode {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  discountType   String // percentage, fixed
+  discountAmount Float
+  maxUses        Int?
+  usedCount      Int       @default(0)
+  maxPerUser     Int?
+  expiresAt      DateTime?
+  minPlan        String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String
+  target    String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+// ─── Premium Package System ─────────────────────────────────────────────────
+// Packages define sellable plans (Starter, Premium, Pro, Enterprise, Unlimited).
+// Orders track individual purchases. Analyses track per-analysis audit trail.
+
+model Package {
+  id            String   @id @default(cuid())
+  name          String   @unique // "Starter", "Premium", "Pro", "Enterprise", "Unlimited", "Starter Annual", ...
+  description   String?
+  duration      String // "monthly", "quarterly", "annual"
+  price         Float // 19.99, 29.99, etc.
+  analyses      Int // 50, 100, 200, 500, 0 (0 = unlimited)
+  splitRatio    Int      @default(90) // % of analyses that go to premium API
+  features      String // JSON-encoded array of feature strings
+  isActive      Boolean  @default(true)
+  isPopular     Boolean  @default(false)
+  stripePriceId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  orders Order[]
+}
+
+model Order {
+  id                   String   @id @default(cuid())
+  userId               String
+  packageId            String
+  package              Package  @relation(fields: [packageId], references: [id])
+  amount               Float
+  currency             String   @default("USD")
+  status               String   @default("pending") // pending, paid, expired, cancelled, refunded
+  analysesUsed         Int      @default(0)
+  analysesLimit        Int
+  startDate            DateTime
+  endDate              DateTime
+  stripeSessionId      String?
+  stripePaymentId      String?
+  stripeSubscriptionId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([stripeSessionId])
+}
+
+model Analysis {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  imageHash  String? // MD5 of source image (for dedup)
+  imageUrl   String?
+  analysis   String // JSON-encoded analysis result
+  planUsed   String // "free", "premium", "ensemble"
+  cost       String // "$0.00", "$0.013", etc.
+  method     String // "huggingface", "replicate", "heuristic", "ensemble"
+  pattern    String?
+  signal     String?
+  confidence Int?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BATCH 2 MODELS — Social, Trading, AI, Internationalization, Security
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Social: Follow / Copy Trading ──────────────────────────────────────────
+
+model Follow {
+  id              String   @id @default(cuid())
+  followerId      String
+  followingId     String
+  autoCopy        Boolean  @default(false)
+  copyRatio       Float    @default(1.0)
+  maxPositionSize Float    @default(1000)
+  createdAt       DateTime @default(now())
+
+  follower  User @relation("FollowFollower", fields: [followerId], references: [id])
+  following User @relation("FollowFollowing", fields: [followingId], references: [id])
+
+  // PAMM-style capital allocation: % of the follower's equity exposed to the
+  // manager's master account. active | paused.
+  allocationPct Float  @default(10)
+  status        String @default("active")
+
+  // Copy-trading eligibility: the follower must run an account of at least the
+  // trader's minimum size (min $100) and must agree to the Copy Trading Terms &
+  // Conditions before any trade is mirrored. declaredBalanceUsd drives the
+  // progressive lot sizing.
+  declaredBalanceUsd Float?
+  termsAccepted      Boolean   @default(false)
+  termsAcceptedAt    DateTime?
+
+  // Broker account link: the follower's MT4/MT5 BotConnection used for
+  // PAMM/MAM copy execution. When set, mirrorMasterOpen/Close can reference
+  // the follower's real broker account for position tracking.
+  connectionId String?
+  connection   BotConnection? @relation("FollowerConnection", fields: [connectionId], references: [id], onDelete: SetNull)
+
+  // Risk management: track concurrent open trades and allocated margin per provider
+  // to enforce per-provider caps and margin reservation (rule #2 from feature spec).
+  concurrentTradeCount Int   @default(0)
+  allocatedMarginUsd   Float @default(0)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+  @@index([connectionId])
+}
+
+model CopyTrade {
+  id             String    @id @default(cuid())
+  followerId     String
+  traderId       String
+  sourceSignalId String?
+  symbol         String
+  direction      String // BUY, SELL
+  size           Float
+  entryPrice     Float
+  stopLoss       Float?
+  takeProfit     Float?
+  status         String    @default("open") // open, closed, cancelled
+  exitPrice      Float?
+  pnl            Float?
+  allocationPct  Float     @default(10) // follower's capital exposure at copy time
+  masterTicket   String? // ticket on the master account this mirrors (null for manual/signal copies)
+  source         String    @default("signal") // signal | master
+  createdAt      DateTime  @default(now())
+  closedAt       DateTime?
+
+  // Risk management: track risk % at copy time for reconciliation and drift detection.
+  // providerRiskPct = provider's risk as % of THEIR equity (lot * pipValue * SL distance / providerEquity).
+  // masterRiskPct   = the replicated % risk applied against the master account's equity.
+  // assetClass       = forex | metals | crypto — used for per-asset-class exposure caps (rule #3).
+  providerRiskPct Float?
+  masterRiskPct   Float?
+  assetClass      String?
+
+  follower User @relation("CopyFollower", fields: [followerId], references: [id])
+  trader   User @relation("CopyTrader", fields: [traderId], references: [id])
+
+  @@index([followerId, status])
+  @@index([traderId, createdAt])
+  @@index([masterTicket])
+  @@index([symbol, status])
+}
+
+// ─── Social: Feed / Posts / Comments / Likes ────────────────────────────────
+
+model Post {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  content     String
+  type        String   @default("general") // signal, analysis, general, question
+  attachments String? // JSON-encoded array of URLs
+  tags        String? // comma-separated
+  likes       Int      @default(0)
+  comments    Int      @default(0)
+  shares      Int      @default(0)
+  visibility  String   @default("public") // public, followers, private
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  postLikes    PostLike[]
+  postComments Comment[]
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([postId, createdAt])
+}
+
+// ─── Social: Direct Messaging ───────────────────────────────────────────────
+
+model Conversation {
+  id             String   @id @default(cuid())
+  participant1Id String
+  participant2Id String
+  participant1   User     @relation("ConvP1", fields: [participant1Id], references: [id])
+  participant2   User     @relation("ConvP2", fields: [participant2Id], references: [id])
+  lastMessageAt  DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  messages DirectMessage[]
+
+  @@unique([participant1Id, participant2Id])
+  @@index([participant2Id, lastMessageAt])
+}
+
+model DirectMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+// ─── Social: Groups ─────────────────────────────────────────────────────────
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  owner       User     @relation("GroupOwner", fields: [ownerId], references: [id])
+  category    String   @default("trading") // trading, education, signals, discussion
+  isPrivate   Boolean  @default(false)
+  memberCount Int      @default(1)
+  avatar      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members GroupMember[]
+
+  @@index([category, createdAt])
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  group    Group    @relation(fields: [groupId], references: [id])
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  role     String   @default("member") // owner, admin, member
+  joinedAt DateTime @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+// ─── Social: Leaderboards / Competitions ────────────────────────────────────
+
+model Competition {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  creatorId       String
+  creator         User     @relation("CompCreator", fields: [creatorId], references: [id])
+  type            String   @default("win_rate") // win_rate, profit, volume, accuracy
+  startDate       DateTime
+  endDate         DateTime
+  entryFee        Float    @default(0)
+  prizePool       Float    @default(0)
+  maxParticipants Int?
+  status          String   @default("upcoming") // upcoming, active, ended, cancelled
+  createdAt       DateTime @default(now())
+
+  entries CompetitionEntry[]
+
+  @@index([status, startDate])
+}
+
+model CompetitionEntry {
+  id            String      @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id])
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  score         Float       @default(0)
+  rank          Int?
+  joinedAt      DateTime    @default(now())
+
+  @@unique([competitionId, userId])
+  @@index([userId])
+}
+
+// ─── Trading: Paper Trading ─────────────────────────────────────────────────
+
+model PaperTrade {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  symbol     String
+  direction  String // BUY, SELL
+  quantity   Float
+  entryPrice Float
+  exitPrice  Float?
+  stopLoss   Float?
+  takeProfit Float?
+  status     String    @default("open") // open, closed
+  pnl        Float?
+  pnlPercent Float?
+  notes      String?
+  openedAt   DateTime  @default(now())
+  closedAt   DateTime?
+
+  @@index([userId, status])
+  @@index([symbol, openedAt])
+}
+
+// ─── AI: Price Predictions ──────────────────────────────────────────────────
+
+model PricePrediction {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  symbol         String
+  timeframe      String // 1h, 4h, 1d
+  currentPrice   Float
+  predictedPrice Float
+  direction      String // up, down
+  confidence     Float // 0-100
+  probability    Float // 0-1
+  modelUsed      String // ensemble, linear, lstm
+  features       String? // JSON
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime?
+
+  @@index([userId, createdAt])
+  @@index([symbol, createdAt])
+}
+
+// ─── AI: Backtesting ────────────────────────────────────────────────────────
+
+model Backtest {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  name           String
+  symbol         String
+  strategy       String
+  startDate      DateTime
+  endDate        DateTime
+  initialCapital Float    @default(10000)
+  finalCapital   Float?
+  totalReturn    Float?
+  winRate        Float?
+  totalTrades    Int      @default(0)
+  winningTrades  Int      @default(0)
+  losingTrades   Int      @default(0)
+  sharpeRatio    Float?
+  maxDrawdown    Float?
+  status         String   @default("pending") // pending, running, completed, failed
+  createdAt      DateTime @default(now())
+
+  trades BacktestTrade[]
+
+  @@index([userId, createdAt])
+}
+
+model BacktestTrade {
+  id            String    @id @default(cuid())
+  backtestId    String
+  backtest      Backtest  @relation(fields: [backtestId], references: [id])
+  entryDate     DateTime
+  exitDate      DateTime?
+  direction     String
+  entryPrice    Float
+  exitPrice     Float?
+  quantity      Float
+  profit        Float?
+  profitPercent Float?
+  holdingDays   Float?
+
+  @@index([backtestId, entryDate])
+}
+
+// ─── AI: Pattern Recognition ────────────────────────────────────────────────
+
+model PatternDetection {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  symbol      String
+  timeframe   String // 1h, 4h, 1d
+  pattern     String // head_shoulders, double_top, triangle, flag, etc.
+  confidence  Float // 0-100
+  direction   String // bullish, bearish, neutral
+  description String?
+  detectedAt  DateTime @default(now())
+
+  @@index([userId, detectedAt])
+  @@index([symbol, pattern])
+}
+
+// ─── Education: Strategy Builder ────────────────────────────────────────────
+
+model Strategy {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  description String?
+  market      String // forex, crypto, stocks
+  timeframe   String
+  isPublic    Boolean  @default(false)
+  backtestId  String?
+  performance Float? // % return from latest backtest
+  rules       String // JSON-encoded array of StrategyRule
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([isPublic, createdAt])
+}
+
+// ─── Notifications: Push Subscriptions (Web Push) ───────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isActive])
+}
+
+// ─── Security: Biometric Credentials (WebAuthn) ────────────────────────────
+
+model BiometricCredential {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  credentialId String    @unique
+  publicKey    String
+  deviceType   String? // platform, cross-platform
+  transports   String? // JSON array
+  nickname     String?
+  counter      Int       @default(0) // WebAuthn signature counter (clone detection)
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
+// ─── UX: Ticker Tape symbols (admin-configurable) ──────────────────────────
+
+model TickerSymbol {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  name      String
+  category  String   @default("forex") // forex, crypto, stocks, indices, commodities
+  priority  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTO-TRADING BOT — MetaTrader 5 / MetaTrader 4 integration
+//
+// Flow: a user links an MT4/MT5 account (BotConnection) → the app starts a
+// server-side bot instance (BotInstance) → the Python bot service trades the
+// account → closed trades are pushed back through /api/bot/webhook and stored
+// as BotTrade → a configurable provider profit share is tracked and settled in
+// BotProfitShare. TOPTIER earns providerSharePct% of EVERY winning trade —
+// both long and short — with no high-water mark or loss carry-forward.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model BotConnection {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  platform        String // "mt5" | "mt4"
+  label           String // user-friendly name, e.g. "My JustMarkets demo"
+  brokerName      String? // e.g. "JustMarkets", "IC Markets"
+  login           String
+  passwordEnc     String // AES-256-GCM ciphertext (see src/lib/bot-crypto.ts)
+  server          String
+  terminalPath    String? // optional path to terminal64.exe / terminal.exe
+  accountCurrency String? // reported by the platform on connect, cached here
+
+  // Runtime + trading configuration (JSON string, mirrors engine config.py knobs)
+  settings        String @default("{}")
+  riskPerTradePct Float  @default(1.0) // convenience override of settings.risk
+
+  // Profit-share accounting (per winning trade: long and short)
+  realizedPnl           Float @default(0) // cumulative closed-trade P/L for this account
+  grossProfit           Float @default(0) // cumulative winning-trade profit (BUY + SELL)
+  settledProviderAmount Float @default(0) // provider share already settled (cumulative)
+  providerSharePct      Float @default(50) // % of each winning trade's profit owed to TOPTIER
+
+  isActive        Boolean   @default(true)
+  lastConnectedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // PAMM/MAM managed-account mode: when a CopyTrader designates this account
+  // as its MASTER, the bot trades here and followers' allocations copy it.
+  masterTrader CopyTrader? @relation("BotMasterConnection")
+
+  instances       BotInstance[]
+  trades          BotTrade[]
+  settlements     BotProfitShare[]
+  copySettlements CopySettlement[] @relation("CopySettlementConnection")
+  followerCopies  Follow[]         @relation("FollowerConnection")
+
+  @@index([userId])
+}
+
+model BotInstance {
+  id           String        @id @default(cuid())
+  connectionId String
+  connection   BotConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status          String    @default("stopped") // stopped | starting | running | stopping | error
+  pid             Int? // OS process id of the python runner on the bot service
+  lastHeartbeatAt DateTime?
+  lastSnapshot    String? // latest status snapshot JSON pushed by the bot service
+  lastError       String?
+  startCount      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([connectionId])
+  @@index([userId, status])
+}
+
+model BotTrade {
+  id           String        @id @default(cuid())
+  connectionId String
+  connection   BotConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ticket       String
+  symbol       String
+  timeframe    String?
+  direction    String // BUY | SELL
+  lots         Float
+  entryPrice   Float
+  closePrice   Float?
+  stopLoss     Float?
+  takeProfit   Float?
+  profit       Float
+  result       String? // WIN | LOSS | BREAKEVEN
+  strategyData String?
+  riskAmount   Float?
+  openedAt     DateTime
+  closedAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([connectionId, ticket])
+  @@index([userId, closedAt])
+  @@index([connectionId, closedAt])
+}
+
+model BotProfitShare {
+  id           String        @id @default(cuid())
+  connectionId String
+  connection   BotConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  periodStart      DateTime
+  periodEnd        DateTime
+  grossProfit      Float // winning trades total
+  grossLoss        Float // losing trades total (positive number)
+  netProfit        Float // grossProfit - grossLoss
+  providerSharePct Float     @default(50)
+  providerAmount   Float // share of the period's winning trades, per-trade model
+  lossCarryforward Float     @default(0) // legacy — always 0 (no carry-forward in per-trade model)
+  status           String    @default("due") // due | paid | cancelled
+  paidAt           DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([userId, status])
+  @@index([connectionId, createdAt])
+}
+
+// --- App usage tracking --------------------------------------------------
+
+model UsageSession {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  durationSec Int       @default(0)
+  deviceInfo  String?
+
+  @@index([userId, startedAt])
+}
+
+model UsageEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature     String // page/feature id
+  action      String // view | click | action | search | export ...
+  meta        String? // JSON payload
+  durationSec Int?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, feature])
+}
+
+// --- Platform payouts & monetization ---------------------------------------
+
+model PlatformEarning {
+  id        String    @id @default(cuid())
+  source    String // premium_payment | copy_fee | bot_profit_share | referral_revenue | ads_revenue
+  amount    Float
+  currency  String    @default("USD")
+  reference String? // id of the PaymentTransaction / settlement this came from
+  status    String    @default("available") // available | paid
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PayoutAccount {
+  id        String   @id @default(cuid())
+  method    String   @unique // binance | bank
+  details   String // JSON: binance -> {address, network, memo?}; bank -> {accountName, accountNumber, bankName, swift, iban?}
+  isDefault Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests PayoutRequest[]
+}
+
+model PayoutRequest {
+  id            String        @id @default(cuid())
+  accountId     String
+  account       PayoutAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  method        String // binance | bank (snapshot)
+  destination   String // snapshot: USDT address or masked bank account
+  amount        Float
+  currency      String        @default("USD")
+  fee           Float         @default(0)
+  netAmount     Float
+  status        String        @default("pending") // pending | processing | paid | failed | cancelled
+  txHash        String?
+  failureReason String?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AdConfig {
+  id                  String   @id @default("default")
+  enabled             Boolean  @default(true)
+  provider            String   @default("google") // none | google | custom
+  adSenseClientId     String?
+  adSenseSlotId       String?
+  customBannerImage   String?
+  customBannerLink    String?
+  customBannerAlt     String?
+  bannerEnabled       Boolean  @default(true)
+  interstitialEnabled Boolean  @default(true)
+  stepFrequency       Int      @default(5) // show an interstitial every N page steps
+  freeUsersOnly       Boolean  @default(true)
+  // Rewarded "AdFlow" (analysis gate): when enabled and a title/link are set,
+  // free users must watch the required ad steps before the Screenshot Analyzer
+  // unlocks. No rewarded creative configured → the gate is skipped entirely.
+  rewardedEnabled     Boolean  @default(false)
+  rewardedTitle       String?
+  rewardedDescription String?
+  rewardedCta         String?
+  rewardedLink        String?
+  rewardedEmoji       String?
+  rewardedGradient    String?
+  rewardedDuration    Int      @default(4) // seconds per rewarded step
+  updatedAt           DateTime @updatedAt
+}
+
+// --- Copy trading: provider registration + profit settlement ---------------
+
+model CopyTrader {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  handle         String  @unique
+  bio            String?
+  copyFeePct     Float   @default(50) // trader's cut of follower profits (50%)
+  platformFeePct Float   @default(10) // TOPTIER's cut of follower profits (copy-trading money goes to the broker, not Binance)
+  status         String  @default("approved") // pending | approved | rejected | disabled
+  totalFollowers Int     @default(0)
+  realizedPnl    Float   @default(0)
+
+  // Copy-trading eligibility + lot sizing policy.
+  minAccountBalanceUsd Float @default(100) // followers need at least this account size (min $100)
+  lotsPer100Usd        Float @default(0.01) // base lot per $100 of follower equity (progressive, legacy fallback)
+
+  // ─── Per-asset-class sizing (lot sizes vary by pair type) ───────────────
+  // Forex: most liquid, lowest risk per lot → most lots
+  // Metals: gold/silver higher notional per lot → reduced lots
+  // Crypto: highest volatility → most conservative lots
+  // Forex: lowest volatility → highest lot sizes relative to equity
+  forexBaseLotsPer100Usd  Float @default(0.02) // base lots per $100 for currency pairs
+  forexMinLotSize         Float @default(0.01) // minimum lot for forex
+  forexMaxLots            Float @default(15) // max lots per forex trade
+  forexMaxRiskPct         Float @default(2.0) // max risk per trade % for forex
+  // Metals: moderate volatility (gold ~$30/day) → half the lots of forex
+  metalsBaseLotsPer100Usd Float @default(0.01) // base lots per $100 for metals
+  metalsMinLotSize        Float @default(0.01) // minimum lot for metals
+  metalsMaxLots           Float @default(5) // max lots per metals trade
+  metalsMaxRiskPct        Float @default(2.0) // max risk per trade % for metals
+  // Crypto: highest volatility → conservative lots
+  cryptoBaseLotsPer100Usd Float @default(0.01) // base lots per $100 for crypto
+  cryptoMinLotSize        Float @default(0.02) // minimum lot for crypto
+  cryptoMaxLots           Float @default(5) // max lots per crypto trade
+  cryptoMaxRiskPct        Float @default(1.5) // max risk per trade % for crypto
+
+  // PAMM/MAM managed-account mode. masterConnectionId points at a BotConnection
+  // owned by this trader that the bot trades as the MASTER; followers allocate
+  // capital and copy it. The provider's 50% profit share is paid into the
+  // trader's BROKER account (the master MT account) — never through the app's
+  // Binance payout. brokerAccount* caches the MT account the broker pays into.
+  masterConnectionId String?        @unique
+  masterConnection   BotConnection? @relation("BotMasterConnection", fields: [masterConnectionId], references: [id], onDelete: SetNull)
+  brokerSettled      Boolean        @default(true)
+  minAllocationPct   Float          @default(1)
+  maxAllocationPct   Float          @default(100)
+  brokerAccountLabel String?
+  brokerAccountLogin String?
+
+  // ─── Risk management (from copytrading feature.txt) ─────────────────────
+  // Rule #1: Position sizing — hard per-trade risk cap (default 2% of master equity).
+  maxRiskPerTradePct       Float     @default(2.0)
+  // Rule #2: Max concurrent open trades per provider (prevents scalper from
+  //          eating all margin; swing traders get their fair share).
+  maxConcurrentTrades      Int       @default(20)
+  // Rule #2: Margin reservation budget per provider (% of follower equity).
+  marginBudgetPct          Float     @default(100)
+  // Rule #5: Drawdown circuit breakers.
+  drawdownSoftPausePct     Float     @default(8.0) // per-provider: auto-pause at -8% of allocated slice
+  accountWideHardStopPct   Float     @default(15.0) // account-wide: pause ALL providers at -15% in rolling week
+  // Rule #3: Correlation and conflict — per-symbol net exposure cap (% of master equity).
+  maxSymbolExposurePct     Float     @default(20.0)
+  // Rule #3: Per-asset-class (forex/metals/crypto) net exposure cap.
+  maxAssetClassExposurePct Float     @default(40.0)
+  // Rule #4: Weekend/gap rule — tighter crypto cap on weekends (% of normal cap).
+  weekendCryptoCapPct      Float     @default(50.0)
+  // Rule #4: News blackout — minutes before/after major releases for metals/forex.
+  newsBlackoutMinutes      Int       @default(30)
+  // Rule #6: Rebalancing — last time provider weights were recalculated.
+  lastRebalanceAt          DateTime?
+  // Rule #7: Reconciliation — last daily drift check.
+  lastReconcileAt          DateTime?
+  // Circuit breaker state: tracks current drawdown and whether hard stop is active.
+  currentDrawdownPct       Float     @default(0)
+  hardStopActive           Boolean   @default(false)
+  hardStopActivatedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settlements CopySettlement[]
+
+  @@index([status])
+}
+
+// Rule #5: Drawdown and circuit breaker event log — tracks per-provider soft
+// pauses and account-wide hard stops for audit and automatic recovery.
+model CopyRiskEvent {
+  id           String   @id @default(cuid())
+  traderId     String // CopyTrader.id
+  followerId   String? // User.id — null for account-wide events
+  eventType    String // provider_soft_pause | provider_resume | account_hard_stop | account_resume
+  symbol       String? // relevant symbol if event is symbol-specific
+  drawdownPct  Float // the drawdown % that triggered the event
+  thresholdPct Float // the threshold that was crossed
+  details      String? // JSON metadata
+  createdAt    DateTime @default(now())
+
+  @@index([traderId, createdAt])
+  @@index([eventType])
+}
+
+model CopySettlement {
+  id             String         @id @default(cuid())
+  traderId       String
+  trader         CopyTrader     @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  followerId     String
+  follower       User           @relation(fields: [followerId], references: [id], onDelete: Cascade)
+  copyTradeId    String?
+  grossProfit    Float
+  providerFeePct Float          @default(30)
+  platformFeePct Float          @default(10)
+  providerAmount Float
+  platformAmount Float
+  status         String         @default("due") // due | paid | cancelled
+  paidAt         DateTime?
+  // dedicatedAt = the moment the provider's fee was locked in on a take-profit
+  // hit (every profitable close — whatever the number of TP levels taken —
+  // dedicates the fee immediately and is never reduced by later losses).
+  dedicatedAt    DateTime?
+  // PAMM/MAM provenance: which master account produced this, and how the fee
+  // is collected. settledBy: manual | broker | platform.
+  connectionId   String?
+  connection     BotConnection? @relation("CopySettlementConnection", fields: [connectionId], references: [id], onDelete: SetNull)
+  settledBy      String         @default("manual")
+  source         String         @default("copy") // copy | master
+  createdAt      DateTime       @default(now())
+
+  @@index([traderId, status])
+  @@index([followerId])
+  @@index([connectionId])
+}

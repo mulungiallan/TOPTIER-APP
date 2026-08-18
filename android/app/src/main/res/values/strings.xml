@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TOPTIER</string>
+    <string name="title_activity_main">TOPTIER</string>
+    <string name="package_name">com.toptier.app</string>
+    <string name="custom_url_scheme">com.toptier.app</string>
+</resources>

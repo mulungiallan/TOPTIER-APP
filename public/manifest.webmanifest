@@ -1,0 +1,123 @@
+{
+  "id": "/",
+  "name": "TOPTIER",
+  "short_name": "TOPTIER",
+  "description": "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER.",
+  "start_url": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "handle_links": "preferred",
+  "orientation": "any",
+  "background_color": "#0f2a4a",
+  "theme_color": "#0f2a4a",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["finance", "business", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/maskable-icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Trading Signals",
+      "short_name": "Signals",
+      "description": "View the latest AI trading signals",
+      "url": "/?page=signals",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Screenshot Analyzer",
+      "short_name": "Analyze",
+      "description": "Upload a chart screenshot for AI analysis",
+      "url": "/?page=screenshot",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "AI Predictions",
+      "short_name": "Predict",
+      "description": "Get AI-powered price predictions",
+      "url": "/?page=ai-predictions",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Paper Trading",
+      "short_name": "Paper",
+      "description": "Practice trading with virtual capital",
+      "url": "/?page=paper-trading",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Leaderboards",
+      "short_name": "Ranks",
+      "description": "Top traders by win rate",
+      "url": "/?page=leaderboards",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Pricing Dashboard",
+      "short_name": "Billing",
+      "description": "Manage your subscription",
+      "url": "/?page=pricing-dashboard",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Trading Bot",
+      "short_name": "Bot",
+      "description": "Link your MetaTrader account and trade automatically",
+      "url": "/?page=trading-bot",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ]
+}

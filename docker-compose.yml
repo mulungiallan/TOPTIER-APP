@@ -1,0 +1,46 @@
+# TOPTIER web app + Caddy (HTTPS). Run: docker compose up -d --build
+# See DEPLOYMENT.md before doing anything. The trading-bot service is separate
+# (Windows-only) and is covered in DEPLOYMENT.md.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      # Set to "true" to run `prisma db seed` on boot (creates demo/admin users).
+      - DATABASE_SEED=${DATABASE_SEED:-false}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    volumes:
+      # SQLite persists between container rebuilds
+      - ./db:/app/db
+
+  caddy:
+    image: caddy:2.9
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

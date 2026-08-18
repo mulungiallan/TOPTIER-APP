@@ -1,0 +1,22 @@
+# Caddy reverse proxy — automatic HTTPS via Let's Encrypt.
+# 1) Set DOMAIN env var (e.g. in .env or shell: export DOMAIN=app.toptier.app).
+# 2) Point the domain's DNS A record at your VPS IP.
+# 3) Caddy will fetch a free TLS certificate automatically.
+
+{env.DOMAIN} {
+	encode gzip zstd
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+	}
+
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+}

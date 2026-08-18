@@ -1,0 +1,7 @@
+# TOPTIER bot service (mini-services/bot) — control plane dependencies.
+# The trading ENGINE (mt5_trading_bot/requirements.txt) needs its own deps
+# installed in the same Python: MetaTrader5, pandas, numpy, requests, anthropic.
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.6.0
+requests>=2.31.0
