@@ -89,6 +89,7 @@ dev-server.log
 
 # Secrets
 tokens.txt
+google-services.json
 
 # Bun lockfile — project uses npm
 bun.lock
