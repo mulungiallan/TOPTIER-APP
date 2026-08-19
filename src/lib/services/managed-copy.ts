@@ -472,7 +472,7 @@ export const ManagedCopyService = {
 
       // Rule #2: Margin reservation — check if follower has enough margin budget
       if (f.declaredBalanceUsd && f.declaredBalanceUsd > 0) {
-        const marginUsed = f.allocatedMarginUsd
+        const marginUsed = f.allocatedMarginUsd ?? 0
         const marginBudget = f.declaredBalanceUsd * (trader.marginBudgetPct / 100)
         const estNotional = notionalPerLot(symbol) * 0.01 // rough margin for min lot
         if (marginUsed + estNotional > marginBudget) {

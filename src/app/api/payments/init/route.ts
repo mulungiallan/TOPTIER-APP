@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
     // Initialize payment with the selected provider
     const result = await initializePayment(provider, {
       userId,
-      userEmail: user.email,
+      userEmail: user.email || '',
       userName: user.name || 'TOPTIER User',
       planType,
       amount: finalAmount,

@@ -137,7 +137,7 @@ export function initSocketServer(server: HTTPServer): SocketServer {
 
       // Rate limit: max messages per window
       const now = Date.now()
-      if (now - (socket.data.chatWindowStart || 0) > 30_000) {
+      if (now - (socket.data.chatWindowStart || 0) > CHAT_RATE_LIMIT_MS) {
         socket.data.chatMessages = 0
         socket.data.chatWindowStart = now
       }

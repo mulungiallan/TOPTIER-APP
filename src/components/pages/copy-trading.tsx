@@ -1430,7 +1430,7 @@ export function CopyTradingPage() {
                                 <span className="text-xs text-muted-foreground ml-2 font-mono">${f.declaredBalanceUsd.toFixed(2)}</span>
                               ) : null}
                               <span className="text-[10px] text-muted-foreground ml-2">
-                                {f.concurrentTradeCount} trades · ${f.allocatedMarginUsd.toFixed(0)} margin
+                                {f.concurrentTradeCount} trades · ${(f.allocatedMarginUsd ?? 0).toFixed(0)} margin
                               </span>
                             </div>
                           </div>

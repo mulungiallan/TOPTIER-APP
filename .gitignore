@@ -89,3 +89,6 @@ dev-server.log
 
 # Secrets
 tokens.txt
+
+# Bun lockfile — project uses npm
+bun.lock

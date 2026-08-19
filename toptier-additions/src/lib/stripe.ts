@@ -8,7 +8,11 @@
 
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
+const stripeKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeKey) {
+  throw new Error("STRIPE_SECRET_KEY is not set in environment variables");
+}
+const stripe = new Stripe(stripeKey, {
   apiVersion: "2024-06-20",
   typescript: true,
 });

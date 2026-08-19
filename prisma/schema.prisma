@@ -512,6 +512,10 @@ model AdminAuditLog {
   target    String?
   details   String?
   createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@index([action])
 }
 
 // ─── Premium Package System ─────────────────────────────────────────────────

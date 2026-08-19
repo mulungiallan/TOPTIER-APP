@@ -105,15 +105,17 @@ export async function PUT(request: NextRequest) {
     if (section === 'profile') {
       const { name, phone, dateOfBirth, country, profilePicture } = body
 
+      const sanitized = {
+        ...(name !== undefined && { name: String(name).slice(0, 100) }),
+        ...(phone !== undefined && { phone: String(phone).slice(0, 20) }),
+        ...(dateOfBirth !== undefined && { dateOfBirth: String(dateOfBirth).slice(0, 10) }),
+        ...(country !== undefined && { country: String(country).slice(0, 100) }),
+        ...(profilePicture !== undefined && { profilePicture: String(profilePicture).slice(0, 2000) }),
+      }
+
       const updatedUser = await db.user.update({
         where: { id: userId },
-        data: {
-          ...(name !== undefined && { name }),
-          ...(phone !== undefined && { phone }),
-          ...(dateOfBirth !== undefined && { dateOfBirth }),
-          ...(country !== undefined && { country }),
-          ...(profilePicture !== undefined && { profilePicture }),
-        },
+        data: sanitized,
       })
 
       // Log activity

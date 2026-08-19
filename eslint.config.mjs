@@ -14,7 +14,6 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "@typescript-eslint/no-non-null-assertion": "warn",
     "@typescript-eslint/ban-ts-comment": "warn",
     "@typescript-eslint/prefer-as-const": "error",
-    "@typescript-eslint/no-unused-disable-directive": "error",
     
     // React rules — enforce hooks correctness
     "react-hooks/exhaustive-deps": "warn",

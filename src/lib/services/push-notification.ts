@@ -64,11 +64,18 @@ export class PushNotificationService {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as unknown as BufferSource,
     })
 
+    const p256dhKey = subscription.getKey('p256dh')
+    const authKey = subscription.getKey('auth')
+    if (!p256dhKey || !authKey) {
+      console.error('[push] Push subscription missing encryption keys — browser may not support push')
+      return null
+    }
+
     const payload: PushSubscriptionPayload = {
       endpoint: subscription.endpoint,
       keys: {
-        p256dh: arrayBufferToB64(subscription.getKey('p256dh')),
-        auth: arrayBufferToB64(subscription.getKey('auth')),
+        p256dh: arrayBufferToB64(p256dhKey),
+        auth: arrayBufferToB64(authKey),
       },
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
     }
