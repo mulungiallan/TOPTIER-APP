@@ -17,7 +17,8 @@
     "cap:init": "npx cap add android && npx cap add ios",
     "cap:sync": "npx cap sync",
     "cap:android": "npx cap open android",
-    "cap:ios": "npx cap open ios"
+    "cap:ios": "npx cap open ios",
+    "build:aab": "powershell -ExecutionPolicy Bypass -File scripts/build-aab.ps1"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
