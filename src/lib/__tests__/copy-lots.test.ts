@@ -19,9 +19,9 @@ describe('computeProgressiveLots', () => {
     expect(computeProgressiveLots(5000)).toBe(0.7)
   })
 
-  it('applies the 2x tier above $5k', () => {
-    // $1,000 @1.0x=0.10 + $4,000 @1.5x=0.60 + $5,000 @2.0x=1.00 -> 1.70
-    expect(computeProgressiveLots(10000)).toBe(1.7)
+  it('applies the 2.5x tier above $5k', () => {
+    // $1,000 @1.0x=0.10 + $4,000 @1.5x=0.60 + $5,000 @2.5x=1.25 -> 1.95
+    expect(computeProgressiveLots(10000)).toBe(1.95)
   })
 
   it('respects maxLots cap', () => {
