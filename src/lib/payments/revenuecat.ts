@@ -5,7 +5,7 @@ import type { PaymentGateway, InitPaymentParams, InitPaymentResult, VerifyPaymen
 
 const REVENUECAT_BASE_URL = 'https://api.revenuecat.com/v1'
 
-async function revenuecatRequest(endpoint: string, method: string = 'GET', body?: Record<string, unknown>) {
+async function revenuecatRequest(endpoint: string, method: string = 'GET', body?: Record<string, unknown>, platform: 'ios' | 'android' = 'android') {
   const apiKey = process.env.REVENUECAT_SECRET_KEY
   if (!apiKey) throw new Error('REVENUECAT_SECRET_KEY is not configured')
 
@@ -14,7 +14,7 @@ async function revenuecatRequest(endpoint: string, method: string = 'GET', body?
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'X-Platform': 'android', // Default platform, can be overridden
+      'X-Platform': platform,
     },
     body: body ? JSON.stringify(body) : undefined,
   })
@@ -55,7 +55,7 @@ export const revenuecatGateway: PaymentGateway = {
     const productId = getRevenueCatProductId(params.planType, platform)
 
     // Get or create the customer in RevenueCat
-    const customer = await revenuecatRequest(`/subscribers/${params.userId}`)
+    const customer = await revenuecatRequest(`/subscribers/${params.userId}`, 'GET', undefined, platform)
 
     // RevenueCat doesn't create a "checkout session" like other gateways.
     // Instead, the mobile app initiates the purchase through the native store,
@@ -80,8 +80,9 @@ export const revenuecatGateway: PaymentGateway = {
     // The mobile app sends the store receipt, and RevenueCat validates it
     const userId = params.metadata?.userId
     if (!userId) throw new Error('No userId provided for RevenueCat verification')
+    const platform = (params.metadata?.platform || 'android') as 'ios' | 'android'
 
-    const customer = await revenuecatRequest(`/subscribers/${userId}`)
+    const customer = await revenuecatRequest(`/subscribers/${userId}`, 'GET', undefined, platform)
 
     const entitlements = customer.subscriber?.entitlements || {}
     const hasPremium = Object.keys(entitlements).some(key =>
@@ -111,9 +112,10 @@ export const revenuecatGateway: PaymentGateway = {
     // We can also use the RevenueCat REST API to revoke entitlements
     const userId = params.metadata?.userId
     if (!userId) throw new Error('No userId provided for RevenueCat refund')
+    const platform = (params.metadata?.platform || 'android') as 'ios' | 'android'
 
     // Delete the subscriber's entitlements
-    await revenuecatRequest(`/subscribers/${userId}/entitlements`, 'DELETE')
+    await revenuecatRequest(`/subscribers/${userId}/entitlements`, 'DELETE', undefined, platform)
 
     return {
       refundId: `RC_REFUND_${Date.now()}`,
