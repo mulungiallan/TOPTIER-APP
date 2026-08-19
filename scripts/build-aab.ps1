@@ -44,15 +44,15 @@ function Get-FileResume([string]$Url, [string]$Out) {
   Log "Downloaded $Out ($((Get-Item $Out).Length) bytes)"
 }
 
-# --- 1. JDK 17 ---
+# --- 1. JDK 21 ---
 New-Item -ItemType Directory -Force -Path $DL | Out-Null
-$jdkZip = Join-Path $DL 'jdk17.zip'
+$jdkZip = Join-Path $DL 'jdk21.zip'
 if (-not (Test-Path (Join-Path $JDK_DIR 'bin\java.exe'))) {
-  Log "Downloading JDK 17..."
-  Get-FileResume 'https://cdn.azul.com/zulu/bin/zulu17.52.17-ca-jdk17.0.12-win_x64.zip' $jdkZip
+  Log "Downloading JDK 21..."
+  Get-FileResume 'https://cdn.azul.com/zulu/bin/zulu21.38.21-ca-jdk21.0.4-win_x64.zip' $jdkZip
   Run-Native { tar.exe -xf $jdkZip -C $env:ANDROID_ROOT }
   if (-not (Test-Path (Join-Path $JDK_DIR 'bin\java.exe'))) {
-    $extracted = Get-ChildItem (Split-Path -Parent $JDK_DIR) -Directory | Where-Object { $_.Name -like 'zulu17*' } | Select-Object -First 1
+    $extracted = Get-ChildItem (Split-Path -Parent $JDK_DIR) -Directory | Where-Object { $_.Name -like 'zulu21*' } | Select-Object -First 1
     if ($extracted) { Move-Item $extracted.FullName $JDK_DIR -Force }
   }
 }
