@@ -2,8 +2,10 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 // Production backend the native shell loads. MUST be a public HTTPS domain
 // before store submission (stores reject cleartext / LAN addresses).
-// Override locally for testing: TOPTIER_BACKEND_URL=http://<lan-ip>:3000 npx cap sync android
-const backendUrl = process.env.TOPTIER_BACKEND_URL || 'https://app.toptier.app';
+// Currently pointed at the live Railway deployment (custom app.toptier.app is
+// parked at Afternic and cannot host traffic). Swap BACKEND_URL back to the
+// branded domain once its DNS is live.
+const backendUrl = process.env.TOPTIER_BACKEND_URL || 'https://toptier-production.up.railway.app';
 
 const config: CapacitorConfig = {
   appId: 'com.toptier.app',
