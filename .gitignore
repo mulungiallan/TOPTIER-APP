@@ -80,6 +80,8 @@ server.log
 
 # SQLite database — never commit user data
 /db/custom.db
+/db/custom.db-shm
+/db/custom.db-wal
 
 # User uploads — never commit
 /upload/
