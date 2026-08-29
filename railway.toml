@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm ci --include=dev --no-audit --no-fund && npx prisma generate && npm run build"
+buildCommand = "npm install --include=dev --no-audit --no-fund && npx prisma generate && npm run build"
 
 [deploy]
 startCommand = "mkdir -p /data/db && npx prisma db push --skip-generate && node .next/standalone/server.js"
