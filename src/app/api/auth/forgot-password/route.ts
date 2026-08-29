@@ -23,7 +23,11 @@ export async function POST(request: NextRequest) {
         getJwtSecret(),
         { expiresIn: '30m' }
       )
-      await emailService.sendPasswordResetEmail(user.email, token)
+      try {
+        await emailService.sendPasswordResetEmail(user.email, token)
+      } catch (emailError) {
+        console.error('[ForgotPassword] Email send failed (RESEND_API_KEY may be missing):', emailError)
+      }
     }
 
     return successResponse({

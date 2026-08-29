@@ -36,37 +36,41 @@ export const env = {
     return process.env.FINNHUB_API_KEY
   },
   get mpesaPasskey(): string | undefined {
-    return requireEnv('MPESA_PASSKEY')
+    return process.env.MPESA_PASSKEY
   },
   get mpesaShortcode(): string | undefined {
-    return requireEnv('MPESA_SHORTCODE')
+    return process.env.MPESA_SHORTCODE
   },
   get mpesaConsumerKey(): string | undefined {
-    return requireEnv('MPESA_CONSUMER_KEY')
+    return process.env.MPESA_CONSUMER_KEY
   },
   get mpesaConsumerSecret(): string | undefined {
-    return requireEnv('MPESA_CONSUMER_SECRET')
+    return process.env.MPESA_CONSUMER_SECRET
   },
   get hfToken(): string | undefined {
     return process.env.HF_TOKEN
   },
   get geminiApiKey(): string | undefined {
-    return requireEnv('GEMINI_API_KEY')
+    return process.env.GEMINI_API_KEY
   },
   get resendApiKey(): string | undefined {
-    return requireEnv('RESEND_API_KEY')
+    return process.env.RESEND_API_KEY
   },
   get stripeSecretKey(): string | undefined {
-    return requireEnv('STRIPE_SECRET_KEY')
+    return process.env.STRIPE_SECRET_KEY
   },
   get stripePriceMonthly(): string | undefined {
-    return requireEnv('STRIPE_PRICE_MONTHLY')
+    return process.env.STRIPE_PRICE_MONTHLY
   },
   get stripePriceAnnual(): string | undefined {
-    return requireEnv('STRIPE_PRICE_ANNUAL')
+    return process.env.STRIPE_PRICE_ANNUAL
   },
   get appUrl(): string {
-    return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const url = process.env.NEXT_PUBLIC_APP_URL
+    if (!url && isProd) {
+      throw new Error('NEXT_PUBLIC_APP_URL is required in production — payment callbacks and emails will break without it.')
+    }
+    return url || 'http://localhost:3000'
   },
   // ─── Auto-trading bot (MT5/MT4) ─────────────────────────────────────────
   get botServiceUrl(): string {
@@ -76,6 +80,6 @@ export const env = {
     return process.env.BOT_SERVICE_KEY || ''
   },
   get botCredentialsSecret(): string | undefined {
-    return requireEnv('BOT_CREDENTIALS_SECRET')
+    return process.env.BOT_CREDENTIALS_SECRET
   },
 }

@@ -17,6 +17,9 @@ import {
   X,
 } from 'lucide-react'
 import { useStore, type Page } from '@/lib/store'
+import { useBackButton } from '@/hooks/use-back-button'
+import { useLiveMarket } from '@/hooks/use-live-market'
+import { useTokenRefresh } from '@/hooks/use-token-refresh'
 import dynamic from 'next/dynamic'
 import { AppShell } from '@/components/layout/app-shell'
 import { LoginForm } from '@/components/auth/login-form'
@@ -119,6 +122,48 @@ const TICKER = [
   { sym: 'USDJPY', price: '157.84', change: '+0.09%', up: true },
   { sym: 'AUDUSD', price: '0.6619', change: '-0.04%', up: false },
 ]
+
+function LiveTicker() {
+  const { prices, loading } = useLiveMarket({ overview: true, refreshMs: 30_000 })
+  const items = prices.length > 0
+    ? prices.map(p => ({
+        sym: p.symbol.replace('/USD', 'USD').replace('BINANCE:', ''),
+        price: p.price > 1000 ? p.price.toLocaleString('en-US', { maximumFractionDigits: 0 }) : p.price.toFixed(p.price < 1 ? 4 : 2),
+        change: `${p.changePercent >= 0 ? '+' : ''}${p.changePercent.toFixed(2)}%`,
+        up: p.changePercent >= 0,
+      }))
+    : TICKER
+
+  if (loading && prices.length === 0) {
+    return (
+      <div className="border-b border-border bg-white/70 dark:bg-[#0f2a4a]/60 backdrop-blur-sm overflow-hidden">
+        <div className="flex whitespace-nowrap animate-[ticker_40s_linear_infinite] py-2">
+          {TICKER.map((t, i) => (
+            <span key={`${t.sym}-${i}`} className="inline-flex items-center gap-2 px-5 text-xs font-mono">
+              <span className="font-semibold text-foreground">{t.sym}</span>
+              <span className="text-muted-foreground">{t.price}</span>
+              <span className={t.up ? 'text-profit' : 'text-loss'}>{t.change}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-b border-border bg-white/70 dark:bg-[#0f2a4a]/60 backdrop-blur-sm overflow-hidden">
+      <div className="flex whitespace-nowrap animate-[ticker_40s_linear_infinite] py-2">
+        {[...items, ...items].map((t, i) => (
+          <span key={`${t.sym}-${i}`} className="inline-flex items-center gap-2 px-5 text-xs font-mono">
+            <span className="font-semibold text-foreground">{t.sym}</span>
+            <span className="text-muted-foreground">{t.price}</span>
+            <span className={t.up ? 'text-profit' : 'text-loss'}>{t.change}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const TIERS = [
   {
@@ -230,17 +275,7 @@ function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* ─── Ticker strip ─────────────────────────────────────────────── */}
-      <div className="border-b border-border bg-white/70 dark:bg-[#0f2a4a]/60 backdrop-blur-sm overflow-hidden">
-        <div className="flex whitespace-nowrap animate-[ticker_40s_linear_infinite] py-2">
-          {[...TICKER, ...TICKER].map((t, i) => (
-            <span key={`${t.sym}-${i}`} className="inline-flex items-center gap-2 px-5 text-xs font-mono">
-              <span className="font-semibold text-foreground">{t.sym}</span>
-              <span className="text-muted-foreground">{t.price}</span>
-              <span className={t.up ? 'text-profit' : 'text-loss'}>{t.change}</span>
-            </span>
-          ))}
-        </div>
-      </div>
+      <LiveTicker />
 
       {/* ─── Nav ──────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
@@ -292,7 +327,7 @@ function LandingPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <Badge className="mb-5 bg-[#e8eff9] text-[#1b4f9c] border-[#1b4f9c]/20 hover:bg-[#e8eff9] font-medium">
+              <Badge className="mb-5 bg-[#e8eff9] dark:bg-[#1b4f9c]/15 text-[#1b4f9c] border-[#1b4f9c]/20 hover:bg-[#e8eff9] dark:hover:bg-[#1b4f9c]/20 font-medium">
                 <Zap className="size-3 mr-1" />
                 AI-Powered Trading Platform
               </Badge>
@@ -409,8 +444,8 @@ function LandingPage() {
                           onClick={() => setAuthMode('register')}
                           className={`group flex w-full items-center gap-3.5 rounded-xl border p-3.5 text-left transition-all ${
                             tier.highlight
-                              ? 'border-[#1b4f9c]/30 bg-[#e8eff9]/70 hover:bg-[#e8eff9]'
-                              : 'border-border bg-white hover:border-[#1b4f9c]/30'
+                              ? 'border-[#1b4f9c]/30 bg-[#e8eff9]/70 dark:bg-[#1b4f9c]/10 hover:bg-[#e8eff9] dark:hover:bg-[#1b4f9c]/15'
+                              : 'border-border bg-white dark:bg-card hover:border-[#1b4f9c]/30'
                           }`}
                         >
                           <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
@@ -494,8 +529,8 @@ function LandingPage() {
                   transition={{ delay: i * 0.08, duration: 0.5 }}
                   className={`rounded-xl border p-6 ${
                     tier.highlight
-                      ? 'border-[#1b4f9c]/40 bg-[#e8eff9]/60'
-                      : 'border-border bg-white'
+                      ? 'border-[#1b4f9c]/40 bg-[#e8eff9]/60 dark:bg-[#1b4f9c]/10'
+                      : 'border-border bg-white dark:bg-card'
                   }`}
                 >
                   <div className="flex items-center gap-3 mb-4">
@@ -569,6 +604,9 @@ function LandingPage() {
 export default function Home() {
   const { isAuthenticated, user, currentPage, setPage } = useStore()
   const onboardingComplete = user?.onboardingCompleted ?? false
+
+  useBackButton()
+  useTokenRefresh()
 
   // Public pages that can be viewed without authentication
   const isPublicPage = currentPage === 'privacy' || currentPage === 'terms'

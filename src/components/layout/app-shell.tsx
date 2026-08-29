@@ -479,7 +479,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 type="text"
                 placeholder={t('common.searchPlaceholder', locale)}
                 className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-4 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none transition-all"
-                readOnly
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const q = (e.target as HTMLInputElement).value.trim().toLowerCase()
+                    if (!q) return
+                    const searchPages: Record<string, Page> = {
+                      signal: 'signals',
+                      signals: 'signals',
+                      watch: 'watchlist',
+                      watchlist: 'watchlist',
+                      alert: 'alerts',
+                      alerts: 'alerts',
+                      calendar: 'calendar',
+                      news: 'news',
+                      chart: 'screenshot',
+                      screenshot: 'screenshot',
+                      analysis: 'screenshot',
+                      performance: 'performance',
+                      stats: 'stats',
+                      settings: 'settings',
+                      setting: 'settings',
+                      profile: 'profile',
+                      community: 'community',
+                      education: 'education',
+                      pricing: 'pricing',
+                      support: 'support',
+                      bot: 'trading-bot',
+                      trading: 'trading-bot',
+                      paper: 'paper-trading',
+                      backtest: 'backtesting',
+                      predict: 'ai-predictions',
+                      strategy: 'strategy-builder',
+                    }
+                    for (const [keyword, page] of Object.entries(searchPages)) {
+                      if (q.includes(keyword)) {
+                        setPage(page)
+                        ;(e.target as HTMLInputElement).value = ''
+                        return
+                      }
+                    }
+                    setPage('signals')
+                    ;(e.target as HTMLInputElement).value = ''
+                  }
+                }}
               />
             </div>
           </div>

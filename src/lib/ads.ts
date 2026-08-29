@@ -117,20 +117,31 @@ export function shouldShowAds(user: User | null): boolean {
   return true
 }
 
-// Module-level page-step counter for the interstitial frequency.
-let stepCount = 0
+// Per-session page-step counter for the interstitial frequency.
+// Uses a Map keyed by a session identifier so different users/sessions
+// don't interfere with each other's interstitial frequency.
+const stepCounters = new Map<string, number>()
 
-export function recordPageStep(): number {
-  stepCount += 1
-  return stepCount
+export function recordPageStep(sessionId = 'default'): number {
+  const current = stepCounters.get(sessionId) || 0
+  const next = current + 1
+  stepCounters.set(sessionId, next)
+  // Lazy cleanup: if the map grows too large, prune old entries
+  if (stepCounters.size > 10000) {
+    const keys = Array.from(stepCounters.keys())
+    for (let i = 0; i < keys.length / 2; i++) {
+      stepCounters.delete(keys[i])
+    }
+  }
+  return next
 }
 
-export function resetStepCounter() {
-  stepCount = 0
+export function resetStepCounter(sessionId = 'default') {
+  stepCounters.set(sessionId, 0)
 }
 
-export function setStepCounter(n: number) {
-  stepCount = n
+export function setStepCounter(n: number, sessionId = 'default') {
+  stepCounters.set(sessionId, n)
 }
 
 export function isAuthenticated(): boolean {

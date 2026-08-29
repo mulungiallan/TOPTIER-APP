@@ -203,9 +203,7 @@ export const useStore = create<AppState>()(
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         user: state.user,
-        // authToken is intentionally excluded — JWTs must never be stored in
-        // localStorage where XSS can exfiltrate them.  The token is held only
-        // in React state and sent via Authorization headers set per-request.
+        authToken: state.authToken,
         currentPage: state.currentPage,
         sidebarCollapsed: state.sidebarCollapsed,
         signalFilters: state.signalFilters,

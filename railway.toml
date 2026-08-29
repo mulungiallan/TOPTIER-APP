@@ -3,11 +3,14 @@ builder = "NIXPACKS"
 buildCommand = "npx prisma generate && npm run build"
 
 [deploy]
-startCommand = "npx prisma db push --skip-generate && node .next/standalone/server.js"
+startCommand = "mkdir -p /data/db && npx prisma db push --skip-generate && node .next/standalone/server.js"
 healthcheckPath = "/api/health"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
+# Railway volumes must be configured in the Railway dashboard:
+# Service → Volumes → Add Volume → Mount path: /data
+# This ensures the SQLite database survives deploys.
 
 [env]
-DATABASE_URL = "file:../db/custom.db"
+DATABASE_URL = "file:/data/db/custom.db"
 NODE_ENV = "production"

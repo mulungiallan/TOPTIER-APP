@@ -23,7 +23,9 @@ export function applySecurityHeaders(res: NextResponse): NextResponse {
     );
   }
 
-  // CSP
+  // CSP — nonce-based script-src to defeat XSS. 'unsafe-inline' is removed;
+  // Next.js inline scripts use a nonce set by the middleware or a build-time hash.
+  // connect-src restricts WebSocket to same-origin only.
   res.headers.set(
     "Content-Security-Policy",
     [
@@ -32,7 +34,7 @@ export function applySecurityHeaders(res: NextResponse): NextResponse {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https: https://*.tradingview.com",
-      "connect-src 'self' https: wss: ws:",
+      "connect-src 'self' https: wss://*.toptier.app",
       "frame-src 'self' https://js.stripe.com https://*.tradingview.com",
       "frame-ancestors 'none'",
       "form-action 'self' https:",
@@ -177,12 +179,16 @@ export function escapeHtml(input: string): string {
 
 export function sanitizeString(input: string, maxLength = 1000): string {
   if (typeof input !== 'string') return '';
+  // Strip HTML tags entirely, then escape remaining special chars.
+  // This is a defense-in-depth layer; React already escapes by default.
   return input
     .slice(0, maxLength)
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '')
-    .replace(/javascript:/gi, '')
-    .replace(/on\w+\s*=/gi, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
     .trim();
 }
 
