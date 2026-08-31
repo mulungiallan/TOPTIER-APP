@@ -447,6 +447,21 @@ model ConsentRecord {
   @@index([userId])
 }
 
+// Public data-deletion requests (GDPR/CCPA/Google Play). Submitted from a
+// public web form by an email address; intentionally NOT linked to the User
+// table so requests can be made after account deletion or before login.
+model DataDeletionRequest {
+  id        String   @id @default(cuid())
+  email     String
+  requestType String @default("delete") // delete, export
+  reason    String?
+  status    String   @default("pending") // pending, in_progress, completed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email, status])
+}
+
 model EconomicEvent {
   id            String   @id @default(cuid())
   eventName     String

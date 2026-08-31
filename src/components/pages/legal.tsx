@@ -1,7 +1,99 @@
 'use client'
 
 import React from 'react'
-import { Shield, Lock, Eye, Database, Bell, Users, Globe, Scale } from 'lucide-react'
+import { Shield, Lock, Eye, Database, Bell, Users, Globe, Scale, MessageSquare, Flag } from 'lucide-react'
+
+export function UgcPolicyPage() {
+  return (
+    <div className="max-w-3xl mx-auto p-6 space-y-8">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+          <MessageSquare className="size-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">Community Content Policy</h1>
+          <p className="text-sm text-muted-foreground">Last updated: August 29, 2026</p>
+        </div>
+      </div>
+
+      <div className="h-px bg-border" />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><MessageSquare className="size-4 text-primary" /> 1. What This Policy Covers</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          TOPTIER lets registered users share signals, posts, comments, direct messages, group content, and screenshots (collectively, &ldquo;user content&rdquo;). This policy explains what is allowed, how you can report content that violates it, and how we handle reports and appeals. User content is visibility-controlled by your privacy settings (for example, profile visibility and sharing preferences) and is subject to our Terms of Service, Privacy Policy, and the Google Play Developer Program Policies.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">2. Allowed Content</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          You may share your own trading signals, educational analysis, and community discussion, provided the content is accurate to the best of your knowledge, clearly marked as an opinion or signal (not financial advice), and does not misrepresent your performance or rank. Sharing content you were paid or incentivized to promote must be disclosed.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><Flag className="size-4 text-primary" /> 3. Prohibited Content</h2>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive leading-relaxed">
+          <p className="font-medium mb-2">The following content is prohibited and may be removed without notice:</p>
+          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+            <li>Scams, get-rich-quick schemes, or services promising guaranteed returns, including unsolicited private messages offering &ldquo;signals&rdquo; or &ldquo;bots&rdquo; for a fee.</li>
+            <li>Illegal activity, fraud, money-laundering, or facilitation of gambling on unregulated platforms where prohibited by law.</li>
+            <li>Harassment, bullying, threats, doxxing, or sharing others&apos; personal data without consent.</li>
+            <li>Hate speech or content that promotes violence, discrimination, or any group or individual in a targeting manner.</li>
+            <li>Sexually explicit or obscene material, nude or sexualized imagery.</li>
+            <li>Spam, malicious links, malware, or content designed to trick or mislead other users.</li>
+            <li>Impersonation of TOPTIER staff, licensed brokers, or other users.</li>
+            <li>Misrepresentation of trading performance, fabricated results, or fake copy-trading records.</li>
+            <li>Any content that violates applicable law or the Google Play Developer Program Policies.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">4. In-App Reporting</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Every post, comment, message, group, and trader profile includes a report option. Tap the flag/more menu on the content, choose a reason, and we receive the report together with the reported content and your account details (kept confidential). You can also report content or users through the Support section or by emailing support@toptier.app. You do not need to be involved in the conversation to report content.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><Flag className="size-4 text-primary" /> 5. How We Handle Reports</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          We review reported content and take action in line with this policy, our Terms of Service, and applicable law. Actions can include removal of content, suspension or termination of accounts, and, where serious or legally required, referral to law enforcement. We aim to review reports within 24&ndash;72 hours. Users whose content is removed are notified with the reason where feasible.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">6. Appeals</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          If you believe a moderation decision was wrong — content you posted was removed in error, or your account was suspended unfairly — you may appeal within 30 days of the decision. Send your appeal to support@toptier.app or via the Support section with the subject &ldquo;Appeal&rdquo; and include your account email, the content or account action in question, and why you believe the decision was incorrect. We will review the appeal with a person who was not involved in the original decision and respond within 30 days. Decisions on appeal are final.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><Scale className="size-4 text-primary" /> 7. Our Moderation Commitment</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          We review user content for compliance with this policy, including through proactive monitoring of signals and community features and handling of user reports. Automated review may be used to detect spam and abuse; any automated decision that materially affects your account can be reviewed manually on request. Content that violates the Google Play Developer Program Policies or applicable law may be reported to Google or the relevant authorities.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">8. Your Responsibilities</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          You are solely responsible for the user content you share. TOPTIER does not endorse or verify community content, and sharing is not a recommendation to trade. Trading content shared by others is educational and informational only. Repeated violations may result in permanent account suspension per our Terms of Service.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">9. Contact</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          For questions about this policy, reporting, or appeals, contact us at support@toptier.app or through the Support section of the app.
+        </p>
+      </section>
+    </div>
+  )
+}
 
 export function PrivacyPolicyPage() {
   return (
@@ -58,6 +150,30 @@ export function PrivacyPolicyPage() {
         <p className="text-sm text-muted-foreground leading-relaxed">
           Depending on your jurisdiction, you may have the right to access and receive a copy of your personal data, rectify inaccurate or incomplete personal data, delete your personal data (subject to legal requirements), restrict or object to the processing of your data, data portability (receive your data in a structured format), and withdraw consent at any time where processing is based on consent. To exercise any of these rights, please contact us through the app settings or at privacy@toptier.app. We will respond to your request within 30 days.
         </p>
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-destructive/20 bg-destructive/5 p-5">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><Database className="size-4 text-primary" /> Request Deletion of Your Data</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          To request the permanent deletion of your account and personal data, you can:
+        </p>
+        <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+          <li>
+            Submit a request online: <a href="/account-deletion" className="font-medium text-primary underline underline-offset-4">Delete My Account &amp; Data</a>
+          </li>
+          <li>
+            Or, if you are logged in: <span className="font-medium">Settings → Account → Delete Account</span>
+          </li>
+          <li>
+            Or email us at <span className="font-medium">privacy@toptier.app</span> with the subject &ldquo;Delete Account&rdquo;
+          </li>
+        </ul>
+        <a
+          href="/account-deletion"
+          className="inline-flex items-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+        >
+          <Database className="size-4" /> Delete My Account &amp; Data
+        </a>
       </section>
 
       <section className="space-y-3">

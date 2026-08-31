@@ -33,6 +33,7 @@ const PUBLIC_ROUTES = [
   "/api/auth",                          // login / register
   "/api/auth/reset-password",           // password reset
   "/api/auth/forgot-password",          // password reset request
+  "/api/account/deletion-request",      // public data-deletion request
   "/api/webhooks",                      // Stripe, payment webhooks
   "/api/tracking/event",               // anonymous usage tracking
   "/api/health",                        // health check
