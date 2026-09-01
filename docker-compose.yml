@@ -1,8 +1,23 @@
-# TOPTIER web app + Caddy (HTTPS). Run: docker compose up -d --build
+# TOPTIER web app + Postgres + Caddy (HTTPS). Run: docker compose up -d --build
 # See DEPLOYMENT.md before doing anything. The trading-bot service is separate
 # (Windows-only) and is covered in DEPLOYMENT.md.
 
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-toptier}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-toptier}
+      - POSTGRES_DB=${POSTGRES_DB:-toptier}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build:
       context: .
@@ -12,19 +27,20 @@ services:
       - "3000"
     environment:
       - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-toptier}:${POSTGRES_PASSWORD:-toptier}@db:5432/${POSTGRES_DB:-toptier}?schema=public
       # Set to "true" to run `prisma db seed` on boot (creates demo/admin users).
       - DATABASE_SEED=${DATABASE_SEED:-false}
     env_file:
       - .env
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 40s
-    volumes:
-      # SQLite persists between container rebuilds
-      - ./db:/app/db
 
   caddy:
     image: caddy:2.9
@@ -44,5 +60,6 @@ services:
         condition: service_healthy
 
 volumes:
+  db_data:
   caddy_data:
   caddy_config:

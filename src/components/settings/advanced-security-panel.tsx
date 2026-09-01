@@ -25,7 +25,7 @@ interface BiometricCred {
 }
 
 export function AdvancedSecurityPanel() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [biometricSupported, setBiometricSupported] = useState(false)
   const [platformAuthAvailable, setPlatformAuthAvailable] = useState(false)
   const [creds, setCreds] = useState<BiometricCred[]>([])

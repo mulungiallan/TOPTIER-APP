@@ -553,7 +553,8 @@ function CropDialog({ imageUrl, fileName, onClose, onCrop }: {
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export function ScreenshotAnalyzer() {
-  const { user, setPage } = useStore()
+  const user = useStore((s) => s.user)
+  const setPage = useStore((s) => s.setPage)
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
 
   // State

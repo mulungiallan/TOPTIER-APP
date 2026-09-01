@@ -1,7 +1,7 @@
 #!/bin/sh
-# Keep the SQLite schema in sync on every boot, then start the app.
-# Runs in the runtime image which ships prisma/, node_modules, src/generated
-# and db/ (see Dockerfile). DATABASE_URL is provided by docker-compose env_file.
+# Keep the Postgres schema in sync on every boot, then start the app.
+# Runs in the runtime image which ships prisma/, node_modules and src/generated
+# (see Dockerfile). DATABASE_URL must point to a reachable Postgres instance.
 set -e
 
 echo "[entrypoint] Applying Prisma schema..."

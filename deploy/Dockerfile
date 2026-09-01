@@ -1,6 +1,9 @@
 # ─── TOPTIER web app — production image ───────────────────────────────────────
-# Builds the Next.js standalone server (which includes all API routes, Prisma
-# and the SQLite DB) and runs it behind Caddy for HTTPS. See DEPLOYMENT.md.
+# Builds the Next.js standalone server (which includes all API routes and
+# Prisma) and runs it behind Caddy for HTTPS. See DEPLOYMENT.md.
+#
+# DATABASE_URL must point to a managed Postgres instance (Railway, Supabase,
+# Neon). No local SQLite file is used.
 #
 # NOTE: the MT5/MT4 trading-bot service is NOT part of this image — the
 # MetaTrader5 Python module only works on Windows alongside an installed MT5
@@ -14,8 +17,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-# Generate the Prisma client into src/generated/prisma and create the SQLite
-# DB (so the runtime image ships a schema-ready database file).
+# Generate the Prisma client into src/generated/prisma.
 RUN npx prisma generate
 RUN npm run build
 
@@ -37,7 +39,6 @@ COPY --from=builder /app/public ./public
 # boot (the standalone trace does NOT include the schema.prisma file itself).
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/src/generated ./src/generated
-COPY --from=builder /app/db ./db
 # Only copy the prisma binary + client engine needed at boot — not the full
 # node_modules tree (which adds ~200MB+ to the image).
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma

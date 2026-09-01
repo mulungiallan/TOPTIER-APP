@@ -1,14 +1,18 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { successResponse, errorResponse } from '@/lib/auth'
+import { paginationSchema, validateQuery } from '@/lib/validation'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
+    const parsed = validateQuery(paginationSchema, searchParams)
+    if (!parsed.success) {
+      return errorResponse(parsed.error, 400)
+    }
+    const { limit, offset } = parsed.data
     const category = searchParams.get('category')
     const sentiment = searchParams.get('sentiment')
     const search = searchParams.get('search')
-    const limit = parseInt(searchParams.get('limit') || '20')
-    const offset = parseInt(searchParams.get('offset') || '0')
 
     const where: Record<string, unknown> = {}
 

@@ -4,8 +4,7 @@
 // to only those accounts. If unset, any admin-role account is allowed.
 
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
-import { getUserIdFromRequest } from '@/lib/auth'
+import { authenticateRequest } from '@/lib/auth'
 
 export type AdminUser = {
   id: string
@@ -15,16 +14,19 @@ export type AdminUser = {
 }
 
 export async function requireAdmin(request: NextRequest): Promise<{ error: Response | null; user: AdminUser | null }> {
-  const userId = getUserIdFromRequest(request)
-  if (!userId) {
+  const { user } = await authenticateRequest(request, {
+    id: true,
+    email: true,
+    name: true,
+    role: true,
+    tokenVersion: true,
+    isBanned: true,
+  })
+  if (!user) {
     return { error: Response.json({ error: 'Unauthorized' }, { status: 401 }), user: null }
   }
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, name: true, role: true },
-  })
-  if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+  if (user.role !== 'admin' && user.role !== 'super_admin') {
     return { error: Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 }), user: null }
   }
 

@@ -160,7 +160,9 @@ function badgeStyle(badgeType: string) {
 // ─── Main Profile Page ──────────────────────────────────────────────────────
 
 export function ProfilePage() {
-  const { user, updateUser, setPage } = useStore()
+  const user = useStore((s) => s.user)
+  const updateUser = useStore((s) => s.updateUser)
+  const setPage = useStore((s) => s.setPage)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [copied, setCopied] = useState(false)

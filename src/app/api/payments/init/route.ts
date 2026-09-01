@@ -3,9 +3,10 @@
 
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
-import { initializePayment, getGateway, type PaymentProvider, type PlanType } from '@/lib/payments/registry'
+import { getUserIdFromRequest, authenticateRequest, successResponse, errorResponse } from '@/lib/auth'
+import { initializePayment, type PaymentProvider, type PlanType } from '@/lib/payments/registry'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
+import { validateBody, paymentInitSchema } from '@/lib/validation'
 
 const PLANS: Record<string, { price: number; currency: string }> = {
   trial: { price: 0, currency: 'USD' },
@@ -45,29 +46,19 @@ export async function POST(request: NextRequest) {
       return errorResponse('Premium subscriptions are not open yet.', 503)
     }
 
-    const userId = getUserIdFromRequest(request)
-    if (!userId) {
-      return errorResponse('Unauthorized', 401)
+    const auth = await authenticateRequest(request)
+    if (auth.error) {
+      return errorResponse(auth.error, 401)
     }
+    const userId = auth.user!.id
 
     const body = await request.json()
-    const { provider, planType, couponCode, metadata } = body as {
-      provider: PaymentProvider
-      planType: PlanType
-      couponCode?: string
-      metadata?: Record<string, string>
+    const parsed = validateBody(paymentInitSchema, body)
+    if (!parsed.success) {
+      return errorResponse(parsed.error, 400)
     }
 
-    if (!provider || !planType) {
-      return errorResponse('provider and planType are required', 400)
-    }
-
-    // Validate provider
-    try {
-      getGateway(provider)
-    } catch {
-      return errorResponse(`Invalid payment provider: ${provider}`, 400)
-    }
+    const { provider, planType, couponCode, metadata } = parsed.data
 
     // Validate plan
     const plan = PLANS[planType]
@@ -214,6 +205,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Payment init POST error:', error)
-    return errorResponse(error instanceof Error ? error.message : 'Failed to initialize payment', 500)
+    // Do NOT leak internal error messages to the client.
+    return errorResponse('Failed to initialize payment. Please try again.', 500)
   }
 }

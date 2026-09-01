@@ -169,7 +169,12 @@ function NavItemButton({
 }
 
 function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
-  const { currentPage, setPage, user, logout, toggleSidebarCollapsed, locale } = useStore()
+  const currentPage = useStore((s) => s.currentPage)
+  const setPage = useStore((s) => s.setPage)
+  const user = useStore((s) => s.user)
+  const logout = useStore((s) => s.logout)
+  const toggleSidebarCollapsed = useStore((s) => s.toggleSidebarCollapsed)
+  const locale = useStore((s) => s.locale)
   const { theme, setTheme } = useTheme()
   const isAdmin = user?.role === 'admin'
 
@@ -402,7 +407,14 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { currentPage, sidebarOpen, setSidebarOpen, sidebarCollapsed, toggleSidebarCollapsed, notificationCount, setPage, locale } = useStore()
+  const currentPage = useStore((s) => s.currentPage)
+  const sidebarOpen = useStore((s) => s.sidebarOpen)
+  const setSidebarOpen = useStore((s) => s.setSidebarOpen)
+  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed)
+  const toggleSidebarCollapsed = useStore((s) => s.toggleSidebarCollapsed)
+  const notificationCount = useStore((s) => s.notificationCount)
+  const setPage = useStore((s) => s.setPage)
+  const locale = useStore((s) => s.locale)
   const isMobile = useIsMobile()
 
   // Apply document language + direction (RTL for Arabic) to match the locale.

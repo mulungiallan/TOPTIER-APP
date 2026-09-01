@@ -161,6 +161,7 @@ async function handleSuspendUser(adminId: string, body: any) {
     data: {
       isBanned: true,
       banReason: suspensionText,
+      tokenVersion: { increment: 1 },
     },
     select: { id: true, email: true, name: true, isBanned: true, banReason: true },
   })
@@ -478,6 +479,7 @@ async function handleBanUser(adminId: string, body: any) {
     data: {
       isBanned: true,
       banReason: `BANNED | Reason: ${reason || 'Permanent ban for violation of terms'}`,
+      tokenVersion: { increment: 1 },
     },
     select: { id: true, email: true, name: true, isBanned: true, banReason: true },
   })

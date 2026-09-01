@@ -418,7 +418,7 @@ function mapPerformanceData(raw: any): PerformanceData {
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function PerformancePage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [data, setData] = useState<PerformanceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

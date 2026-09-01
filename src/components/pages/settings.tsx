@@ -124,7 +124,9 @@ function formatActivityTime(dateStr: string): string {
 }
 
 export function SettingsPage() {
-  const { user, updateUser, logout } = useStore()
+  const user = useStore((s) => s.user)
+  const updateUser = useStore((s) => s.updateUser)
+  const logout = useStore((s) => s.logout)
   const { theme, setTheme } = useTheme()
 
   // Loading & error states

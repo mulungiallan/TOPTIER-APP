@@ -36,7 +36,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const [agreeTerms, setAgreeTerms] = useState(false)
   const [acknowledgeRisk, setAcknowledgeRisk] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useStore()
+  const login = useStore((s) => s.login)
 
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get('ref')

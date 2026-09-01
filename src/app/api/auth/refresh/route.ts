@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     // Only refresh if token is within 1 day of expiry, or always refresh
     // (the endpoint is also used to extend sessions on active use).
-    const newToken = generateToken(decoded.userId)
+    const newToken = generateToken(decoded.userId, { tokenVersion: decoded.tokenVersion })
 
     return successResponse({ token: newToken })
   } catch (error) {

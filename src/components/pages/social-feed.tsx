@@ -32,7 +32,7 @@ interface Post {
 }
 
 export function SocialFeedPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
   const [posting, setPosting] = useState(false)

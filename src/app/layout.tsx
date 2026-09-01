@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
@@ -75,13 +76,24 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The CSP nonce is set by the middleware (x-csp-nonce). Binding it here is
+  // optional — the header is still forwarded so the CSP works regardless — but
+  // it lets Next.js tag its inline scripts with the nonce for a stricter CSP.
+  let cspNonce = "";
+  try {
+    const hdrs = await headers();
+    cspNonce = hdrs.get("x-csp-nonce") || "";
+  } catch {
+    // fall through — nonce unavailable during static generation
+  }
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning nonce={cspNonce}>
       <head>
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />

@@ -347,7 +347,8 @@ function AddAssetDialog({
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export function WatchlistPage() {
-  const { user, setPage } = useStore()
+  const user = useStore((s) => s.user)
+  const setPage = useStore((s) => s.setPage)
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
 
   const [watchlists, setWatchlists] = useState<Watchlist[]>([])

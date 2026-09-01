@@ -26,7 +26,8 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
   const [sendingReset, setSendingReset] = useState(false)
   const [biometricSigningIn, setBiometricSigningIn] = useState(false)
   const [hasBiometric, setHasBiometric] = useState(false)
-  const { login, setPage } = useStore()
+  const login = useStore((s) => s.login)
+  const setPage = useStore((s) => s.setPage)
 
   useEffect(() => {
     if (!BiometricService.isSupported()) return

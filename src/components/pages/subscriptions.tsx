@@ -229,7 +229,9 @@ const faqItems = [
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function SubscriptionsPage() {
-  const { user, updateUser, setPage } = useStore()
+  const user = useStore((s) => s.user)
+  const updateUser = useStore((s) => s.updateUser)
+  const setPage = useStore((s) => s.setPage)
   const [couponCode, setCouponCode] = useState('')
   const [copiedReferral, setCopiedReferral] = useState(false)
   const [loading, setLoading] = useState(true)

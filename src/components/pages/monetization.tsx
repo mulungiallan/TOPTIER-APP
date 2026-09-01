@@ -96,7 +96,7 @@ const statusBadge: Record<string, string> = {
 }
 
 export function MonetizationPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
 
   const [balance, setBalance] = useState<Balance>({ available: 0, paid: 0, currency: 'USD' })

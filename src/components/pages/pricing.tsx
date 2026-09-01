@@ -103,7 +103,8 @@ export function PricingPage() {
   const [subscribingTo, setSubscribingTo] = useState<string | null>(null)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
 
-  const { user, setPage } = useStore()
+  const user = useStore((s) => s.user)
+  const setPage = useStore((s) => s.setPage)
 
   const fetchPackages = useCallback(async () => {
     try {

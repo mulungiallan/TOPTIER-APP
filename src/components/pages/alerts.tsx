@@ -859,7 +859,7 @@ function CustomAlertRow({
 // ─── Main Alerts Page ──────────────────────────────────────────────────────────
 
 export function AlertsPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
   const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([])
   const [customAlerts, setCustomAlerts] = useState<CustomAlert[]>([])

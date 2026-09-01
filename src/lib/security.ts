@@ -5,8 +5,15 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+// Generate a CSP nonce using the Web Crypto API (edge + node safe).
+export function generateNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // ============ SECURITY HEADERS ============
-export function applySecurityHeaders(res: NextResponse): NextResponse {
+export function applySecurityHeaders(res: NextResponse, nonce?: string): NextResponse {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -23,14 +30,22 @@ export function applySecurityHeaders(res: NextResponse): NextResponse {
     );
   }
 
-  // CSP — nonce-based script-src to defeat XSS. 'unsafe-inline' is removed;
-  // Next.js inline scripts use a nonce set by the middleware or a build-time hash.
-  // connect-src restricts WebSocket to same-origin only.
+  // CSP — nonce-based script-src to defeat XSS.
+  // A fresh per-request nonce is generated and:
+  //   - injected into script-src for the inline scripts Next.js emits, and
+  //   - passed to the layout via the `x-csp-nonce` header, where it is bound
+  //     to every <script> that needs 'unsafe-inline' (see src/app/layout.tsx).
+  // Keeping 'unsafe-inline' as a fallback still lets any inline script run, so
+  // for maximal protection additionally verify your script tags carry nonces.
+  const cspNonce = nonce ?? generateNonce();
   res.headers.set(
     "Content-Security-Policy",
     [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://js.stripe.com https://cdn.sentry.io",
+      `default-src 'self'`,
+      // 'unsafe-inline' is retained as a compatibility fallback for inline
+      // event handlers/libs that don't carry the nonce; new code should rely
+      // on the nonce.
+      `script-src 'self' 'nonce-${cspNonce}' 'unsafe-inline' https://s3.tradingview.com https://js.stripe.com https://cdn.sentry.io`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https: https://*.tradingview.com",
@@ -42,6 +57,7 @@ export function applySecurityHeaders(res: NextResponse): NextResponse {
       "object-src 'none'",
     ].join("; ")
   );
+  res.headers.set("x-csp-nonce", cspNonce);
 
   return res;
 }

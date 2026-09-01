@@ -300,7 +300,7 @@ function NewsSkeleton() {
 // ─── Main News Page ────────────────────────────────────────────────────────────
 
 export function NewsPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
 
   const [articles, setArticles] = useState<NewsArticle[]>([])

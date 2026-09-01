@@ -29,7 +29,7 @@ interface Message {
 }
 
 export function MessagesPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConv, setSelectedConv] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])

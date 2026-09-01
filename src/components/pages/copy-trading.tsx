@@ -275,7 +275,7 @@ function TradesView({ trades, following, settlements, exitPrices, setExitPrices,
 }
 
 export function CopyTradingPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [following, setFollowing] = useState<FollowEntry[]>([])
   const [trades, setTrades] = useState<CopyTradeEntry[]>([])
   const [providers, setProviders] = useState<ProviderEntry[]>([])

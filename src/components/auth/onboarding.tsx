@@ -172,7 +172,9 @@ function StepIllustration({ type, isActive }: { type: string; isActive: boolean 
 
 export function OnboardingWizard() {
   const [currentStep, setCurrentStep] = useState(0)
-  const { updateUser, setPage, user } = useStore()
+  const updateUser = useStore((s) => s.updateUser)
+  const setPage = useStore((s) => s.setPage)
+  const user = useStore((s) => s.user)
   const [isCompleting, setIsCompleting] = useState(false)
 
   const step = steps[currentStep]

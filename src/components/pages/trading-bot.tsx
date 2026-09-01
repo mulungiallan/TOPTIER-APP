@@ -116,7 +116,7 @@ interface OverviewData {
 }
 
 export function TradingBotPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [trades, setTrades] = useState<BotTrade[]>([])
   const [settlements, setSettlements] = useState<Settlement[]>([])

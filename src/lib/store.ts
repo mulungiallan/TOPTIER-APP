@@ -165,14 +165,22 @@ export const useStore = create<AppState>()(
           currentPage: user.onboardingCompleted ? 'dashboard' : 'onboarding',
         }),
 
-      logout: () =>
+      logout: () => {
+        // Reset in-memory state AND clear persisted storage so stale tokens /
+        // user data don't linger (and a failed later persist can't resurrect them).
+        try {
+          useStore.persist.clearStorage();
+        } catch {
+          // storage may be unavailable (SSR / private mode)
+        }
         set({
           isAuthenticated: false,
           user: null,
           authToken: null,
           currentPage: 'login',
           sidebarOpen: false,
-        }),
+        });
+      },
 
       setPage: (page) => set({ currentPage: page }),
 
@@ -201,6 +209,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'toptier-store',
+      version: 2,
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         user: state.user,

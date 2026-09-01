@@ -159,7 +159,8 @@ const PLAN_ICONS: Record<string, React.ElementType> = {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function PricingDashboardPage() {
-  const { user, setPage } = useStore()
+  const user = useStore((s) => s.user)
+  const setPage = useStore((s) => s.setPage)
   const [data, setData] = useState<BillingDashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

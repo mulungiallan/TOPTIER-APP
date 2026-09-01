@@ -498,7 +498,7 @@ function RecentSignalsList({ signals, loading }: { signals: DashboardSignal[]; l
 }
 
 function QuickActions() {
-  const { setPage } = useStore()
+  const setPage = useStore((s) => s.setPage)
 
   const actions = [
     { label: 'Analyze Screenshot', icon: Camera, page: 'screenshot' as const, color: 'text-primary', bg: 'bg-primary/10' },
@@ -538,7 +538,7 @@ function QuickActions() {
  * Fetches from /api/packages on mount.
  */
 function PlanUsageCard() {
-  const { setPage } = useStore()
+  const setPage = useStore((s) => s.setPage)
   const [plan, setPlan] = useState<{
     plan: string
     analysesLimit: number
@@ -897,7 +897,8 @@ function MarketOverviewTable() {
 }
 
 function SubscriptionBanner() {
-  const { user, setPage } = useStore()
+  const user = useStore((s) => s.user)
+  const setPage = useStore((s) => s.setPage)
   const isFree = !user?.subscriptionTier || user?.subscriptionTier === 'free'
 
   if (!isFree) return null
@@ -1117,7 +1118,7 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [signals, setSignals] = useState<DashboardSignal[]>([])
   const [stats, setStats] = useState<PerformanceStats | null>(null)
   const [events, setEvents] = useState<EconomicEvent[]>([])

@@ -44,7 +44,7 @@ interface Stats {
 }
 
 export function PaperTradingPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [trades, setTrades] = useState<PaperTrade[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)

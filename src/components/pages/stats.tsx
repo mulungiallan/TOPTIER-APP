@@ -135,7 +135,7 @@ function StatCard({
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function StatsPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [series, setSeries] = useState<SeriesPoint[]>([])
   const [range, setRange] = useState<'7d' | '30d'>('7d')

@@ -137,7 +137,7 @@ export function FloatingSupportWidget() {
   const [unread, setUnread] = useState(0)
   const [isBotTyping, setIsBotTyping] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { setPage } = useStore()
+  const setPage = useStore((s) => s.setPage)
 
   // ─── Ticket form state
   const [ticket, setTicket] = useState({

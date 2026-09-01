@@ -1,40 +1,20 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { verifyPassword, generateToken, generateReferralCode, successResponse, errorResponse, needsRehash, rehashPassword, getRequestIp, getRequestDevice } from '@/lib/auth'
+import { authRouteSchema, validateBody } from '@/lib/validation'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { action } = body
+    const parsed = validateBody(authRouteSchema, body)
+    if (!parsed.success) {
+      return errorResponse(parsed.error, 400)
+    }
 
-    if (action === 'register') {
-      const { email, password, name, dateOfBirth, country, referralCode: referralInput } = body
+    if (parsed.data.action === 'register') {
+      const { email, password, name, dateOfBirth, country, referralCode: referralInput } = parsed.data
       const inputReferralCode = typeof referralInput === 'string' ? referralInput.trim() : ''
-      const trimmedEmail = typeof email === 'string' ? email.trim() : email
-
-      if (!trimmedEmail || !password) {
-        return errorResponse('Email and password are required', 400)
-      }
-
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(trimmedEmail)) {
-        return errorResponse('Invalid email address format', 400)
-      }
-
-      // Strong password policy
-      if (password.length < 8) {
-        return errorResponse('Password must be at least 8 characters', 400)
-      }
-      if (!/[A-Z]/.test(password)) {
-        return errorResponse('Password must contain at least one uppercase letter', 400)
-      }
-      if (!/[a-z]/.test(password)) {
-        return errorResponse('Password must contain at least one lowercase letter', 400)
-      }
-      if (!/[0-9]/.test(password)) {
-        return errorResponse('Password must contain at least one number', 400)
-      }
+      const trimmedEmail = email
 
       // Check if user already exists
       const existingUser = await db.user.findUnique({ where: { email: trimmedEmail } })
@@ -108,7 +88,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const token = generateToken(user.id)
+      const token = generateToken(user.id, { tokenVersion: user.tokenVersion })
 
       // Log registration activity
       await db.activityLog.create({
@@ -139,18 +119,12 @@ export async function POST(request: NextRequest) {
       }, 201)
     }
 
-    if (action === 'login') {
-      const { email, password } = body
-      const trimmedEmail = typeof email === 'string' ? email.trim() : email
+    if (parsed.data.action === 'login') {
+      const { email, password } = parsed.data
+      const trimmedEmail = email
 
       if (!trimmedEmail || !password) {
         return errorResponse('Email and password are required', 400)
-      }
-
-      // Validate email format (prevents non-email strings from hitting DB lookup)
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(trimmedEmail)) {
-        return errorResponse('Invalid email address format', 400)
       }
 
       const user = await db.user.findUnique({ where: { email: trimmedEmail } })
@@ -195,7 +169,7 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      const token = generateToken(user.id)
+      const token = generateToken(user.id, { tokenVersion: user.tokenVersion })
 
       // Log activity
       await db.activityLog.create({

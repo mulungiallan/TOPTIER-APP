@@ -352,6 +352,7 @@ function LandingPage() {
                   >
                     <button
                       onClick={() => setAuthMode(null)}
+                      aria-label="Close sign-in dialog"
                       className="absolute -top-3 -right-3 z-10 flex size-7 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground"
                     >
                       <X className="size-3.5" />
@@ -550,7 +551,10 @@ function LandingPage() {
 // ─── Main Page Component ──────────────────────────────────────────────────────
 
 export default function Home() {
-  const { isAuthenticated, user, currentPage, setPage } = useStore()
+  const isAuthenticated = useStore((s) => s.isAuthenticated)
+  const user = useStore((s) => s.user)
+  const currentPage = useStore((s) => s.currentPage)
+  const setPage = useStore((s) => s.setPage)
   const onboardingComplete = user?.onboardingCompleted ?? false
 
   useBackButton()

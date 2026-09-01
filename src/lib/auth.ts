@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'crypto'
 import jwt from 'jsonwebtoken'
+import { db } from '@/lib/db'
 
 // ─── Password hashing (scrypt with per-user random salt) ──────────────────────
 // Format: scrypt$N$r$p$salt$hash — self-describing so parameters can be
@@ -79,6 +80,7 @@ export function rehashPassword(password: string): string {
 
 export interface TokenPayload {
   userId: string
+  tokenVersion: number
   exp: number
   iat: number
 }
@@ -107,10 +109,11 @@ function getJwtSecret(): string {
 
 export { getJwtSecret }
 
-export function generateToken(userId: string, options?: { expiresInMs?: number }): string {
+export function generateToken(userId: string, options?: { expiresInMs?: number; tokenVersion?: number }): string {
   const secret = getJwtSecret()
   const expiresInMs = options?.expiresInMs ?? TOKEN_TTL
-  return jwt.sign({ userId }, secret, { expiresIn: expiresInMs / 1000 })
+  const tokenVersion = options?.tokenVersion ?? 0
+  return jwt.sign({ userId, tokenVersion }, secret, { expiresIn: expiresInMs / 1000 })
 }
 
 export function verifyToken(token: string): TokenPayload | null {
@@ -121,6 +124,7 @@ export function verifyToken(token: string): TokenPayload | null {
     if (!decoded || typeof decoded.userId !== 'string') return null
     return {
       userId: decoded.userId,
+      tokenVersion: typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0,
       exp: (decoded.exp as number) ?? 0,
       iat: (decoded.iat as number) ?? 0,
     }
@@ -160,6 +164,39 @@ export function getUserIdFromRequest(request: Request): string | null {
     }
   }
   return null
+}
+
+// Full authentication: verify the JWT signature AND check that the user's
+// tokenVersion still matches (so password changes / bans / forced logouts
+// revoke previously-issued tokens). Returns the verified user or null.
+// Prefer this over getUserIdFromRequest for any route that grants access to
+// user data or money movement, so revocation actually takes effect.
+export async function authenticateRequest(
+  request: Request,
+  select?: { id?: boolean; email?: boolean; name?: boolean; role?: boolean; tokenVersion?: boolean; isBanned?: boolean; isEmailVerified?: boolean; twoFactorEnabled?: boolean }
+): Promise<{ user: any | null; error: string | null }> {
+  const authHeader = request.headers.get('authorization')
+  if (!authHeader?.startsWith('Bearer ')) {
+    return { user: null, error: 'Authentication required' }
+  }
+  const token = authHeader.substring(7).trim()
+  const decoded = verifyToken(token)
+  if (!decoded?.userId) {
+    return { user: null, error: 'Invalid or expired token' }
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: decoded.userId },
+    select: select ?? { id: true, email: true, name: true, role: true, tokenVersion: true, isBanned: true },
+  })
+  if (!user) return { user: null, error: 'Account not found' }
+  if (user.isBanned) return { user: null, error: 'Account has been banned' }
+  if (user.tokenVersion !== decoded.tokenVersion) {
+    // Token was issued before the user's tokenVersion was bumped (password
+    // change, forced logout, ban). Reject it.
+    return { user: null, error: 'Session has been revoked — please log in again' }
+  }
+  return { user, error: null }
 }
 
 // Alias for getUserIdFromRequest for convenience

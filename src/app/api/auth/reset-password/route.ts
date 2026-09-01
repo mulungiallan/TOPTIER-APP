@@ -2,20 +2,19 @@ import { NextRequest } from 'next/server'
 import jwt from 'jsonwebtoken'
 import { db } from '@/lib/db'
 import { getJwtSecret, rehashPassword, successResponse, errorResponse } from '@/lib/auth'
+import { resetPasswordSchema, validateBody } from '@/lib/validation'
 
 // POST /api/auth/reset-password — public, no auth required.
 // Verifies the signed reset token and sets a new password.
 export async function POST(request: NextRequest) {
   try {
-    const { token, newPassword } = await request.json()
+    const body = await request.json()
+    const parsed = validateBody(resetPasswordSchema, body)
+    if (!parsed.success) {
+      return errorResponse(parsed.error, 400)
+    }
 
-    if (!token) return errorResponse('Reset token is required', 400)
-    if (!newPassword || newPassword.length < 8) {
-      return errorResponse('Password must be at least 8 characters', 400)
-    }
-    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      return errorResponse('Password must contain uppercase, lowercase, and a number', 400)
-    }
+    const { token, newPassword } = parsed.data
 
     let payload: { purpose?: string; email?: string }
     try {
@@ -33,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     await db.user.update({
       where: { id: user.id },
-      data: { password: rehashPassword(newPassword) },
+      data: { password: rehashPassword(newPassword), tokenVersion: { increment: 1 } },
     })
 
     await db.activityLog.create({

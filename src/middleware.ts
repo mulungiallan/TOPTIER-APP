@@ -1,11 +1,12 @@
 /**
  * Next.js Middleware — applies security headers, CSRF protection, rate
- * limiting, and JWT authentication to all routes.
+ * limiting, and lightweight JWT gating to all routes.
  *
- * Runs on the Edge runtime. Full JWT signature verification happens in
- * individual route handlers via verifyToken(); this middleware performs
- * a lightweight format check and forwards the userId header so routes
- * don't have to re-decode.
+ * Runs on the Edge runtime. Note: middleware does NOT verify JWT signatures
+ * (that requires a DB lookup for token revocation and is done in route
+ * handlers via authenticateRequest()/verifyToken()). This middleware only
+ * performs a structural check so obviously-invalid requests fail fast.
+ * Route handlers are ALWAYS the source of truth for authentication.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,6 +16,7 @@ import {
   checkRateLimit,
   getClientIP,
   logSecurityEvent,
+  generateNonce,
 } from "@/lib/security";
 
 // Provider callbacks are excluded from CSRF — they POST from provider servers
@@ -37,6 +39,14 @@ const PUBLIC_ROUTES = [
   "/api/webhooks",                      // Stripe, payment webhooks
   "/api/tracking/event",               // anonymous usage tracking
   "/api/health",                        // health check
+  "/api/news",                          // public market news feed
+  "/api/calendar",                      // public economic calendar
+  "/api/ticker",                        // public ticker quotes
+  "/api/leaderboards",                  // public leaderboards
+  "/api/currency/convert",              // public currency conversion
+  "/api/market",                        // public market overview
+  "/api/platform/stats",                // public platform statistics
+  "/api/pricing/localize",              // localized pricing display
   "/",                                  // root
 ];
 
@@ -64,10 +74,17 @@ function extractUserId(token: string): string | null {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const res = NextResponse.next();
+
+  // Forward the CSP nonce to the layout via a request header so inline
+  // <script> tags can bind it (read via headers() in src/app/layout.tsx).
+  const forwarded = new Headers(req.headers);
+  const nonce = generateNonce();
+  forwarded.set("x-csp-nonce", nonce);
+
+  const res = NextResponse.next({ request: { headers: forwarded } });
 
   // 1. Apply security headers to every response
-  applySecurityHeaders(res);
+  applySecurityHeaders(res, nonce);
 
   // 2. Skip security checks for static assets and files with extensions
   if (
@@ -126,7 +143,12 @@ export function middleware(req: NextRequest) {
     );
   }
 
-  // 5. JWT authentication for protected API routes
+  // 5. Lightweight JWT gating for protected API routes.
+  //    This ONLY checks that a well-formed token is present so bad requests
+  //    fail fast. It does NOT verify the signature or revocation status —
+  //    every route handler MUST call verifyToken()/authenticateRequest() for
+  //    the real check. We deliberately do NOT forward a userId header derived
+  //    from an unverified token into route handlers.
   if (pathname.startsWith("/api/")) {
     if (!isPublicRoute(pathname)) {
       const authHeader = req.headers.get("authorization");
@@ -146,11 +168,6 @@ export function middleware(req: NextRequest) {
           { status: 401 }
         );
       }
-
-      // Forward userId so route handlers don't re-decode
-      const authedHeaders = new Headers(req.headers);
-      authedHeaders.set("x-auth-user-id", userId);
-      return NextResponse.next({ request: { headers: authedHeaders } });
     }
   }
 

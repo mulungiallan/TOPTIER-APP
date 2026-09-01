@@ -15,7 +15,9 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 export function InternationalizationPanel() {
-  const { locale, setLocale, user } = useStore()
+  const locale = useStore((s) => s.locale)
+  const setLocale = useStore((s) => s.setLocale)
+  const user = useStore((s) => s.user)
   const [selectedLocale, setSelectedLocale] = useState<string>('en')
   const [selectedCurrency, setSelectedCurrency] = useState<string>('USD')
   const [userCountry, setUserCountry] = useState<string>('US')

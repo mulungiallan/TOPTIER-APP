@@ -414,7 +414,7 @@ function EventRow({
 // ─── Main Calendar Page ────────────────────────────────────────────────────────
 
 export function CalendarPage() {
-  const { user } = useStore()
+  const user = useStore((s) => s.user)
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
   const [weekOffset, setWeekOffset] = useState(0)
   const [impactFilter, setImpactFilter] = useState<ImpactLevel[]>(['high', 'medium', 'low'])
