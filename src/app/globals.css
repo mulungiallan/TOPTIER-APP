@@ -194,3 +194,14 @@ body {
   min-height: 100dvh;
   min-height: 100vh;
 }
+
+/*
+  Small-screen safety net: never let the page grow wider than the viewport.
+  This prevents any stray overflowing element from causing sideways scrolling
+  (and squished/stretched layouts) on narrow phones. Children that legitimately
+  need to scroll (tables) keep their own overflow-x-auto containers.
+*/
+html,
+body {
+  overflow-x: clip;
+}

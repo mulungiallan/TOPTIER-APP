@@ -134,6 +134,19 @@ export function generateReferralCode(): string {
   return randomBytes(4).toString('hex').toUpperCase()
 }
 
+// Best-effort client IP from common proxy headers (Railway/Next), else null.
+export function getRequestIp(request: Request): string | null {
+  const via = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+  if (via) return via.split(',')[0].trim() || null
+  return null
+}
+
+// Best-effort device/UA string for activity logging.
+export function getRequestDevice(request: Request): string | null {
+  const ua = request.headers.get('user-agent')
+  return ua ? ua.slice(0, 500) : null
+}
+
 // Get user ID from request headers (Authorization Bearer JWT only).
 // NOTE: there is intentionally NO `x-user-id` fallback — trusting a client
 // supplied header would let any caller impersonate any user (including admins).

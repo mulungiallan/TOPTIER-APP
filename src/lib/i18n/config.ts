@@ -120,6 +120,7 @@ const en: Dict = {
   'common.theme': 'Theme',
   'common.privacy': 'Privacy',
   'common.terms': 'Terms',
+  'common.ugc': 'Community Policy',
   'common.analyzeScreenshot': 'Analyze Screenshot',
   'common.searchPlaceholder': 'Search signals, assets, news...',
   'common.loggedOut': 'Logged out successfully',

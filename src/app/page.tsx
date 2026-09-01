@@ -9,7 +9,6 @@ import {
   BarChart3,
   Shield,
   ArrowRight,
-  Play,
   Medal,
   Trophy,
   Crown,
@@ -64,6 +63,7 @@ const SupportPage = dynamic(() => import('@/components/pages/support'), { ssr: f
 const AdminPage = dynamic(() => import('@/components/pages/admin'), { ssr: false })
 const PrivacyPolicyPage = dynamic(() => import('@/components/pages/legal').then(m => m.PrivacyPolicyPage), { ssr: false })
 const TermsOfServicePage = dynamic(() => import('@/components/pages/legal').then(m => m.TermsOfServicePage), { ssr: false })
+const UgcPolicyPage = dynamic(() => import('@/components/pages/legal').then(m => m.UgcPolicyPage), { ssr: false })
 const ProfilePage = dynamic(() => import('@/components/pages/profile').then(m => m.ProfilePage), { ssr: false })
 const StatsPage = dynamic(() => import('@/components/pages/stats').then(m => m.StatsPage), { ssr: false })
 const MonetizationPage = dynamic(() => import('@/components/pages/monetization').then(m => m.MonetizationPage), { ssr: false })
@@ -105,6 +105,7 @@ const pageComponents: Record<Page, React.ReactNode> = {
   register: <RegisterForm onSwitchToLogin={() => {}} />,
   privacy: <PrivacyPolicyPage />,
   terms: <TermsOfServicePage />,
+  ugc: <UgcPolicyPage />,
   profile: <ProfilePage />,
 }
 
@@ -206,48 +207,6 @@ const TIERS = [
 
 function LandingPage() {
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
-  const { login } = useStore()
-
-  const handleDemoMode = () => {
-    const demoUser: import('@/lib/store').User = {
-      id: 'demo-user-001',
-      email: 'demo@toptier.app',
-      name: 'Demo Trader',
-      role: 'user',
-      subscriptionTier: 'pro',
-      referralCode: 'DEMO2024',
-      onboardingCompleted: true,
-      onboardingStep: 7,
-      darkMode: false,
-      tradingStyle: 'swing',
-      riskLevel: 'moderate',
-      preferredMarkets: 'forex,crypto',
-      preferredSessions: 'european,us',
-      phone: null,
-      profilePicture: null,
-      dateOfBirth: '1995-06-15',
-      country: 'Kenya',
-      language: 'en',
-      isEmailVerified: true,
-      twoFactorEnabled: false,
-      bio: 'Demo trader exploring AI-powered markets.',
-      maxConcurrentSessions: 2,
-      activeSessionCount: 1,
-      privacy: {
-        profileVisibility: 'community',
-        showOnlineStatus: true,
-        shareTradingHistory: true,
-        appearOnLeaderboards: true,
-        dataRetentionDays: 90,
-        personalizedAds: false,
-        thirdPartyDataSharing: false,
-        require2FAForSensitiveActions: true,
-        analyticsOptOut: false,
-        cookieConsent: true,
-      },
-    }
-    login(demoUser, 'demo-token-001')
-  }
 
   const features = [
     {
@@ -356,18 +315,6 @@ function LandingPage() {
                   onClick={() => setAuthMode('login')}
                 >
                   View Live Rank
-                </Button>
-              </div>
-
-              <div className="mt-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-2 text-muted-foreground hover:text-[#1b4f9c]"
-                  onClick={handleDemoMode}
-                >
-                  <Play className="size-4" />
-                  Try Demo Mode (no signup needed)
                 </Button>
               </div>
 
@@ -584,6 +531,7 @@ function LandingPage() {
               <div className="flex items-center gap-4">
                 <button onClick={() => { useStore.getState().setPage('privacy') }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</button>
                 <button onClick={() => { useStore.getState().setPage('terms') }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms of Service</button>
+                <button onClick={() => { useStore.getState().setPage('ugc') }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Community Content Policy</button>
               </div>
               <p className="text-xs text-muted-foreground">
                 Trading involves substantial risk. Past performance is not indicative of future results.
@@ -609,7 +557,7 @@ export default function Home() {
   useTokenRefresh()
 
   // Public pages that can be viewed without authentication
-  const isPublicPage = currentPage === 'privacy' || currentPage === 'terms'
+  const isPublicPage = currentPage === 'privacy' || currentPage === 'terms' || currentPage === 'ugc'
 
   // Usage tracking: start the session tracker once, then log every page view
   React.useEffect(() => {

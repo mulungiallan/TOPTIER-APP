@@ -35,6 +35,8 @@ import {
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
+import { Capacitor } from '@capacitor/core'
+import { purchasePlaySubscription, restorePlayPurchases, isNativeBillingAvailable } from '@/lib/play-billing'
 
 interface PaymentProviderInfo {
   id: string
@@ -315,7 +317,19 @@ export function SubscriptionsPage() {
       const result = await api.get('/payments/providers')
       const data = result.data as { providers: PaymentProviderInfo[] }
       if (data?.providers) {
-        setPaymentProviders(data.providers)
+        const providers = data.providers
+        if (Capacitor.isNativePlatform() && providers.length > 0 && !providers.some(p => p.id === 'google-play')) {
+          providers.unshift({
+            id: 'google-play' as PaymentProviderInfo['id'],
+            name: 'Google Play',
+            icon: 'smartphone',
+            description: 'Subscribe securely with your Google account',
+            supportedCurrencies: [],
+            supportedCountries: [],
+            isAvailable: true,
+          })
+        }
+        setPaymentProviders(providers)
       }
     } catch {
       // Silently fail - providers will be empty
@@ -329,6 +343,10 @@ export function SubscriptionsPage() {
   // Handle payment method selection and checkout
   const handleCheckout = async () => {
     if (!selectedPlan || !selectedProvider) return
+    if (selectedProvider === 'google-play') {
+      await handlePlayCheckout(selectedPlan)
+      return
+    }
     if (!PAYMENTS_ENABLED) {
       toast.info('Online payments are temporarily disabled.')
       handleNotifyMe(selectedPlan)
@@ -364,6 +382,58 @@ export function SubscriptionsPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to initiate payment')
     } finally {
       setProcessingPayment(false)
+    }
+  }
+
+  // Google Play native purchase (Play Billing via RevenueCat)
+  const handlePlayCheckout = async (planId: string) => {
+    try {
+      setProcessingPayment(true)
+      if (!isNativeBillingAvailable()) {
+        toast.error('Google Play checkout is only available in the app.')
+        return
+      }
+      const result = await purchasePlaySubscription(planId, user?.id)
+      if (result.outcome === 'PURCHASED_CANCELLED') {
+        toast.info('Purchase cancelled.')
+        return
+      }
+      const verify = await api.post('/billing/play/verify', {
+        productId: result.productId,
+        purchaseToken: result.purchaseToken,
+      })
+      const sub = (verify?.data as { subscription?: { tier?: string } } | undefined)?.subscription
+      const tier = sub?.tier || (planId === 'lifetime' ? 'lifetime' : 'premium')
+      updateUser({ subscriptionTier: tier })
+      toast.success('Subscription activated! Welcome to TOPTIER Premium.')
+      setShowPaymentPicker(false)
+      setPage('dashboard')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to complete Google Play purchase')
+    } finally {
+      setProcessingPayment(false)
+    }
+  }
+
+  const handleRestorePurchases = async () => {
+    try {
+      const restored = await restorePlayPurchases(user?.id)
+      if (restored.length === 0) {
+        toast.info('No previous purchases found on this device.')
+        return
+      }
+      for (const r of restored) {
+        await api.post('/billing/play/verify', { productId: r.productId, purchaseToken: r.purchaseToken }).catch(() => {})
+      }
+      const active = await import('@/lib/play-billing').then(m => m.getActivePlayEntitlements(user?.id))
+      if (active.some(e => e.productId.includes('lifetime'))) {
+        updateUser({ subscriptionTier: 'lifetime' })
+      } else if (active.length > 0) {
+        updateUser({ subscriptionTier: 'premium' })
+      }
+      toast.success('Purchases restored.')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to restore purchases')
     }
   }
 
@@ -844,6 +914,12 @@ export function SubscriptionsPage() {
                 <BadgeCheck className="size-4 text-primary" />
                 7-day money-back guarantee
               </div>
+              {Capacitor.isNativePlatform() && (
+                <Button variant="outline" size="sm" className="gap-2" onClick={handleRestorePurchases}>
+                  <ShoppingBag className="size-4" />
+                  Restore Purchases
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>

@@ -105,6 +105,8 @@ interface OverviewData {
     }
     referralGate: { enabled: boolean; codeConfigured: boolean; urlConfigured: boolean }
     content: { news: number; coupons: number }
+    ads: { totalEvents: number; today: number; rewardedCompletions: number }
+    loginsToday: number
     engagement: Record<string, number>
   }
   revenueByMonth: Array<{ month: string; revenue: number; count: number }>
@@ -833,6 +835,8 @@ export default function AdminPage() {
   const [adminCoupons, setAdminCoupons] = useState<any[]>([])
   const [adminTickets, setAdminTickets] = useState<any[]>([])
   const [adminAudit, setAdminAudit] = useState<any[]>([])
+  const [adUsage, setAdUsage] = useState<{ userId: string; count: number; name: string; email: string }[]>([])
+  const [recentAdEvents, setRecentAdEvents] = useState<any[]>([])
 
   const [userSearch, setUserSearch] = useState('')
   const [userTierFilter, setUserTierFilter] = useState('all')
@@ -854,7 +858,7 @@ export default function AdminPage() {
       setError(null)
       const [overviewRes, dataRes, settingsRes] = await Promise.all([
         api.get<{ success: boolean; data: OverviewData }>('/admin/overview', { signal }),
-        api.get<{ success: boolean; data: { users?: any[]; signals?: any[]; coupons?: any[]; tickets?: any[]; auditLog?: any[] } }>('/admin/data', { signal }),
+        api.get<{ success: boolean; data: { users?: any[]; signals?: any[]; coupons?: any[]; tickets?: any[]; auditLog?: any[]; adUsage?: any[]; recentAdEvents?: any[] } }>('/admin/data', { signal }),
         api.get<{ success: boolean; data: { featureFlags?: any[]; appSettings?: any } }>('/admin/settings', { signal }),
       ])
       if (!signal?.aborted) {
@@ -865,6 +869,8 @@ export default function AdminPage() {
           if (dataRes.data.coupons) setAdminCoupons(dataRes.data.coupons)
           if (dataRes.data.tickets) setAdminTickets(dataRes.data.tickets)
           if (dataRes.data.auditLog) setAdminAudit(dataRes.data.auditLog)
+          if (dataRes.data.adUsage) setAdUsage(dataRes.data.adUsage)
+          if (dataRes.data.recentAdEvents) setRecentAdEvents(dataRes.data.recentAdEvents)
         }
         if (settingsRes?.data) {
           if (Array.isArray(settingsRes.data.featureFlags) && settingsRes.data.featureFlags.length) {
@@ -1033,6 +1039,7 @@ export default function AdminPage() {
           <TabsTrigger value="news" className="gap-1.5 text-xs">News</TabsTrigger>
           <TabsTrigger value="calendar" className="gap-1.5 text-xs">Calendar</TabsTrigger>
           <TabsTrigger value="bots" className="gap-1.5 text-xs">Bots</TabsTrigger>
+          <TabsTrigger value="ads" className="gap-1.5 text-xs">Ads</TabsTrigger>
           <TabsTrigger value="analyses" className="gap-1.5 text-xs">Analyses</TabsTrigger>
           <TabsTrigger value="content" className="gap-1.5 text-xs">Coupons &amp; Tickets</TabsTrigger>
           <TabsTrigger value="audit" className="gap-1.5 text-xs">Activity</TabsTrigger>
@@ -1054,6 +1061,7 @@ export default function AdminPage() {
               <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                 <StatCard title="Total Users" value={s.users.total.toLocaleString()} icon={Users} sub={`${s.users.activeToday} active today`} />
                 <StatCard title="Premium" value={s.users.premium.toLocaleString()} icon={Crown} sub={`${s.users.trial} on trial`} />
+                <StatCard title="Logins (24h)" value={(overview?.stats.loginsToday ?? 0).toLocaleString()} icon={Activity} sub="login events recorded" />
                 <StatCard title="Banned" value={s.users.banned.toLocaleString()} icon={Ban} />
                 <StatCard title="Total Revenue" value={fmtMoney(s.revenue.totalRevenue)} icon={DollarSign} sub={`${s.revenue.totalTransactions} completed txs`} />
                 <StatCard title="Pending Payments" value={s.revenue.pendingTransactions.toLocaleString()} icon={Clock} />
@@ -1754,6 +1762,63 @@ export default function AdminPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        {/* ─── Ads Usage ────────────────────────────────────────────── */}
+        <TabsContent value="ads" className="space-y-4 mt-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard title="Total Ad Events" value={(overview?.stats.ads?.totalEvents ?? 0).toLocaleString()} icon={TrendingUp} sub="all recorded ad views/clicks" />
+            <StatCard title="Today" value={(overview?.stats.ads?.today ?? 0).toLocaleString()} icon={Activity} sub="ad events in the last 24h" />
+            <StatCard title="Rewarded Completions" value={(overview?.stats.ads?.rewardedCompletions ?? 0).toLocaleString()} icon={CheckCircle2} sub="rewarded AdFlow steps finished" />
+          </div>
+          <Card>
+            <CardHeader><CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5" /> Ads Watched per User</CardTitle><CardDescription>Total ad impressions/completions by user (real, from usage tracking)</CardDescription></CardHeader>
+            <CardContent>
+              {adUsage.length === 0 ? (
+                <EmptyState icon={TrendingUp} text="No ad views tracked yet." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">User</TableHead>
+                        <TableHead className="text-xs">Email</TableHead>
+                        <TableHead className="text-xs text-right"># Ads</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {adUsage.map((u) => (
+                        <TableRow key={u.userId}>
+                          <TableCell className="text-sm font-medium">{u.name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{u.email || '—'}</TableCell>
+                          <TableCell className="text-sm text-right font-medium">{u.count.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5" /> Recent Ad Activity</CardTitle><CardDescription>Latest tracked ad events</CardDescription></CardHeader>
+            <CardContent>
+              {recentAdEvents.length === 0 ? (
+                <EmptyState icon={Activity} text="No ad activity yet." />
+              ) : (
+                <div className="space-y-2">
+                  {recentAdEvents.map((ev) => (
+                    <div key={ev.id} className="flex items-center justify-between p-3 rounded-lg border text-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-xs font-medium">{ev.user?.name || ev.user?.email || 'User'}</span>
+                        <Badge variant="outline" className="text-xs">{ev.action}</Badge>
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0">{fmtDate(ev.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="analyses" className="space-y-4 mt-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard title="Total" value={(overview?.stats.analyses.total ?? 0).toLocaleString()} icon={Cpu} />
@@ -1891,6 +1956,8 @@ export default function AdminPage() {
                         <span className="font-medium">{log.user?.name || log.user?.email || 'System'}</span>
                         <span className="text-muted-foreground">· {log.action}</span>
                         {log.details && <span className="text-muted-foreground truncate">· {log.details}</span>}
+                        {log.ipAddress && <span className="text-muted-foreground shrink-0">· <span className="font-mono">{log.ipAddress}</span></span>}
+                        {log.deviceInfo && <span className="text-muted-foreground hidden md:inline truncate max-w-[180px]">· {log.deviceInfo}</span>}
                         <span className="ml-auto text-muted-foreground shrink-0">{fmtDate(log.createdAt)}</span>
                       </div>
                     ))}

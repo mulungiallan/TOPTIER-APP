@@ -2,13 +2,12 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Loader2, Eye, EyeOff, Play, Fingerprint } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Fingerprint } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { PoweredBy } from '@/components/branding/powered-by'
 import { BiometricService, getStoredCredentialIds } from '@/lib/security/biometric'
 import { toast } from 'sonner'
@@ -106,47 +105,6 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     }
   }
 
-  const handleDemoMode = () => {
-    const demoUser: import('@/lib/store').User = {
-      id: 'demo-user-001',
-      email: 'demo@toptier.app',
-      name: 'Demo Trader',
-      role: 'user',
-      subscriptionTier: 'pro',
-      referralCode: 'DEMO2024',
-      onboardingCompleted: true,
-      onboardingStep: 7,
-      darkMode: true,
-      tradingStyle: 'swing',
-      riskLevel: 'moderate',
-      preferredMarkets: 'forex,crypto',
-      preferredSessions: 'european,us',
-      phone: null,
-      profilePicture: null,
-      dateOfBirth: '1995-06-15',
-      country: 'Kenya',
-      language: 'en',
-      isEmailVerified: true,
-      twoFactorEnabled: false,
-      bio: 'Demo trader exploring AI-powered markets.',
-      maxConcurrentSessions: 2,
-      activeSessionCount: 1,
-      privacy: {
-        profileVisibility: 'community',
-        showOnlineStatus: true,
-        shareTradingHistory: true,
-        appearOnLeaderboards: true,
-        dataRetentionDays: 90,
-        personalizedAds: false,
-        thirdPartyDataSharing: false,
-        require2FAForSensitiveActions: true,
-        analyticsOptOut: false,
-        cookieConsent: true,
-      },
-    }
-    login(demoUser, 'demo-token-001')
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -165,7 +123,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'login', email, password }),
+        body: JSON.stringify({ action: 'login', email: email.trim(), password }),
       })
 
       const data = await res.json()
@@ -178,14 +136,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
       login(data.data.user, data.data.token)
       toast.success('Welcome back!')
     } catch (error) {
-      // If API fails (e.g. database not set up), offer demo mode
-      toast.error('Could not connect to server. Try Demo Mode or set up the database first.', {
-        action: {
-          label: 'Demo Mode',
-          onClick: handleDemoMode,
-        },
-        duration: 6000,
-      })
+      toast.error('Could not connect to server. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -283,21 +234,6 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
               ) : (
                 'Sign In'
               )}
-            </Button>
-            <div className="relative">
-              <Separator className="my-4" />
-              <div className="flex items-center justify-center">
-                <span className="bg-card px-3 text-xs text-muted-foreground absolute -top-2.5">or</span>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleDemoMode}
-            >
-              <Play className="size-4" />
-              Try Demo Mode
             </Button>
             {hasBiometric && (
               <Button

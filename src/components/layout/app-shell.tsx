@@ -329,6 +329,8 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
             <button onClick={() => handleNavigate('privacy')} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{t('common.privacy', locale)}</button>
             <span className="text-[11px] text-muted-foreground">·</span>
             <button onClick={() => handleNavigate('terms')} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{t('common.terms', locale)}</button>
+            <span className="text-[11px] text-muted-foreground">·</span>
+            <button onClick={() => handleNavigate('ugc')} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{t('common.ugc', locale)}</button>
           </div>
         )}
 

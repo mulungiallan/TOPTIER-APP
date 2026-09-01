@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
-import { getAdSettings, type AdSettings } from '@/lib/ads'
+import { getAdSettings, trackAd, type AdSettings } from '@/lib/ads'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -46,9 +46,11 @@ export function BannerAd({ position = 'bottom', className = '' }: BannerAdProps)
     if (!adService.shouldShowBanner(userId)) return
     setAdData(adService.getBannerAd())
     setVisible(true)
+    trackAd('banner', 'view')
 
     const interval = setInterval(() => {
       setAdData(adService.getBannerAd())
+      trackAd('banner', 'view')
     }, adService.getConfig().banners.refreshInterval * 1000)
 
     return () => clearInterval(interval)
@@ -138,6 +140,7 @@ export function BannerAd({ position = 'bottom', className = '' }: BannerAdProps)
   if (!adData) return null
 
   const handleClick = () => {
+    trackAd('banner', 'click')
     if (adData.link?.startsWith('/')) {
       const pageName = adData.link.slice(1) as Page
       setPage(pageName)

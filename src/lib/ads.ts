@@ -147,3 +147,14 @@ export function setStepCounter(n: number, sessionId = 'default') {
 export function isAuthenticated(): boolean {
   return useStore.getState().isAuthenticated
 }
+
+/**
+ * Fire-and-forget ad tracking. Records an ad impression/completion per user
+ * via POST /api/ads/track (only when an authenticated free/trial user views an ad).
+ * Best-effort: failures are silently ignored so ads/tracking never break the UI.
+ */
+export function trackAd(type: 'banner' | 'popup' | 'interstitial' | 'native' | 'rewarded', action: 'view' | 'complete' | 'click' = 'view', meta?: Record<string, unknown>) {
+  const user = useStore.getState().user
+  if (!user?.id || !shouldShowAds(user)) return
+  api.post('/ads/track', { type, action, meta }).catch(() => {})
+}

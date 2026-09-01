@@ -37,6 +37,7 @@ export type Page =
   | 'login'
   | 'privacy'
   | 'terms'
+  | 'ugc'
   | 'register'
   | 'profile'
   | 'monetization'

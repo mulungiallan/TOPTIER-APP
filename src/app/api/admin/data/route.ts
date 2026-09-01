@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'all'
     const signalStatus = searchParams.get('signalStatus') || 'all'
 
-    const [users, signals, coupons, tickets, auditLog] = await Promise.all([
+    const [users, signals, coupons, tickets, auditLog, adUsage, recentAdEvents] = await Promise.all([
       db.user.findMany({
         where: {
           deletedAt: null,
@@ -83,9 +83,43 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
         take: 30,
       }),
+      db.usageEvent.groupBy({
+        by: ['userId'],
+        where: { feature: 'ad' },
+        _count: { _all: true },
+        orderBy: { _count: { userId: 'desc' } },
+        take: 50,
+      }).then(async (groups) => {
+        const ids = groups.map((g) => g.userId)
+        const userMap = ids.length
+          ? await db.user.findMany({
+              where: { id: { in: ids } },
+              select: { id: true, name: true, email: true },
+            }).then((us) => new Map(us.map((u) => [u.id, u])))
+          : new Map()
+        return groups.map((g) => ({
+          userId: g.userId,
+          count: g._count._all,
+          name: userMap.get(g.userId)?.name || 'Unnamed',
+          email: userMap.get(g.userId)?.email || '',
+        }))
+      }),
+      db.usageEvent.findMany({
+        where: { feature: 'ad' },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          userId: true,
+          action: true,
+          meta: true,
+          createdAt: true,
+          user: { select: { name: true, email: true } },
+        },
+      }),
     ])
 
-    return successResponse({ users, signals, coupons, tickets, auditLog })
+    return successResponse({ users, signals, coupons, tickets, auditLog, adUsage, recentAdEvents })
   } catch (error) {
     console.error('Admin data GET error:', error)
     return errorResponse('Failed to fetch admin data', 500)

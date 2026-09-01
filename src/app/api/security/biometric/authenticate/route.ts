@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { generateToken, successResponse, errorResponse } from '@/lib/auth'
+import { generateToken, successResponse, errorResponse, getRequestIp, getRequestDevice } from '@/lib/auth'
 import {
   consumeChallenge,
   verifyAssertion,
@@ -62,6 +62,8 @@ export async function POST(request: NextRequest) {
         userId: cred.user.id,
         action: 'login',
         details: 'Signed in with biometric (WebAuthn)',
+        ipAddress: getRequestIp(request),
+        deviceInfo: getRequestDevice(request),
       },
     })
 

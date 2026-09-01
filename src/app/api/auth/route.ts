@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { verifyPassword, generateToken, generateReferralCode, successResponse, errorResponse, needsRehash, rehashPassword } from '@/lib/auth'
+import { verifyPassword, generateToken, generateReferralCode, successResponse, errorResponse, needsRehash, rehashPassword, getRequestIp, getRequestDevice } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,14 +10,15 @@ export async function POST(request: NextRequest) {
     if (action === 'register') {
       const { email, password, name, dateOfBirth, country, referralCode: referralInput } = body
       const inputReferralCode = typeof referralInput === 'string' ? referralInput.trim() : ''
+      const trimmedEmail = typeof email === 'string' ? email.trim() : email
 
-      if (!email || !password) {
+      if (!trimmedEmail || !password) {
         return errorResponse('Email and password are required', 400)
       }
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(email)) {
+      if (!emailRegex.test(trimmedEmail)) {
         return errorResponse('Invalid email address format', 400)
       }
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Check if user already exists
-      const existingUser = await db.user.findUnique({ where: { email } })
+      const existingUser = await db.user.findUnique({ where: { email: trimmedEmail } })
       if (existingUser) {
         return errorResponse('Email already registered', 409)
       }
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       const hashedPassword = rehashPassword(password)
       const user = await db.user.create({
         data: {
-          email,
+          email: trimmedEmail,
           password: hashedPassword,
           name: name || null,
           dateOfBirth: dateOfBirth || null,
@@ -109,6 +110,17 @@ export async function POST(request: NextRequest) {
 
       const token = generateToken(user.id)
 
+      // Log registration activity
+      await db.activityLog.create({
+        data: {
+          userId: user.id,
+          action: 'register',
+          details: 'New account created',
+          ipAddress: getRequestIp(request),
+          deviceInfo: getRequestDevice(request),
+        },
+      })
+
       return successResponse({
         user: {
           id: user.id,
@@ -129,18 +141,19 @@ export async function POST(request: NextRequest) {
 
     if (action === 'login') {
       const { email, password } = body
+      const trimmedEmail = typeof email === 'string' ? email.trim() : email
 
-      if (!email || !password) {
+      if (!trimmedEmail || !password) {
         return errorResponse('Email and password are required', 400)
       }
 
       // Validate email format (prevents non-email strings from hitting DB lookup)
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(email)) {
+      if (!emailRegex.test(trimmedEmail)) {
         return errorResponse('Invalid email address format', 400)
       }
 
-      const user = await db.user.findUnique({ where: { email } })
+      const user = await db.user.findUnique({ where: { email: trimmedEmail } })
       if (!user) {
         return errorResponse('Invalid email or password', 401)
       }
@@ -190,6 +203,8 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           action: 'login',
           details: 'User logged in',
+          ipAddress: getRequestIp(request),
+          deviceInfo: getRequestDevice(request),
         },
       })
 

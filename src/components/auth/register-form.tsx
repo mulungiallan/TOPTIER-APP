@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Loader2, Eye, EyeOff, Play } from 'lucide-react'
+import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { PoweredBy } from '@/components/branding/powered-by'
 import {
   Select,
@@ -43,47 +42,6 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
     const ref = new URLSearchParams(window.location.search).get('ref')
     if (ref) setReferralCode(ref)
   }, [])
-
-  const handleDemoMode = () => {
-    const demoUser: import('@/lib/store').User = {
-      id: 'demo-user-001',
-      email: 'demo@toptier.app',
-      name: 'Demo Trader',
-      role: 'user',
-      subscriptionTier: 'pro',
-      referralCode: 'DEMO2024',
-      onboardingCompleted: true,
-      onboardingStep: 7,
-      darkMode: true,
-      tradingStyle: 'swing',
-      riskLevel: 'moderate',
-      preferredMarkets: 'forex,crypto',
-      preferredSessions: 'european,us',
-      phone: null,
-      profilePicture: null,
-      dateOfBirth: '1995-06-15',
-      country: 'Kenya',
-      language: 'en',
-      isEmailVerified: true,
-      twoFactorEnabled: false,
-      bio: 'Demo trader exploring AI-powered markets.',
-      maxConcurrentSessions: 2,
-      activeSessionCount: 1,
-      privacy: {
-        profileVisibility: 'community',
-        showOnlineStatus: true,
-        shareTradingHistory: true,
-        appearOnLeaderboards: true,
-        dataRetentionDays: 90,
-        personalizedAds: false,
-        thirdPartyDataSharing: false,
-        require2FAForSensitiveActions: true,
-        analyticsOptOut: false,
-        cookieConsent: true,
-      },
-    }
-    login(demoUser, 'demo-token-001')
-  }
 
   const is18Plus = (dob: string): boolean => {
     if (!dob) return false
@@ -146,7 +104,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
         body: JSON.stringify({
           action: 'register',
           name,
-          email,
+          email: email.trim(),
           password,
           dateOfBirth,
           country,
@@ -164,13 +122,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
       login(data.data.user, data.data.token)
       toast.success('Account created successfully! Welcome aboard!')
     } catch (error) {
-      toast.error('Could not connect to server. Try Demo Mode or set up the database first.', {
-        action: {
-          label: 'Demo Mode',
-          onClick: handleDemoMode,
-        },
-        duration: 6000,
-      })
+      toast.error('Could not connect to server. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -349,21 +301,6 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               ) : (
                 'Create Account'
               )}
-            </Button>
-            <div className="relative">
-              <Separator className="my-4" />
-              <div className="flex items-center justify-center">
-                <span className="bg-card px-3 text-xs text-muted-foreground absolute -top-2.5">or</span>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleDemoMode}
-            >
-              <Play className="size-4" />
-              Try Demo Mode
             </Button>
             <p className="text-sm text-muted-foreground text-center">
               Already have an account?{' '}

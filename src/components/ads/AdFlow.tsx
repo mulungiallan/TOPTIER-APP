@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { getAdSettings, applyAdSettings } from '@/lib/ads'
 import { adService, type AdStep, type AdCreative, type AdStepPhase } from '@/lib/services/ad-service'
+import { trackAd } from '@/lib/ads'
 import { X, Gift, Zap, Crown, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -100,6 +101,7 @@ export function AdFlow({ onComplete, onSkip, onUpgrade, phase = 'start' }: AdFlo
 
   const handleStepComplete = () => {
     if (!currentStep) return
+    trackAd('rewarded', 'complete', { step: currentStep.id })
     adService.completeAdStep(userId, currentStep.id)
     const next = adService.getNextAdStep(userId, phase)
     if (next) {

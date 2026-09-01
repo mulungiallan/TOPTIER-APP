@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
+import { trackAd } from '@/lib/ads'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -48,6 +49,7 @@ export function InterstitialAd({ onComplete, onSkip, forceShow = false }: Inters
     setAdData(creative)
     setCountdown(creative.duration ?? 5)
     setVisible(true)
+    if (!isPremium) trackAd('interstitial', 'view')
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -64,11 +66,13 @@ export function InterstitialAd({ onComplete, onSkip, forceShow = false }: Inters
 
   const handleSkip = () => {
     setVisible(false)
+    trackAd('interstitial', 'complete')
     onSkip?.()
     onComplete()
   }
 
   const handleAction = () => {
+    trackAd('interstitial', 'click')
     if (adData?.link?.startsWith('/')) {
       const pageName = adData.link.slice(1) as Page
       setPage(pageName)

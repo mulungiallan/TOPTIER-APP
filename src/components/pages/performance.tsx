@@ -790,7 +790,7 @@ export function PerformancePage() {
           <div className="flex flex-col md:flex-row items-center gap-8">
             {data.marketPerformance.length > 0 ? (
               <>
-                <ChartContainer config={pieChartConfig} className="h-[300px] w-[300px] mx-auto md:mx-0">
+                <ChartContainer config={pieChartConfig} className="h-[260px] w-full max-w-[300px] mx-auto md:mx-0">
                   <PieChart>
                     <Pie
                       data={data.marketPerformance}

@@ -93,6 +93,13 @@ dev-server.log
 tokens.txt
 google-services.json
 app id.txt
+api.txt
+
+# Work-state notes — not part of the app
+INCOMPLETE.txt
+report.txt
+testers.csv
+play-store-translations.csv
 
 # Bun lockfile — project uses npm
 bun.lock

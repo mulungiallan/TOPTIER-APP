@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
+import { trackAd } from '@/lib/ads'
 import { X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -31,6 +32,7 @@ export function PopupAd({ onComplete, delay = 2000 }: PopupAdProps) {
       if (adService.shouldShowPopup(userId)) {
         setAdData(adService.getPopupAd())
         setVisible(true)
+        trackAd('popup', 'view')
       }
     }, delay)
 
@@ -43,6 +45,7 @@ export function PopupAd({ onComplete, delay = 2000 }: PopupAdProps) {
   }
 
   const handleAction = () => {
+    trackAd('popup', 'click')
     if (adData?.link?.startsWith('/')) {
       const pageName = adData.link.slice(1) as Page
       setPage(pageName)

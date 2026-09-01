@@ -9,22 +9,10 @@ interface ApiOptions {
   signal?: AbortSignal
 }
 
-function isDemoMode(): boolean {
-  const token = useStore.getState().authToken
-  return !token || token.startsWith('demo-')
-}
-
 /**
- * Shared API utility. In demo mode (fake token), all requests return empty
- * data instead of hitting the server and getting 401 errors. This lets
- * demo users browse the UI without broken states.
+ * Shared API utility. Requests are sent to the server with the auth token.
  */
 export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = {}): Promise<T> {
-  // Demo mode: return empty structured data so UIs render gracefully
-  if (isDemoMode()) {
-    return { success: true, data: { signals: [], alerts: [], items: [], notifications: [] } } as T
-  }
-
   const store = useStore.getState()
   const token = store.authToken
   

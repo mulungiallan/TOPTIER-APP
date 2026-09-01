@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
+import { trackAd } from '@/lib/ads'
 import { TrendingUp, ExternalLink, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -33,12 +34,14 @@ export function NativeAd({ className = '', forceShow = false }: NativeAdProps) {
     }
     if (forceShow || adService.shouldShowNative(userId)) {
       setAdData(adService.getNativeAd())
+      trackAd('native', 'view')
     }
   }, [isPremium, forceShow, userId])
 
   if (!visible || isPremium || !adData) return null
 
   const handleClick = () => {
+    trackAd('native', 'click')
     if (adData.link?.startsWith('/')) {
       const pageName = adData.link.slice(1) as Page
       setPage(pageName)

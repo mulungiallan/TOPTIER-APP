@@ -54,6 +54,10 @@ export async function GET(request: NextRequest) {
       copySettlementsDue,
       copySettlementsPaid,
       platformCopyFees,
+      adEventsCount,
+      adEventsToday,
+      rewardedCompletions,
+      loginEventsToday,
     ] = await Promise.all([
       db.user.count({ where: { deletedAt: null } }),
       db.user.count({ where: { subscriptionTier: { in: ['premium', 'lifetime'] }, deletedAt: null } }),
@@ -98,6 +102,10 @@ export async function GET(request: NextRequest) {
       db.copySettlement.aggregate({ where: { status: 'due' }, _sum: { providerAmount: true } }),
       db.copySettlement.aggregate({ where: { status: 'paid' }, _sum: { providerAmount: true } }),
       db.platformEarning.aggregate({ where: { source: 'copy_fee' }, _sum: { amount: true } }),
+      db.usageEvent.count({ where: { feature: 'ad' } }),
+      db.usageEvent.count({ where: { feature: 'ad', createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } } }),
+      db.usageEvent.count({ where: { feature: 'ad', action: { startsWith: 'complete_rewarded' } } }),
+      db.activityLog.count({ where: { action: 'login', createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } } }),
     ])
 
     // Revenue breakdown by source (premium, copy, bot, referral, ads)
@@ -145,7 +153,7 @@ export async function GET(request: NextRequest) {
         db.activityLog.findMany({
           orderBy: { createdAt: 'desc' },
           take: 50,
-          select: { id: true, action: true, details: true, createdAt: true, userId: true },
+          select: { id: true, action: true, details: true, ipAddress: true, deviceInfo: true, createdAt: true, userId: true },
         }),
         db.botConnection.findMany({
           where: { isActive: true },
@@ -237,6 +245,12 @@ export async function GET(request: NextRequest) {
           urlConfigured: !!getReferralUrl(),
         },
         content: { news: newsCount, coupons: couponsCount },
+        ads: {
+          totalEvents: adEventsCount,
+          today: adEventsToday,
+          rewardedCompletions,
+        },
+        loginsToday: loginEventsToday,
         engagement: {
           pushSubscriptions: pushSubCount,
           copyTrades: copyTradesCount,
