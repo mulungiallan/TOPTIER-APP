@@ -43,12 +43,17 @@ Copy `.env.example` to `.env` and set **at minimum**:
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | `file:../db/custom.db` |
+| `DATABASE_URL` | `postgresql://USER:PASSWORD@HOST:5432/railway?schema=public` |
 | `NEXT_PUBLIC_APP_URL` | `https://yourdomain.com` |
 | `NEXTAUTH_SECRET` | a long random string (do not change later) |
 | `BOT_SERVICE_URL` | `http://127.0.0.1:8765` (same box) |
 | `BOT_SERVICE_KEY` | a long random shared secret |
 | `BOT_CREDENTIALS_SECRET` | a long random secret (do not change later) |
+
+The app uses **Postgres** (Prisma provider is `postgresql`). Use a managed
+Postgres instance (Railway, Supabase, Neon). On Railway, attach the Postgres
+plugin to the service — its `DATABASE_URL` is injected automatically. The
+`@` in a password must be URL-encoded as `%40` in the connection string.
 
 `BOT_SERVICE_KEY` must be **identical** in the app `.env` and in the bot
 service's environment (step 5). Changing `BOT_CREDENTIALS_SECRET` makes stored
@@ -108,7 +113,7 @@ nano deploy/Caddyfile     # replace yourdomain.example with your real domain
 docker compose up -d --build
 ```
 - DNS A record → VPS IP. Caddy issues the HTTPS certificate automatically.
-- SQLite persists in `./db`.
+- Postgres runs as the `db` service in `docker-compose.yml`; its data persists in the `db_data` volume. `DATABASE_URL` is wired to it automatically.
 
 The bot service still runs on **Windows** (`Path A`, step 5), with one change:
 - `BOT_SERVICE_URL` in the app's `.env` must point to where the bot service is
