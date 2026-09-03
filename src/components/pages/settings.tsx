@@ -42,6 +42,7 @@ import {
 } from 'lucide-react'
 import { InternationalizationPanel } from '@/components/settings/internationalization-panel'
 import { AdvancedSecurityPanel } from '@/components/settings/advanced-security-panel'
+import { AppLockPanel } from '@/components/settings/app-lock-panel'
 import { useStore, type UserPrivacySettings } from '@/lib/store'
 import { api } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
@@ -1775,8 +1776,9 @@ export function SettingsPage() {
           <InternationalizationPanel />
         </TabsContent>
 
-        {/* Advanced Security Tab (Biometric + Push) */}
+        {/* Advanced Security Tab (App Lock + Biometric + Push) */}
         <TabsContent value="advanced-security" className="space-y-6">
+          <AppLockPanel />
           <AdvancedSecurityPanel />
         </TabsContent>
       </Tabs>
