@@ -495,7 +495,7 @@ function playAlertSound(uri?: string | null) {
   } catch (e) {}
 }
 
-function fireAlertNotification(prefs: AlertNotifValue) {
+function fireAlertNotification(prefs: AlertNotifValue, asset?: string, targetPrice?: number) {
   if (typeof navigator === 'undefined') return
   if (prefs.soundEnabled) playAlertSound(prefs.soundUri)
   if (prefs.vibrateEnabled && typeof navigator.vibrate === 'function') {
@@ -503,12 +503,23 @@ function fireAlertNotification(prefs: AlertNotifValue) {
   }
   if (prefs.notifyType === 'system' || prefs.notifyType === 'both') {
     try {
-      if (typeof window !== 'undefined' && 'Notification' in window &&
-          Notification.permission === 'granted') {
-        new Notification('TOPTIER Alert', {
-          body: 'Your alert has been triggered.',
-          icon: '/icons/toptier-icon-192.png',
-        })
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          Notification.requestPermission()
+        }
+        if (Notification.permission === 'granted') {
+          const title = 'TOPTIER Alert Triggered'
+          const body = asset
+            ? `${asset}${targetPrice != null ? ` reached ${targetPrice}` : ''} — your alert condition has been met.`
+            : 'Your alert condition has been met.'
+          new Notification(title, {
+            body,
+            icon: '/icons/toptier-icon-192.png',
+            badge: '/icons/toptier-icon-192.png',
+            tag: `alert-${asset || 'generic'}`,
+            requireInteraction: true,
+          } as NotificationOptions)
+        }
       }
     } catch (e) {}
   }
