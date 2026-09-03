@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
     // ─── Per-session breakdown ──────────────────────────────────────────────
     const sessionBreakdown: Record<string, { total: number; wins: number; losses: number; winRate: number; avgRR: string; peakHours: string }> = {}
     for (const signal of resolvedSignals) {
-      const sess = (signal as any).session || 'Unknown'
+      const sess = signal.tradingSession || 'Unknown'
       if (!sessionBreakdown[sess]) {
         sessionBreakdown[sess] = { total: 0, wins: 0, losses: 0, winRate: 0, avgRR: '1:0', peakHours: '' }
       }
