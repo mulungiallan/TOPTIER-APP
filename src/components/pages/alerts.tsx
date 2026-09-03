@@ -500,6 +500,12 @@ function EditPriceAlertDialog({
   const [alertType, setAlertType] = useState<PriceAlertType>(alert.type)
   const [frequency, setFrequency] = useState<AlertFrequency>(alert.frequency)
   const [saving, setSaving] = useState(false)
+  const [notif, setNotif] = useState<AlertNotifValue>({
+    soundEnabled: alert.soundEnabled ?? true,
+    soundUri: alert.soundUri ?? null,
+    vibrateEnabled: alert.vibrateEnabled ?? true,
+    notifyType: alert.notifyType || 'system',
+  })
 
   const handleSave = async () => {
     try {
@@ -510,6 +516,10 @@ function EditPriceAlertDialog({
         alertType: mapUiAlertTypeToApi(alertType),
         targetPrice: parseFloat(targetPrice),
         isRecurring: frequency === 'recurring',
+        soundEnabled: notif.soundEnabled,
+        soundUri: notif.soundUri || null,
+        vibrateEnabled: notif.vibrateEnabled,
+        notifyType: notif.notifyType,
       })
       toast.success('Alert updated')
       onSaved()
