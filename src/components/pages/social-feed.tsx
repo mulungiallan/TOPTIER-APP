@@ -85,7 +85,7 @@ export function SocialFeedPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-4xl mx-auto">
+    <div className="space-y-6 p-4 md:p-6 max-w-3xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -100,18 +100,19 @@ export function SocialFeedPage() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex gap-3">
-            <Avatar className="h-10 w-10">
+            <Avatar className="h-10 w-10 shrink-0">
               <AvatarFallback>{user?.name?.[0] || 'U'}</AvatarFallback>
             </Avatar>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <textarea
                 value={newPost}
                 onChange={(e) => setNewPost(e.target.value)}
                 placeholder="Share a trading insight, ask a question, or post an analysis..."
-                className="w-full min-h-[80px] p-3 rounded-lg border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                className="w-full min-h-[80px] p-3 rounded-lg border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/30 text-sm"
+                rows={3}
               />
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex gap-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+                <div className="flex flex-wrap gap-1">
                   {(['general', 'signal', 'analysis', 'question'] as const).map((t) => (
                     <button
                       key={t}
