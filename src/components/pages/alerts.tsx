@@ -71,6 +71,10 @@ interface PriceAlert {
   frequency: AlertFrequency
   triggeredAt?: string
   createdAt: string
+  soundEnabled: boolean
+  soundUri?: string | null
+  vibrateEnabled: boolean
+  notifyType: string
 }
 
 type CustomAlertType = 'RSI' | 'MACD' | 'MA Cross' | 'Volume Spike' | 'S/R Break'
@@ -83,6 +87,10 @@ interface CustomAlert {
   status: AlertStatus
   frequency: AlertFrequency
   createdAt: string
+  soundEnabled: boolean
+  soundUri?: string | null
+  vibrateEnabled: boolean
+  notifyType: string
 }
 
 // ─── Helper: Map API data to UI types ──────────────────────────────────────────
