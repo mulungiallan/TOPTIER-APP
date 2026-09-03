@@ -9,8 +9,8 @@ interface BrandLogoProps {
 }
 
 /**
- * TOPTIER brand mark: a gradient tile with four ascending
- * candlesticks. The final candle is accented in cyan.
+ * TOPTIER brand mark: a bold "T" lettermark on the brand gradient tile,
+ * with a subtle ascending-candle pulse window to hint at trading.
  */
 export function BrandLogo({ className, rounded = 'rounded-lg' }: BrandLogoProps) {
   const gradientId = React.useId()
@@ -38,16 +38,9 @@ export function BrandLogo({ className, rounded = 'rounded-lg' }: BrandLogoProps)
           </linearGradient>
         </defs>
         <rect width="48" height="48" fill={`url(#${gradientId})`} />
-        <g stroke="#ffffff" strokeWidth="2" strokeLinecap="round">
-          <line x1="12" y1="24" x2="12" y2="37" />
-          <line x1="20" y1="20" x2="20" y2="34" />
-          <line x1="28" y1="16" x2="28" y2="31" />
-          <line x1="36" y1="12" x2="36" y2="28" />
-        </g>
-        <rect x="9.5" y="27" width="5" height="9" rx="1.2" fill="#ffffff" />
-        <rect x="17.5" y="23" width="5" height="10" rx="1.2" fill="#ffffff" />
-        <rect x="25.5" y="19" width="5" height="11" rx="1.2" fill="#ffffff" />
-        <rect x="33.5" y="15" width="5" height="12" rx="1.2" fill="#67e8f9" />
+        {/* Bold "T" */}
+        <rect x="10" y="10" width="28" height="5" rx="1.2" fill="#ffffff" />
+        <rect x="21.5" y="10" width="5" height="29" rx="1.2" fill="#67e8f9" />
       </svg>
     </span>
   )
