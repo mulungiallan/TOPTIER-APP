@@ -1,5 +1,5 @@
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { ExpirationPlugin, NetworkFirst, CacheFirst, Serwist } from "serwist";
+import { ExpirationPlugin, NetworkFirst, CacheFirst, NetworkOnly, Serwist } from "serwist";
 import { defaultCache } from "@serwist/next/worker";
 
 declare global {
@@ -20,6 +20,15 @@ const serwist = new Serwist({
     navigateFallback: "/",
   },
   runtimeCaching: [
+    // HTML document navigations MUST always hit the network. The app is loaded
+    // from the live backend, so serving a cached/navigateFallback app shell
+    // makes installed devices show stale UI after a redeploy ("no changes").
+    // Keeping this as the FIRST rule (NetworkOnly) guarantees fresh builds.
+    {
+      matcher: ({ request, url }) =>
+        request.mode === "navigate" && url.href.startsWith(location.origin),
+      handler: new NetworkOnly(),
+    },
     ...defaultCache,
     // PUBLIC market-data endpoints only. Auth-protected endpoints are NEVER
     // cached: their responses depend on the Authorization header, which is not
