@@ -575,6 +575,8 @@ function EditPriceAlertDialog({
               }
             />
           </div>
+
+          <AlertNotificationOptions value={notif} onChange={setNotif} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
