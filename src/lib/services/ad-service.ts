@@ -99,6 +99,7 @@ export class AdDistributionService {
   private adProgress: Map<string, UserProgress> = new Map()
   private adCounters: Map<string, UserCounters> = new Map()
   private rotationTick = 0
+  private reducedUsers: Set<string> = new Set()
   private MAX_ENTRIES = 10_000
 
   private evictStale(): void {
