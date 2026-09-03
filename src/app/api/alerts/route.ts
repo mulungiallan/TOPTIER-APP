@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     const { alertCategory } = body // 'price' or 'custom'
 
     if (alertCategory === 'price') {
-      const { asset, alertType, targetPrice, isRecurring } = body
+      const { asset, alertType, targetPrice, isRecurring, soundEnabled, soundUri, vibrateEnabled, notifyType } = body
       if (!asset || !alertType || !targetPrice) {
         return errorResponse('asset, alertType, and targetPrice are required', 400)
       }
@@ -58,6 +58,10 @@ export async function POST(request: NextRequest) {
           alertType, // above, below, crosses
           targetPrice: parseFloat(targetPrice),
           isRecurring: isRecurring || false,
+          soundEnabled: soundEnabled !== undefined ? !!soundEnabled : true,
+          soundUri: soundUri ?? null,
+          vibrateEnabled: vibrateEnabled !== undefined ? !!vibrateEnabled : true,
+          notifyType: notifyType || 'system',
         },
       })
 
@@ -65,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (alertCategory === 'custom') {
-      const { asset, alertType, condition } = body
+      const { asset, alertType, condition, soundEnabled, soundUri, vibrateEnabled, notifyType } = body
       if (!asset || !alertType || !condition) {
         return errorResponse('asset, alertType, and condition are required', 400)
       }
@@ -76,6 +80,10 @@ export async function POST(request: NextRequest) {
           asset,
           alertType, // rsi, macd, ma_cross, volume_spike, support_resistance
           condition: typeof condition === 'string' ? condition : JSON.stringify(condition),
+          soundEnabled: soundEnabled !== undefined ? !!soundEnabled : true,
+          soundUri: soundUri ?? null,
+          vibrateEnabled: vibrateEnabled !== undefined ? !!vibrateEnabled : true,
+          notifyType: notifyType || 'system',
         },
       })
 
