@@ -833,15 +833,15 @@ function UserDetailDialog({ user, onChanged }: { user: ReturnType<typeof toRow>;
 //   Native       ~ $2.00 – $5.00   (default $3.50)
 // These are estimates only; actual revenue depends on geo, fill rate, and demand.
 
-const ADMobDefaultEcpm: Record<string, number> = {
+const AD_FORMATS = ['Banner', 'Interstitial', 'Rewarded', 'Native'] as const
+type AdFormat = (typeof AD_FORMATS)[number]
+
+const ADMobDefaultEcpm: Record<AdFormat, number> = {
   Banner: 1.0,
   Interstitial: 6.0,
   Rewarded: 12.0,
   Native: 3.5,
 }
-
-const AD_FORMATS = ['Banner', 'Interstitial', 'Rewarded', 'Native'] as const
-type AdFormat = (typeof AD_FORMATS)[number]
 
 function AdRevenueCalculator() {
   const [dau, setDau] = useState(10000)
