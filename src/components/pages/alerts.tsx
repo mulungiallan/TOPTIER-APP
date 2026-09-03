@@ -209,10 +209,15 @@ function CustomAlertTypeBadge({ type }: { type: CustomAlertType }) {
 
 const SOUND_OPTIONS = [
   { value: '', label: 'Default (system sound)' },
-  { value: 'bell', label: 'Bell' },
+  { value: 'bell', label: 'Classic Bell' },
   { value: 'ding', label: 'Ding' },
   { value: 'chime', label: 'Chime' },
   { value: 'whistle', label: 'Whistle' },
+  { value: 'alarm', label: 'Alarm' },
+  { value: 'siren', label: 'Siren' },
+  { value: 'notification', label: 'Notification' },
+  { value: 'urgent', label: 'Urgent Alert' },
+  { value: 'gentle', label: 'Gentle Tone' },
 ]
 
 const NOTIFY_TYPE_OPTIONS = [
