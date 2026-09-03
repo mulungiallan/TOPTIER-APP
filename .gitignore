@@ -64,6 +64,7 @@ server.log
 # Android signing material — never commit
 /android/keystore.properties
 /android/keystore/
+/android/service-account.json
 
 # Android build output
 /android/.gradle/
