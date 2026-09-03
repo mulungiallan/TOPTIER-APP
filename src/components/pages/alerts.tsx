@@ -893,6 +893,7 @@ function PriceAlertRow({
               <AlertTypeBadge type={alert.type} />
               <StatusBadge status={alert.status} />
               <FrequencyBadge frequency={alert.frequency} />
+              <NotifyBadges value={alert} />
             </div>
             <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
               <span>Target: <span className="font-medium text-foreground">{alert.targetPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span></span>
@@ -985,6 +986,7 @@ function CustomAlertRow({
             <span className="font-semibold text-sm">{alert.asset}</span>
             <CustomAlertTypeBadge type={alert.type} />
             <StatusBadge status={alert.status} />
+            <NotifyBadges value={alert} />
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             Condition: <span className="font-medium text-foreground">{alert.condition}</span>
