@@ -1,0 +1,147 @@
+
+> toptier@0.2.0 build
+> next build --webpack && node scripts/copy-standalone.js
+
+▲ Next.js 16.3.1 (webpack)
+- Environments: .env
+✓ Running next.config.ts took 3.3min
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+
+  To migrate automatically, run:
+  npx @next/codemod@canary middleware-to-proxy .
+
+  Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ (serwist) Bundling the service worker script with the URL '/sw.js' and the scope '/'...
+✓ Compiled successfully in 8.8min
+  Running TypeScript ...
+  Finished TypeScript in 4.0min ...
+  Collecting page data using 3 workers ...
+[chart-analyzer] HF_TOKEN not set. Analyzer will rely on Gemini Flash / Claude (if configured) or the honest heuristic fallback.
+  Generating static pages using 3 workers (0/99) ...
+[chart-analyzer] HF_TOKEN not set. Analyzer will rely on Gemini Flash / Claude (if configured) or the honest heuristic fallback.
+  Generating static pages using 3 workers (24/99) 
+  Generating static pages using 3 workers (49/99) 
+  Generating static pages using 3 workers (74/99) 
+✓ Generating static pages using 3 workers (99/99) in 6.0s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /account-deletion
+├ ƒ /api
+├ ƒ /api/account/delete
+├ ƒ /api/account/deletion-request
+├ ƒ /api/account/export
+├ ƒ /api/admin
+├ ƒ /api/admin-actions
+├ ƒ /api/admin/data
+├ ƒ /api/admin/overview
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/users/[id]
+├ ƒ /api/ads/config
+├ ƒ /api/ads/track
+├ ƒ /api/ai/patterns
+├ ƒ /api/ai/predict
+├ ƒ /api/alerts
+├ ƒ /api/auth
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/refresh
+├ ƒ /api/auth/reset-password
+├ ƒ /api/billing/dashboard
+├ ƒ /api/billing/play/verify
+├ ƒ /api/bot
+├ ƒ /api/bot/connections
+├ ƒ /api/bot/connections/[id]
+├ ƒ /api/bot/instances
+├ ƒ /api/bot/instances/[id]
+├ ƒ /api/bot/instances/[id]/start
+├ ƒ /api/bot/instances/[id]/stop
+├ ƒ /api/bot/profit-share
+├ ƒ /api/bot/trades
+├ ƒ /api/bot/webhook
+├ ƒ /api/calendar
+├ ƒ /api/chart/analyze
+├ ƒ /api/community
+├ ƒ /api/competitions
+├ ƒ /api/competitions/join
+├ ƒ /api/copy-trading
+├ ƒ /api/coupons/validate
+├ ƒ /api/currency/convert
+├ ƒ /api/education
+├ ƒ /api/groups
+├ ƒ /api/groups/join
+├ ƒ /api/health
+├ ƒ /api/i18n/locale
+├ ƒ /api/interest
+├ ƒ /api/leaderboards
+├ ƒ /api/market
+├ ƒ /api/market/live
+├ ƒ /api/messages
+├ ƒ /api/news
+├ ƒ /api/notifications
+├ ƒ /api/notifications/email
+├ ƒ /api/notifications/subscribe
+├ ƒ /api/packages
+├ ƒ /api/packages/checkout
+├ ƒ /api/payments/flutterwave/callback
+├ ƒ /api/payments/init
+├ ƒ /api/payments/mpesa/callback
+├ ƒ /api/payments/paypal/callback
+├ ƒ /api/payments/paystack/callback
+├ ƒ /api/payments/providers
+├ ƒ /api/payments/stripe/webhook
+├ ƒ /api/payments/verify
+├ ƒ /api/payouts
+├ ƒ /api/payouts/account
+├ ƒ /api/payouts/action
+├ ƒ /api/payouts/withdraw
+├ ƒ /api/performance
+├ ƒ /api/platform/stats
+├ ƒ /api/pricing/localize
+├ ƒ /api/profile
+├ ƒ /api/referral/status
+├ ƒ /api/reviews
+├ ƒ /api/screenshots
+├ ƒ /api/security/biometric
+├ ƒ /api/security/biometric/authenticate
+├ ƒ /api/security/biometric/authenticate/begin
+├ ƒ /api/security/biometric/register/begin
+├ ƒ /api/settings
+├ ƒ /api/signals
+├ ƒ /api/social/feed
+├ ƒ /api/social/post
+├ ƒ /api/social/post/comment
+├ ƒ /api/social/post/like
+├ ƒ /api/socket/health
+├ ƒ /api/socket/io
+├ ƒ /api/strategies
+├ ƒ /api/strategies/evaluate
+├ ƒ /api/subscriptions
+├ ƒ /api/support
+├ ƒ /api/support/chat
+├ ƒ /api/ticker
+├ ƒ /api/tracking/event
+├ ƒ /api/tracking/summary
+├ ƒ /api/tracking/timeseries
+├ ƒ /api/trading/backtest
+├ ƒ /api/trading/live
+├ ƒ /api/trading/paper
+├ ƒ /api/trading/paper/close
+├ ƒ /api/watchlist
+├ ƒ /api/webhooks/stripe
+├ ƒ /privacy
+├ ƒ /reset-password
+├ ƒ /terms
+└ ƒ /ugc
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+[copy-standalone] Copying static assets into standalone build...
+[copy-standalone] Done.
