@@ -580,7 +580,7 @@ export function ScreenshotAnalyzer() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const freeAnalysesUsed = analysisCount
-  const freeLimitReached = !isPremium && freeAnalysesUsed >= FREE_ANALYSIS_LIMIT
+  const freeLimitReached = false // analyzer is free & unlimited (ad-supported)
 
   // Fetch analysis history on mount
   const fetchHistory = useCallback(async () => {
