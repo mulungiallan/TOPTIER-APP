@@ -29,7 +29,6 @@ interface AdFlowProps {
 export function AdFlow({ onComplete, onSkip, onUpgrade, phase = 'start' }: AdFlowProps) {
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
-  const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
   const userId = user?.id || 'guest'
 
   const [currentStep, setCurrentStep] = useState<AdStep | null>(null)
