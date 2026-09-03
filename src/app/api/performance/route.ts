@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
     // ─── Per-timeframe breakdown ────────────────────────────────────────────
     const timeframeBreakdown: Record<string, { total: number; wins: number; losses: number; winRate: number; avgRR: string }> = {}
     for (const signal of resolvedSignals) {
-      const tf = (signal as any).timeframe || 'Unknown'
+      const tf = signal.timeframe || 'Unknown'
       if (!timeframeBreakdown[tf]) {
         timeframeBreakdown[tf] = { total: 0, wins: 0, losses: 0, winRate: 0, avgRR: '1:0' }
       }
