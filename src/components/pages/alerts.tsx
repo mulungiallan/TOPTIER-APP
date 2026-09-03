@@ -312,19 +312,42 @@ function NotifyBadges({ value }: { value: AlertNotifValue }) {
   )
 }
 
-const ALERT_SOUND_URIS: Record<string, string> = {
-  bell: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
-  ding: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
-  chime: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
-  whistle: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
-}
-
 function playAlertSound(uri?: string | null) {
-  if (typeof window === 'undefined' || typeof Audio === 'undefined') return
-  const defaultUri = ALERT_SOUND_URIS.bell
-  const audio = new Audio(uri && ALERT_SOUND_URIS[uri] ? ALERT_SOUND_URIS[uri] : defaultUri)
-  audio.volume = 0.7
-  audio.play().catch(() => {})
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const now = ctx.currentTime
+    const selected = uri && ['bell', 'ding', 'chime', 'whistle'].includes(uri) ? uri : 'bell'
+
+    const tone = (freq: number, start: number, dur: number, type: OscillatorType = 'sine', gain = 0.25) => {
+      const osc = ctx.createOscillator()
+      const g = ctx.createGain()
+      osc.type = type
+      osc.frequency.value = freq
+      g.gain.setValueAtTime(0.0001, now + start)
+      g.gain.exponentialRampToValueAtTime(gain, now + start + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur)
+      osc.connect(g)
+      g.connect(ctx.destination)
+      osc.start(now + start)
+      osc.stop(now + start + dur + 0.05)
+    }
+
+    if (selected === 'ding') {
+      tone(1318, 0, 0.6, 'sine') // E6
+    } else if (selected === 'chime') {
+      tone(1046, 0, 0.5, 'sine')
+      tone(1568, 0.12, 0.7, 'sine')
+    } else if (selected === 'whistle') {
+      tone(2093, 0, 0.25, 'sine', 0.2)
+      tone(2093, 0.25, 0.25, 'sine', 0.2)
+      tone(2093, 0.5, 0.3, 'sine', 0.2)
+    } else {
+      tone(880, 0, 0.4, 'sine') // A5
+      tone(1318, 0.18, 0.5, 'sine') // E6
+    }
+  } catch (e) {}
 }
 
 function fireAlertNotification(prefs: AlertNotifValue) {
