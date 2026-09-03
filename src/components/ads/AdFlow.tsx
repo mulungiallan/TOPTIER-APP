@@ -125,7 +125,6 @@ export function AdFlow({ onComplete, onSkip, onUpgrade, phase = 'start' }: AdFlo
     }
   }
 
-  if (isPremium) return null
   if (!currentStep && !done) return null
 
   if (done) {
