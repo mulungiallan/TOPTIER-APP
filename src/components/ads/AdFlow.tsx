@@ -48,15 +48,11 @@ export function AdFlow({ onComplete, onSkip, onUpgrade, phase = 'start' }: AdFlo
   const refresh = useCallback(() => {
     const step = adService.getNextAdStep(userId, phase)
     setCurrentStep(step)
-    setProgress(adService.getPhaseSteps(phase))
+    setProgress(adService.getPhaseSteps(phase, userId))
     if (step) setCreative(adService.getRewardedAd())
   }, [userId, phase])
 
   useEffect(() => {
-    if (isPremium) {
-      onComplete()
-      return
-    }
     // Progress is reset once per analysis, only when the first phase starts.
     if (phase === 'start') adService.resetForNewAnalysis(userId)
     let cancelled = false
@@ -76,7 +72,7 @@ export function AdFlow({ onComplete, onSkip, onUpgrade, phase = 'start' }: AdFlo
     return () => {
       cancelled = true
     }
-  }, [isPremium, userId, phase, refresh, onComplete])
+  }, [userId, phase, refresh, onComplete])
 
   // Simulate ad playback
   useEffect(() => {
