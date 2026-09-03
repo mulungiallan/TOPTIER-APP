@@ -361,7 +361,7 @@ export default function EducationPage() {
   const activeQuiz = quizzes.find((q) => q.id === activeQuizId)
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="space-y-5 p-3 md:p-4 max-w-5xl mx-auto">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">

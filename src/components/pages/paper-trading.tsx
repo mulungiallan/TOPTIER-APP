@@ -118,7 +118,7 @@ export function PaperTradingPage() {
   const filtered = filter === 'all' ? trades : trades.filter((t) => t.status === filter)
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="space-y-5 p-3 md:p-4 max-w-6xl mx-auto">
       <Tabs defaultValue="paper" className="w-full">
         <TabsList className="mb-4 flex flex-wrap h-auto">
           <TabsTrigger value="paper" className="gap-1.5 text-xs">

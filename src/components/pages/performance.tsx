@@ -455,7 +455,7 @@ export function PerformancePage() {
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+      <div className="p-3 md:p-4 space-y-5 max-w-[1400px] mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-2">
             <Skeleton className="h-8 w-56" />
@@ -518,7 +518,7 @@ export function PerformancePage() {
   const avgRR = data.avgRiskReward
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+    <div className="p-3 md:p-4 space-y-5 max-w-[1400px] mx-auto">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

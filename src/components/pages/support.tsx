@@ -700,7 +700,7 @@ export default function SupportPage() {
   })).filter((cat) => cat.articles.length > 0)
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="space-y-5 p-3 md:p-4 max-w-5xl mx-auto">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
           <TabsTrigger value="help" className="gap-2">

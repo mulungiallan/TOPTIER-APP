@@ -85,7 +85,7 @@ export function SocialFeedPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-3xl mx-auto">
+    <div className="space-y-5 p-3 md:p-4 max-w-3xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">

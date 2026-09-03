@@ -1469,7 +1469,7 @@ export function AlertsPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="p-3 sm:p-4 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="h-8 w-32 animate-pulse rounded bg-muted" />
@@ -1485,7 +1485,7 @@ export function AlertsPage() {
   // Error state
   if (error) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="p-3 sm:p-4 space-y-5">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Bell className="size-6 text-primary" />
@@ -1508,7 +1508,7 @@ export function AlertsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-4 space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

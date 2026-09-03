@@ -278,7 +278,7 @@ function LandingPage() {
         </div>
 
         {/* ─── Hero ───────────────────────────────────────────────────── */}
-        <section className="relative mx-auto max-w-7xl px-6 pt-14 pb-16 lg:pt-20">
+        <section className="relative mx-auto max-w-7xl px-6 pt-6 pb-10 lg:pt-10">
           <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
             {/* Left — copy */}
             <motion.div

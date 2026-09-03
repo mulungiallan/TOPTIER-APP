@@ -898,7 +898,7 @@ export function SignalsPage() {
   const marketTabs: MarketType[] = ['All', 'Forex', 'Crypto', 'Stocks', 'Indices', 'Commodities']
 
   return (
-    <div className="p-4 lg:p-6 space-y-4">
+    <div className="p-3 lg:p-4 space-y-4">
       {/* ── Signal Stats Bar ─────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-1.5">

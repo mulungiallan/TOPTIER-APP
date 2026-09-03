@@ -207,7 +207,7 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className={cn('flex items-center border-b border-border px-4 py-4', collapsed && 'justify-center px-2')}>
+      <div className={cn('flex items-center border-b border-border px-4 py-3', collapsed && 'justify-center px-2')}>
         <div className="flex items-center gap-3">
           <BrandLogo className="size-9" />
           {!collapsed && (
@@ -408,12 +408,14 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const currentPage = useStore((s) => s.currentPage)
+  const navHistory = useStore((s) => s.navHistory)
   const sidebarOpen = useStore((s) => s.sidebarOpen)
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useStore((s) => s.toggleSidebarCollapsed)
   const notificationCount = useStore((s) => s.notificationCount)
   const setPage = useStore((s) => s.setPage)
+  const goBack = useStore((s) => s.goBack)
   const locale = useStore((s) => s.locale)
   const isMobile = useIsMobile()
 
@@ -423,6 +425,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     document.documentElement.lang = locales[locale]?.code || 'en'
     document.documentElement.dir = isRTL(locale) ? 'rtl' : 'ltr'
   }, [locale])
+
+  // Native (Android) hardware back button → in-app navigation back when there is
+  // history, otherwise background the app (standard Android behaviour).
+  React.useEffect(() => {
+    let removeListener: (() => void) | undefined
+    const init = async () => {
+      try {
+        const { App } = await import('@capacitor/app')
+        const handler = App.addListener('backButton', () => {
+          if (navHistory.length > 0) {
+            goBack()
+          } else {
+            App.minimizeApp()
+          }
+        })
+        const plugin = await handler
+        removeListener = () => plugin?.remove()
+      } catch {
+        // Not running inside Capacitor — rely on the on-screen back button.
+      }
+    }
+    init()
+    return () => removeListener?.()
+  }, [navHistory.length, goBack])
 
   const collapsed = !isMobile && sidebarCollapsed
 
@@ -455,7 +481,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-4 lg:px-6">
+        <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-card px-4 lg:px-6">
           {/* Mobile menu toggle */}
           {isMobile && (
             <Button
@@ -482,6 +508,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Page Title */}
           <div className="flex items-center gap-2">
+            {navHistory.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="flex size-8"
+                onClick={goBack}
+                aria-label="Go back"
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+            )}
             <h2 className="text-lg font-semibold">{t(`page.${currentPage}`, locale)}</h2>
           </div>
 

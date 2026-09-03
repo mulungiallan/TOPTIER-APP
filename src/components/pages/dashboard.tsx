@@ -1058,7 +1058,7 @@ function CommunityStats() {
 
 function DashboardLoadingSkeleton() {
   return (
-    <div className="p-4 lg:p-6 space-y-4 lg:space-y-6">
+    <div className="p-3 lg:p-4 space-y-4 lg:space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Card key={i}>
@@ -1234,7 +1234,7 @@ export function DashboardPage() {
   const pnlTotal = performanceData.reduce((sum, d) => sum + d.pnl, 0)
 
   return (
-    <div className="p-4 lg:p-6 space-y-4 lg:space-y-6">
+    <div className="p-3 lg:p-4 space-y-4 lg:space-y-5">
       {/* Subscription Banner */}
       <SubscriptionBanner />
 

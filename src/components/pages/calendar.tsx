@@ -507,7 +507,7 @@ export function CalendarPage() {
   // Loading state
   if (loading && events.length === 0) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="p-3 sm:p-4 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="h-8 w-48 animate-pulse rounded bg-muted" />
@@ -522,7 +522,7 @@ export function CalendarPage() {
   // Error state
   if (error && events.length === 0) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="p-3 sm:p-4 space-y-5">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <CalendarIcon className="size-6 text-primary" />
@@ -545,7 +545,7 @@ export function CalendarPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-4 space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

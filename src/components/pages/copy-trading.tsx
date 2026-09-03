@@ -740,7 +740,7 @@ export function CopyTradingPage() {
 
   if (refLocked) {
     return (
-      <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
+      <div className="space-y-5 p-3 md:p-4 max-w-5xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
             <Copy className="h-7 w-7 text-violet-500" />
@@ -753,7 +753,7 @@ export function CopyTradingPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="space-y-5 p-3 md:p-4 max-w-5xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
           <Copy className="h-7 w-7 text-violet-500" />

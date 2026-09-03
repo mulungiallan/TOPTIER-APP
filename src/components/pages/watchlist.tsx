@@ -555,7 +555,7 @@ export function WatchlistPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
+      <div className="p-3 sm:p-4 space-y-5 max-w-5xl mx-auto">
         <div className="flex items-center justify-between">
           <div>
             <div className="h-8 w-32 animate-pulse rounded bg-muted" />
@@ -571,7 +571,7 @@ export function WatchlistPage() {
   // Error state
   if (error) {
     return (
-      <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
+      <div className="p-3 sm:p-4 space-y-5 max-w-5xl mx-auto">
         <div>
           <h2 className="text-2xl font-bold">Watchlist</h2>
           <p className="text-muted-foreground text-sm mt-1">Track and monitor your favorite assets</p>
@@ -582,7 +582,7 @@ export function WatchlistPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-3 sm:p-4 space-y-5 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

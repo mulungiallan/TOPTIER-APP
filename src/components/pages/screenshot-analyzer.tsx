@@ -923,7 +923,7 @@ export function ScreenshotAnalyzer() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-3 sm:p-4 space-y-5 max-w-4xl mx-auto">
       {/* Analysis Counter */}
       <div className="flex items-center justify-between">
         <div>

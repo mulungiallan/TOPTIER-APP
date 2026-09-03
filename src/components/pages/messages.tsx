@@ -98,7 +98,7 @@ export function MessagesPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto h-[calc(100vh-8rem)]">
+    <div className="p-3 md:p-4 max-w-6xl mx-auto h-[calc(100vh-8rem)]">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
           <MessageSquare className="h-7 w-7 text-emerald-500" />

@@ -448,7 +448,7 @@ export function NewsPage() {
   // Loading state
   if (loading && articles.length === 0) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="p-3 sm:p-4 space-y-5">
         <div className="h-8 w-48 animate-pulse rounded bg-muted" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -472,7 +472,7 @@ export function NewsPage() {
   // Error state
   if (error && articles.length === 0) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="p-3 sm:p-4 space-y-5">
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <AlertCircle className="size-12 text-destructive/50 mb-4" />
@@ -489,7 +489,7 @@ export function NewsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-4 space-y-5">
       {/* Breaking News Banner */}
       {breakingNews && (
         <motion.div

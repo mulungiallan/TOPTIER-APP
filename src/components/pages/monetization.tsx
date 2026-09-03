@@ -158,7 +158,7 @@ export function MonetizationPage() {
 
   if (!isAdmin) {
     return (
-      <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
+      <div className="p-3 md:p-4 max-w-[1400px] mx-auto">
         <Card className="border-red-500/40">
           <CardContent className="flex items-start gap-3 p-5">
             <ShieldAlert className="mt-0.5 size-5 text-red-500" />
@@ -176,7 +176,7 @@ export function MonetizationPage() {
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-4">
+      <div className="p-3 md:p-4 max-w-[1400px] mx-auto space-y-4">
         <div className="h-8 w-64 animate-pulse rounded bg-muted" />
         <div className="h-32 animate-pulse rounded-2xl bg-muted" />
       </div>
@@ -260,7 +260,7 @@ export function MonetizationPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+    <div className="p-3 md:p-4 space-y-5 max-w-[1400px] mx-auto">
       <div>
         <h1 className="font-display text-2xl md:text-3xl font-bold tracking-tight">Monetization</h1>
         <p className="mt-1 text-sm text-muted-foreground">

@@ -106,6 +106,7 @@ interface AppState {
 
   // Navigation
   currentPage: Page
+  navHistory: Page[]
   sidebarOpen: boolean
   sidebarCollapsed: boolean
 
@@ -119,6 +120,7 @@ interface AppState {
   login: (user: User, token: string) => void
   logout: () => void
   setPage: (page: Page) => void
+  goBack: () => void
   setIsAuthenticated: (value: boolean) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
@@ -142,6 +144,7 @@ export const useStore = create<AppState>()(
 
       // Navigation
       currentPage: 'dashboard',
+      navHistory: [],
       sidebarOpen: false,
       sidebarCollapsed: false,
 
@@ -163,6 +166,7 @@ export const useStore = create<AppState>()(
           user,
           authToken: token,
           currentPage: user.onboardingCompleted ? 'dashboard' : 'onboarding',
+          navHistory: [],
         }),
 
       logout: () => {
@@ -182,7 +186,23 @@ export const useStore = create<AppState>()(
         });
       },
 
-      setPage: (page) => set({ currentPage: page }),
+      setPage: (page) =>
+        set((state) => {
+          if (page === state.currentPage) return state
+          const MAX_HISTORY = 20
+          const navHistory = [...state.navHistory, state.currentPage].slice(-MAX_HISTORY)
+          return { currentPage: page, navHistory }
+        }),
+
+      goBack: () =>
+        set((state) => {
+          if (state.navHistory.length === 0) {
+            return { currentPage: 'dashboard', navHistory: [] }
+          }
+          const prev = state.navHistory[state.navHistory.length - 1]
+          const navHistory = state.navHistory.slice(0, -1)
+          return { currentPage: prev, navHistory }
+        }),
 
       setIsAuthenticated: (value) => set({ isAuthenticated: value }),
 
@@ -215,6 +235,7 @@ export const useStore = create<AppState>()(
         user: state.user,
         authToken: state.authToken,
         currentPage: state.currentPage,
+        navHistory: state.navHistory,
         sidebarCollapsed: state.sidebarCollapsed,
         signalFilters: state.signalFilters,
         locale: state.locale,
