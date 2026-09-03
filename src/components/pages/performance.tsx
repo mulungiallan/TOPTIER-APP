@@ -349,23 +349,45 @@ ${cells}
 // ─── Map API response to local data ────────────────────────────────────────────
 
 function mapPerformanceData(raw: any): PerformanceData {
-  const d = raw?.data || raw
+  const root = raw?.data || raw
+  const ov = root?.overview || root
+  const marketObj = root?.marketBreakdown || {}
+  const strategyObj = root?.strategyBreakdown || {}
+  const marketEntries = Object.entries(marketObj)
+  const strategyEntries = Object.entries(strategyObj)
+
+  const marketBreakdown = marketEntries.map(([market, m]: any) => ({
+    market,
+    winRate: m?.winRate ?? 0,
+    totalSignals: m?.total ?? 0,
+    avgRR: m?.avgRR || '1:0',
+    profit: m?.profit || '$0',
+  }))
+
+  const strategyBreakdown = strategyEntries.map(([strategy, s]: any) => ({
+    strategy,
+    winRate: s?.winRate ?? 0,
+    totalSignals: s?.total ?? 0,
+    avgRR: s?.avgRR || '1:0',
+    profit: s?.profit || '$0',
+  }))
+
   return {
-    winRate: d.winRate ?? 0,
-    lossRate: d.lossRate ?? 0,
-    breakevenRate: d.breakevenRate ?? 0,
-    avgRiskReward: d.avgRiskReward || d.avgRR || '1:0',
-    totalSignals: d.totalSignals ?? 0,
-    monthlySignals: d.monthlySignals ?? 0,
-    consecutiveWins: d.consecutiveWins ?? 0,
-    longestWinStreak: d.longestWinStreak ?? d.consecutiveWins ?? 0,
-    consecutiveLosses: d.consecutiveLosses ?? 0,
-    longestLossStreak: d.longestLossStreak ?? d.consecutiveLosses ?? 0,
-    avgConfidence: d.avgConfidence ?? 0,
-    avgOutcome: d.avgOutcome ?? d.winRate ?? 0,
-    acceptedCount: d.acceptedVsIgnored?.accepted ?? d.acceptedCount ?? 0,
-    ignoredCount: d.acceptedVsIgnored?.ignored ?? d.ignoredCount ?? 0,
-    monthlyPerformance: d.monthlyPerformance || [
+    winRate: ov.winRate ?? 0,
+    lossRate: ov.lossRate ?? 0,
+    breakevenRate: ov.breakevenRate ?? 0,
+    avgRiskReward: ov.avgRiskReward != null ? `1:${ov.avgRiskReward}` : ov.avgRR || '1:0',
+    totalSignals: ov.totalSignals ?? 0,
+    monthlySignals: ov.monthlySignals ?? ov.totalSignals ?? 0,
+    consecutiveWins: ov.consecutiveWins ?? 0,
+    longestWinStreak: ov.longestWinStreak ?? ov.consecutiveWins ?? 0,
+    consecutiveLosses: ov.consecutiveLosses ?? 0,
+    longestLossStreak: ov.longestLossStreak ?? ov.consecutiveLosses ?? 0,
+    avgConfidence: ov.avgConfidence ?? 0,
+    avgOutcome: ov.avgOutcome ?? ov.winRate ?? 0,
+    acceptedCount: ov.acceptedVsIgnored?.accepted ?? ov.acceptedCount ?? ov.totalSignals ?? 0,
+    ignoredCount: ov.acceptedVsIgnored?.ignored ?? ov.ignoredCount ?? 0,
+    monthlyPerformance: ov.monthlyPerformance || [
       { month: 'Jan', wins: 0, losses: 0 },
       { month: 'Feb', wins: 0, losses: 0 },
       { month: 'Mar', wins: 0, losses: 0 },
@@ -373,44 +395,32 @@ function mapPerformanceData(raw: any): PerformanceData {
       { month: 'May', wins: 0, losses: 0 },
       { month: 'Jun', wins: 0, losses: 0 },
     ],
-    winRateTrend: d.winRateTrend || [],
-    marketPerformance: (d.marketBreakdown || d.marketPerformance || []).map((m: any, i: number) => ({
-      name: m.name || m.market || '',
-      value: m.value || m.winRate || 0,
-      color: m.color || defaultMarketColors[i % defaultMarketColors.length],
+    winRateTrend: ov.winRateTrend || [],
+    marketPerformance: marketEntries.map(([name, m]: any, i: number) => ({
+      name,
+      value: m?.winRate ?? m?.value ?? 0,
+      color: defaultMarketColors[i % defaultMarketColors.length],
     })),
-    strategyBreakdown: (d.strategyBreakdown || []).map((s: any) => ({
-      strategy: s.strategy || '',
-      winRate: s.winRate ?? 0,
-      totalSignals: s.totalSignals ?? 0,
-      avgRR: s.avgRR || '1:0',
-      profit: s.profit || '$0',
+    strategyBreakdown,
+    marketBreakdown,
+    assetBreakdown: Object.entries(root?.assetBreakdown || {}).map(([asset, a]: any) => ({
+      asset,
+      winRate: a?.winRate ?? 0,
+      totalSignals: a?.total ?? 0,
+      avgRR: a?.avgRR || '1:0',
     })),
-    marketBreakdown: (d.marketBreakdown || []).map((m: any) => ({
-      market: m.market || m.name || '',
-      winRate: m.winRate ?? m.value ?? 0,
-      totalSignals: m.totalSignals ?? 0,
-      avgRR: m.avgRR || '1:0',
-      profit: m.profit || '$0',
+    timeframeBreakdown: Object.entries(root?.timeframeBreakdown || {}).map(([timeframe, t]: any) => ({
+      timeframe,
+      winRate: t?.winRate ?? 0,
+      totalSignals: t?.total ?? 0,
+      avgRR: t?.avgRR || '1:0',
     })),
-    assetBreakdown: (d.assetBreakdown || []).map((a: any) => ({
-      asset: a.asset || '',
-      winRate: a.winRate ?? 0,
-      totalSignals: a.totalSignals ?? 0,
-      avgRR: a.avgRR || '1:0',
-    })),
-    timeframeBreakdown: (d.timeframeBreakdown || []).map((t: any) => ({
-      timeframe: t.timeframe || '',
-      winRate: t.winRate ?? 0,
-      totalSignals: t.totalSignals ?? 0,
-      avgRR: t.avgRR || '1:0',
-    })),
-    sessionBreakdown: (d.sessionBreakdown || []).map((s: any) => ({
-      session: s.session || '',
-      winRate: s.winRate ?? 0,
-      totalSignals: s.totalSignals ?? 0,
-      avgRR: s.avgRR || '1:0',
-      peakHours: s.peakHours || '',
+    sessionBreakdown: Object.entries(root?.sessionBreakdown || {}).map(([session, s]: any) => ({
+      session,
+      winRate: s?.winRate ?? 0,
+      totalSignals: s?.total ?? 0,
+      avgRR: s?.avgRR || '1:0',
+      peakHours: s?.peakHours || '',
     })),
   }
 }
