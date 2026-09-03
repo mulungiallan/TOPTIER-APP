@@ -798,20 +798,17 @@ export function ScreenshotAnalyzer() {
         toast.success(`Chart analyzed! ${costMsg}${cachedMsg}${remainingMsg}`)
       }
       fetchHistory()
-      // Free users watch the "results" phase ads before the result is revealed.
-      if (!isPremium) {
-        setAdPhase('results')
-        setShowAdFlow(true)
-        setPendingResult(true)
-      } else {
-        setAnalysisResult(result)
-      }
+      // Users watch the "results" phase ads before the result is revealed.
+      setAdPhase('results')
+      setShowAdFlow(true)
+      setPendingResult(true)
+      pendingResultRef.current = result
     } catch {
       // Network/parse error — never fabricate a result.
       setIsAnalyzing(false)
       toast.error('Chart analysis failed. Please try again.')
     }
-  }, [selectedFile, previewUrl, fetchHistory, isPremium])
+  }, [selectedFile, previewUrl, fetchHistory])
 
   // All users are served the rewarded AdFlow (ad-supported premium experience).
   // Ads are reduced from 10 to 5 for users who referred >= 20 downloads.
