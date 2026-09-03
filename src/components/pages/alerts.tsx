@@ -1376,7 +1376,7 @@ export function AlertsPage() {
           soundUri: a.soundUri,
           vibrateEnabled: a.vibrateEnabled,
           notifyType: a.notifyType,
-        })
+        }, a.asset, a.targetPrice)
         toast('Alert triggered', {
           description: `${a.asset} price alert was triggered`,
         })
