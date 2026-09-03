@@ -294,6 +294,24 @@ function AlertNotificationOptions({
   )
 }
 
+function NotifyBadges({ value }: { value: AlertNotifValue }) {
+  const items: { active: boolean; icon: JSX.Element; label: string }[] = [
+    { active: value.soundEnabled, icon: <Volume2 className="size-3" />, label: 'Sound' },
+    { active: value.vibrateEnabled, icon: <Vibrate className="size-3" />, label: 'Vibrate' },
+    { active: value.notifyType === 'system' || value.notifyType === 'both', icon: <BellRing className="size-3" />, label: 'System' },
+  ]
+  return (
+    <>
+      {items.filter((i) => i.active).map((i) => (
+        <Badge key={i.label} variant="outline" className="gap-1 text-[10px]">
+          {i.icon}
+          {i.label}
+        </Badge>
+      ))}
+    </>
+  )
+}
+
 // ─── Loading Skeleton ──────────────────────────────────────────────────────────
 
 function AlertsSkeleton() {
