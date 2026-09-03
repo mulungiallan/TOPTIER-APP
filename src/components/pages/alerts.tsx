@@ -628,6 +628,10 @@ function CreateCustomAlertWizard({ onCreated }: { onCreated: () => void }) {
         asset,
         alertType: mapUiCustomTypeToApi(alertType),
         condition: fullCondition,
+        soundEnabled: notif.soundEnabled,
+        soundUri: notif.soundUri || null,
+        vibrateEnabled: notif.vibrateEnabled,
+        notifyType: notif.notifyType,
       })
       toast.success('Custom alert created')
       setOpen(false)
@@ -636,6 +640,7 @@ function CreateCustomAlertWizard({ onCreated }: { onCreated: () => void }) {
       setAlertType('RSI')
       setCondition('')
       setThreshold('')
+      setNotif({ soundEnabled: true, soundUri: null, vibrateEnabled: true, notifyType: 'system' })
       onCreated()
     } catch (err: any) {
       toast.error(err.message || 'Failed to create alert')
@@ -796,6 +801,8 @@ function CreateCustomAlertWizard({ onCreated }: { onCreated: () => void }) {
                     </div>
                   </CardContent>
                 </Card>
+
+                <AlertNotificationOptions value={notif} onChange={setNotif} />
               </motion.div>
             )}
           </AnimatePresence>
