@@ -69,26 +69,6 @@ export async function POST(request: NextRequest) {
       user?.subscriptionTier === 'lifetime' ||
       (user?.plan && user.plan !== 'free')
 
-    // Legacy daily cap — kept as a coarse abuse guard. Per-plan monthly cap
-    // is enforced inside hybridChartAnalyzer.
-    const FREE_DAILY_LIMIT = 3
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const todayCount = await db.screenshotAnalysis.count({
-      where: {
-        userId,
-        createdAt: { gte: today },
-      },
-    })
-
-    if (!isPremium && todayCount >= FREE_DAILY_LIMIT) {
-      return errorResponse(
-        `Free tier limit reached (${FREE_DAILY_LIMIT} analyses/day). Upgrade to a Premium plan for more analyses.`,
-        429
-      )
-    }
-
     // ─── Create pending analysis record ──────────────────────────────────
     const analysis = await db.screenshotAnalysis.create({
       data: {
