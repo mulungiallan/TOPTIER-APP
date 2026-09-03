@@ -1,8 +1,7 @@
 # Auto-commit & push watcher for TOPTIER.
 # Monitors the repo and pushes any changes to git immediately.
-# - Debounces: waits for a quiet period after the last change before committing.
+# - Debounces: commits after the working tree has been stable for a short window.
 # - Ignores build-log.txt (scratch) so it never gets committed.
-# - Commits with an automatic message describing staged/untracked files.
 #
 # Usage (run in background):
 #   Start-Process powershell -WindowStyle Hidden -ArgumentList '-ExecutionPolicy','Bypass','-File',$PWD\scripts\auto-commit.ps1
@@ -11,58 +10,67 @@ $ErrorActionPreference = 'Continue'
 $ROOT = Split-Path -Parent $PSScriptRoot
 Set-Location $ROOT
 
-# Files/dirs to never auto-commit
+# Files/dirs to never auto-commit (paths relative to repo root, forward slashes)
 $IGNORED = @('build-log.txt')
 
-$quietWindowMs = 3000        # wait this long after the last change before committing
-$pollMs        = 1000        # how often to scan
+$quietWindowMs = 3000   # working tree must be stable this long before committing
+$pollMs        = 1000   # how often to scan
 
-function Get-Changes {
-  $all = git status --porcelain 2>$null
-  if (-not $all) { return @() }
-  $out = New-Object System.Collections.ArrayList
-  foreach ($line in $all) {
+function Get-Porcelain {
+  $raw = git status --porcelain 2>$null
+  if (-not $raw) { return ,'' }
+  # normalize: strip status codes, keep normalized path, filter ignored
+  $lines = New-Object System.Collections.Generic.List[string]
+  foreach ($line in $raw) {
     if (-not $line) { continue }
-    $status = $line.Substring(0,2).Trim()
-    $path = $line.Substring(3).Trim()
-    # strip quotes git adds around paths with spaces
-    $path = $path -replace '^"(.*)"$','$1'
+    $path = $line.Substring(3).Trim().Trim('"').Replace('\','/')
     $skip = $false
     foreach ($ig in $IGNORED) { if ($path -eq $ig) { $skip = $true; break } }
-    if (-not $skip) { [void]$out.Add(($path -replace '\\','/')) }
+    if (-not $skip) { $lines.Add($path) }
   }
-  return $out
+  return $lines.ToArray()
 }
 
-function NowMs { return [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
-
-$lastChange = [long]0
+$lastState = @(Get-Porcelain)
+$lastChange = [DateTime]::UtcNow
 $logLine = -join ('[auto-commit ' + (Get-Date -Format 'HH:mm:ss') + '] ')
 Write-Output ($logLine + 'watcher started on ' + $ROOT)
 
 while ($true) {
   Start-Sleep -Milliseconds $pollMs
-  $changes = @(Get-Changes)
-  if ($changes.Count -gt 0) {
-    $lastChange = NowMs
-  } else {
-    if ($lastChange -ne 0 -and (NowMs - $lastChange) -ge $quietWindowMs) {
-      $lastChange = 0
-      $dirty = @(Get-Changes)
+  $current = @(Get-Porcelain)
+  $changed = $false
+  if ($current.Count -ne $lastState.Count) { $changed = $true }
+  else {
+    for ($i = 0; $i -lt $current.Count; $i++) {
+      if ($current[$i] -ne $lastState[$i]) { $changed = $true; break }
+    }
+  }
+  if ($changed) { $lastChange = [DateTime]::UtcNow }
+  $lastState = $current
+
+  $hasChanges = $current.Count -gt 0
+  if ($hasChanges) {
+    $elapsed = ([DateTime]::UtcNow - $lastChange).TotalMilliseconds
+    if ($elapsed -ge $quietWindowMs) {
+      # recompute to avoid racing with a concurrent edit
+      $dirty = @(Get-Porcelain)
       if ($dirty.Count -eq 0) { continue }
-      # build a short summary for the commit message
       $summary = ($dirty | Select-Object -First 3) -join ', '
       if ($dirty.Count -gt 3) { $summary += ', ...' }
       $msg = "auto-commit: $summary"
       git add -A -- . ':!build-log.txt' 2>$null
-      $staged = git diff --cached --name-only 2>$null | Where-Object { $_.Trim() }
-      if (-not $staged) { continue }
+      $staged = @(git diff --cached --name-only 2>$null | Where-Object { $_.Trim() })
+      if ($staged.Count -eq 0) { continue }
       git commit -m $msg 2>$null
       if ($LASTEXITCODE -eq 0) {
         Write-Output ((-join ('[auto-commit ' + (Get-Date -Format 'HH:mm:ss') + '] ')) + "committed: $msg")
-        $push = git push origin main 2>&1
-        Write-Output ((-join ('[auto-commit ' + (Get-Date -Format 'HH:mm:ss') + '] ')) + "push result: $LASTEXITCODE")
+        git push origin main 2>$null
+        Write-Output ((-join ('[auto-commit ' + (Get-Date -Format 'HH:mm:ss') + '] ')) + "push exit: $LASTEXITCODE")
       }
+      # reset timer so we don't immediately re-commit
+      $lastChange = [DateTime]::UtcNow
+      $lastState = @(Get-Porcelain)
     }
   }
 }
