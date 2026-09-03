@@ -1068,7 +1068,7 @@ export function ScreenshotAnalyzer() {
               {!isAnalyzing ? (
                 <Button size="lg" className="w-full gap-2" onClick={handleAnalyze}>
                   <Zap className="size-5" />
-                  {isPremium ? 'Analyze Chart' : 'Watch Ad to Analyze'}
+                  Analyze Chart
                 </Button>
               ) : (
                 <Card className="border-primary/20">
