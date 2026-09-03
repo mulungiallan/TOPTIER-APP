@@ -325,6 +325,12 @@ function CreatePriceAlertDialog({ onCreated }: { onCreated: () => void }) {
   const [frequency, setFrequency] = useState<AlertFrequency>('one-time')
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
+  const [notif, setNotif] = useState<AlertNotifValue>({
+    soundEnabled: true,
+    soundUri: null,
+    vibrateEnabled: true,
+    notifyType: 'system',
+  })
 
   const filteredAssets = assetOptions.filter(a =>
     a.toLowerCase().includes(search.toLowerCase())
@@ -340,6 +346,10 @@ function CreatePriceAlertDialog({ onCreated }: { onCreated: () => void }) {
         alertType: mapUiAlertTypeToApi(alertType),
         targetPrice: parseFloat(targetPrice),
         isRecurring: frequency === 'recurring',
+        soundEnabled: notif.soundEnabled,
+        soundUri: notif.soundUri || null,
+        vibrateEnabled: notif.vibrateEnabled,
+        notifyType: notif.notifyType,
       })
       toast.success('Price alert created')
       setOpen(false)
@@ -348,6 +358,7 @@ function CreatePriceAlertDialog({ onCreated }: { onCreated: () => void }) {
       setAlertType('Above')
       setFrequency('one-time')
       setSearch('')
+      setNotif({ soundEnabled: true, soundUri: null, vibrateEnabled: true, notifyType: 'system' })
       onCreated()
     } catch (err: any) {
       toast.error(err.message || 'Failed to create alert')
