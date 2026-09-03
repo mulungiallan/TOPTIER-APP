@@ -468,6 +468,8 @@ function CreatePriceAlertDialog({ onCreated }: { onCreated: () => void }) {
               }
             />
           </div>
+
+          <AlertNotificationOptions value={notif} onChange={setNotif} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
