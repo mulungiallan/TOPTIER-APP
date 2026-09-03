@@ -166,6 +166,27 @@ export class AdDistributionService {
     return { ...this.config }
   }
 
+  /**
+   * Users who referred >= 20 downloads get a lighter ad load (5 ads instead of 10),
+   * still well-distributed across every phase of the analysis journey.
+   */
+  setReducedAds(userId: string, reduced: boolean): void {
+    if (reduced) this.reducedUsers.add(userId)
+    else this.reducedUsers.delete(userId)
+  }
+
+  isReducedAds(userId: string): boolean {
+    return this.reducedUsers.has(userId)
+  }
+
+  /** The subset of adSteps to serve for a given user (reduced = 5, default = 10). */
+  private stepsFor(userId: string): AdStep[] {
+    const isReduced = this.reducedUsers.has(userId)
+    if (!isReduced) return this.adSteps
+    const kept = new Set(['welcome', 'market_brief', 'loading', 'post_analysis', 'continue'])
+    return this.adSteps.filter((s) => kept.has(s.id) || !s.required)
+  }
+
   updateConfig(patch: Partial<AdConfig>): void {
     this.config = { ...this.config, ...patch }
   }
@@ -174,15 +195,16 @@ export class AdDistributionService {
   getNextAdStep(userId: string, phase: AdStep['phase']): AdStep | null {
     if (!this.hasRewardedCreative()) return null
     const progress = this.adProgress.get(userId) || { completedSteps: [] }
-    for (const step of this.adSteps) {
+    for (const step of this.stepsFor(userId)) {
       if (step.phase !== phase) continue
       if (!progress.completedSteps.includes(step.id)) return step
     }
     return null
   }
 
-  getPhaseSteps(phase: AdStep['phase']): AdStep[] {
-    return this.adSteps.filter((s) => s.phase === phase)
+  getPhaseSteps(phase: AdStep['phase'], userId?: string): AdStep[] {
+    const steps = userId ? this.stepsFor(userId) : this.adSteps
+    return steps.filter((s) => s.phase === phase)
   }
 
   completeAdStep(userId: string, stepId: string): void {
