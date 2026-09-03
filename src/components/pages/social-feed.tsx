@@ -164,46 +164,48 @@ export function SocialFeedPage() {
               <Card className="hover:shadow-md transition">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3 mb-3">
-                    <Avatar className="h-10 w-10">
+                    <Avatar className="h-10 w-10 shrink-0">
                       <AvatarFallback>{(post.userName || 'A')[0]}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">{post.userName || 'Anonymous'}</span>
+                        <span className="font-medium text-sm">{post.userName || 'Anonymous'}</span>
                         <Badge variant="outline" className="text-[10px] capitalize">{post.type}</Badge>
+                        <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">
+                          {new Date(post.createdAt).toLocaleString()}
+                        </span>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(post.createdAt).toLocaleString()}
-                      </p>
                     </div>
                   </div>
-                  <p className="text-sm whitespace-pre-wrap mb-3">{post.content}</p>
-                  {post.tags && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {post.tags.split(',').map((tag) => (
-                        <span key={tag} className="text-xs text-emerald-600">#{tag.trim()}</span>
-                      ))}
+                  <div className="pl-13">
+                    <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{post.content}</p>
+                    {post.tags && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {post.tags.split(',').map((tag) => (
+                          <span key={tag} className="text-xs text-emerald-600">#{tag.trim()}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-5 pt-3 mt-2 border-t">
+                      <button
+                        onClick={() => handleLike(post.id, !!post.likedByMe)}
+                        className={cn(
+                          'flex items-center gap-1.5 text-xs transition',
+                          post.likedByMe ? 'text-rose-500' : 'text-muted-foreground hover:text-rose-500'
+                        )}
+                      >
+                        <Heart className={cn('h-4 w-4', post.likedByMe && 'fill-current')} />
+                        {post.likes}
+                      </button>
+                      <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-500 transition">
+                        <MessageCircle className="h-4 w-4" />
+                        {post.comments}
+                      </button>
+                      <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-500 transition">
+                        <Share2 className="h-4 w-4" />
+                        {post.shares}
+                      </button>
                     </div>
-                  )}
-                  <div className="flex items-center gap-4 pt-2 border-t">
-                    <button
-                      onClick={() => handleLike(post.id, !!post.likedByMe)}
-                      className={cn(
-                        'flex items-center gap-1.5 text-xs transition',
-                        post.likedByMe ? 'text-rose-500' : 'text-muted-foreground hover:text-rose-500'
-                      )}
-                    >
-                      <Heart className={cn('h-4 w-4', post.likedByMe && 'fill-current')} />
-                      {post.likes}
-                    </button>
-                    <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-500 transition">
-                      <MessageCircle className="h-4 w-4" />
-                      {post.comments}
-                    </button>
-                    <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-emerald-500 transition">
-                      <Share2 className="h-4 w-4" />
-                      {post.shares}
-                    </button>
                   </div>
                 </CardContent>
               </Card>
