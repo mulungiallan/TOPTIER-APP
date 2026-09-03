@@ -813,22 +813,17 @@ export function ScreenshotAnalyzer() {
     }
   }, [selectedFile, previewUrl, fetchHistory, isPremium])
 
-  // Free users are gated behind the rewarded AdFlow. The 10 ads are split
-  // evenly across the analysis journey: 'start' (before analyzing),
-  // 'processing' (while analyzing), 'results' (before revealing) and 'next'
-  // (before the following analysis).
+  // All users are served the rewarded AdFlow (ad-supported premium experience).
+  // Ads are reduced from 10 to 5 for users who referred >= 20 downloads.
   const handleAnalyze = useCallback(async () => {
     if (freeLimitReached) return
-    if (!isPremium) {
-      if (showAdFlow || pendingAnalyze || pendingResult) return
-      adService.resetForNewAnalysis(user?.id || 'guest')
-      setAdPhase('start')
-      setShowAdFlow(true)
-      setPendingAnalyze(true)
-      return
-    }
-    await runAnalysis()
-  }, [freeLimitReached, isPremium, showAdFlow, pendingAnalyze, pendingResult, runAnalysis, user?.id])
+    if (showAdFlow || pendingAnalyze || pendingResult) return
+    adService.setReducedAds(user?.id || 'guest', (user?.referralCount ?? 0) >= 20)
+    adService.resetForNewAnalysis(user?.id || 'guest')
+    setAdPhase('start')
+    setShowAdFlow(true)
+    setPendingAnalyze(true)
+  }, [freeLimitReached, showAdFlow, pendingAnalyze, pendingResult, user?.id, user?.referralCount])
 
   // Save to history
   const handleSave = useCallback(() => {
