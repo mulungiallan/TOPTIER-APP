@@ -832,10 +832,10 @@ export function ScreenshotAnalyzer() {
     }
   }, [analysisResult, fetchHistory])
 
-  // Analyze another — free users first watch the "next" phase (3 ads) as the
-  // transition into a fresh analysis.
+  // Analyze another — users first watch the "next" phase ads as the transition
+  // into a fresh analysis.
   const handleAnalyzeAnother = useCallback(() => {
-    if (!isPremium && !showAdFlow) {
+    if (!showAdFlow) {
       setAdPhase('next')
       setShowAdFlow(true)
       setPendingAnalyze(true)
@@ -845,7 +845,7 @@ export function ScreenshotAnalyzer() {
     setPreviewUrl(null)
     setAnalysisResult(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [isPremium, showAdFlow])
+  }, [showAdFlow])
 
   // Progresses the phased AdFlow once a phase is fully watched.
   const handleAdComplete = useCallback(() => {
