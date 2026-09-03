@@ -221,12 +221,12 @@ export class AdDistributionService {
 
   getRemainingAds(userId: string, phase: AdStep['phase']): number {
     const progress = this.adProgress.get(userId) || { completedSteps: [] }
-    return this.getPhaseSteps(phase).filter((s) => !progress.completedSteps.includes(s.id)).length
+    return this.stepsFor(userId).filter((s) => s.phase === phase && !progress.completedSteps.includes(s.id)).length
   }
 
   isAnalysisUnlocked(userId: string): boolean {
     const progress = this.adProgress.get(userId) || { completedSteps: [] }
-    return this.adSteps.filter((s) => s.required).every((s) => progress.completedSteps.includes(s.id))
+    return this.stepsFor(userId).filter((s) => s.required).every((s) => progress.completedSteps.includes(s.id))
   }
 
   getAdSteps(): AdStep[] {
