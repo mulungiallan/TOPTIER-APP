@@ -1,10 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { LineChart, BarChart3, CandlestickChart, Activity } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -35,14 +34,128 @@ const INTERVALS = [
 
 const THEMES = ['light', 'dark'] as const
 
+// ─── TradingView Advanced Chart widget (official, current embed) ─────────────
+// Uses the supported s3.tradingview.com external-embedding widget instead of
+// the deprecated generic `widgetembed` iframe URL, which frequently renders
+// as a blank shell. Re-init on any config change by clearing the container and
+// re-running the widget's JSON config script.
+function TradingViewChart({
+  symbol,
+  interval,
+  theme,
+  style,
+}: {
+  symbol: string
+  interval: string
+  theme: string
+  style: string
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    // Clear any previously rendered widget so config changes re-init cleanly.
+    el.innerHTML = ''
+
+    const script = document.createElement('script')
+    script.type = 'text/javascript'
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'
+    script.async = true
+    script.innerHTML = JSON.stringify({
+      autosize: true,
+      symbol,
+      interval,
+      theme,
+      style,
+      timezone: 'Etc/UTC',
+      locale: 'en',
+      backgroundColor: theme === 'dark' ? '#0b0f14' : '#ffffff',
+      gridColor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      allow_symbol_change: true,
+      hide_side_toolbar: false,
+      withdateranges: true,
+      hide_legend: false,
+      details: true,
+      hotlist: true,
+      calendar: true,
+      save_image: true,
+      studies: [],
+    })
+    el.appendChild(script)
+
+    return () => {
+      el.innerHTML = ''
+    }
+  }, [symbol, interval, theme, style])
+
+  return (
+    <div className="tradingview-widget-container" style={{ height: '100%', width: '100%' }}>
+      <div ref={ref} className="tradingview-widget-container__widget" style={{ height: '100%', width: '100%' }} />
+    </div>
+  )
+}
+
+// ─── TradingView Market Overview widget (official, current embed) ───────────
+function TradingViewMarketOverview({
+  title,
+  symbols,
+}: {
+  title: string
+  symbols: { s: string }[]
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.innerHTML = ''
+
+    const script = document.createElement('script')
+    script.type = 'text/javascript'
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js'
+    script.async = true
+    script.innerHTML = JSON.stringify({
+      colorTheme: 'dark',
+      dateRange: '1D',
+      showChart: true,
+      locale: 'en',
+      largeChartUrl: '',
+      isTransparent: false,
+      showSymbolLogo: true,
+      showFloatingTooltip: true,
+      width: '100%',
+      height: '400',
+      plotLineColorGrowing: 'rgba(16, 185, 129, 1)',
+      plotLineColorFalling: 'rgba(239, 68, 68, 1)',
+      gridLineColor: 'rgba(255, 255, 255, 0.06)',
+      scaleFontColor: 'rgba(255, 255, 255, 0.8)',
+      belowLineFillColorGrowing: 'rgba(16, 185, 129, 0.12)',
+      belowLineFillColorFalling: 'rgba(239, 68, 68, 0.12)',
+      tabs: [{ title, symbols }],
+    })
+    el.appendChild(script)
+
+    return () => {
+      el.innerHTML = ''
+    }
+  }, [title, symbols])
+
+  return (
+    <div className="tradingview-widget-container" style={{ width: '100%' }}>
+      <div ref={ref} className="tradingview-widget-container__widget" style={{ width: '100%' }} />
+    </div>
+  )
+}
+
 export function TradingViewPage() {
   const [symbol, setSymbol] = useState(CHART_SYMBOLS[0])
   const [interval, setInterval] = useState(INTERVALS[5])
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
   const [chartType, setChartType] = useState<'candles' | 'line' | 'area' | 'bars'>('candles')
 
-  // Build TradingView embed URL
-  const tvUrl = `https://s.tradingview.com/widgetembed/?frameElementId=tradingview_${symbol.label}&symbol=${encodeURIComponent(symbol.tv)}&interval=${interval.value}&theme=${theme}&style=${chartType === 'candles' ? '1' : chartType === 'line' ? '2' : chartType === 'area' ? '3' : '0'}&hideideas=1&saveimage=1&toolbarbg=f1f3f6&studies=[]&hidetoptoolbar=0&hid side-toolbar=0&allow_symbol_change=1&details=1&hotlist=1&calendar=1&width=100%25&height=100%25`
+  const chartStyle = chartType === 'candles' ? '1' : chartType === 'line' ? '2' : chartType === 'area' ? '3' : '0'
 
   return (
     <div className="space-y-4 p-4 md:p-6 max-w-7xl mx-auto">
@@ -125,14 +238,14 @@ export function TradingViewPage() {
       {/* Chart */}
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          <iframe
-            key={`${symbol.tv}-${interval.value}-${chartType}-${theme}`}
-            src={tvUrl}
-            title={`TradingView ${symbol.label}`}
-            className="w-full"
-            style={{ height: '70vh', border: 'none' }}
-            allow="clipboard-write; fullscreen"
-          />
+          <div style={{ height: '70vh', width: '100%' }}>
+            <TradingViewChart
+              symbol={symbol.tv}
+              interval={interval.value}
+              theme={theme}
+              style={chartStyle}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -141,20 +254,32 @@ export function TradingViewPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Crypto Market</CardTitle></CardHeader>
           <CardContent className="p-0">
-            <iframe
-              src="https://s.tradingview.com/embed-market-quotes/?theme=dark&width=100%25&height=400"
-              title="Crypto Market"
-              style={{ width: '100%', height: '400px', border: 'none' }}
+            <TradingViewMarketOverview
+              title="Crypto"
+              symbols={[
+                { s: 'BINANCE:BTCUSDT' },
+                { s: 'BINANCE:ETHUSDT' },
+                { s: 'BINANCE:SOLUSDT' },
+                { s: 'BINANCE:BNBUSDT' },
+                { s: 'BINANCE:XRPUSDT' },
+                { s: 'BINANCE:ADAUSDT' },
+              ]}
             />
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-base">Forex Market</CardTitle></CardHeader>
           <CardContent className="p-0">
-            <iframe
-              src="https://s.tradingview.com/embed-market-quotes/?theme=dark&width=100%25&height=400"
-              title="Forex Market"
-              style={{ width: '100%', height: '400px', border: 'none' }}
+            <TradingViewMarketOverview
+              title="Forex"
+              symbols={[
+                { s: 'FX:EURUSD' },
+                { s: 'FX:GBPUSD' },
+                { s: 'FX:USDJPY' },
+                { s: 'FX:USDCHF' },
+                { s: 'FX:AUDUSD' },
+                { s: 'FX:USDCAD' },
+              ]}
             />
           </CardContent>
         </Card>
