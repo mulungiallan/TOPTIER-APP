@@ -202,6 +202,95 @@ function CustomAlertTypeBadge({ type }: { type: CustomAlertType }) {
   )
 }
 
+// ─── Alert Notification Options ──────────────────────────────────────────────────
+
+const SOUND_OPTIONS = [
+  { value: '', label: 'Default (system sound)' },
+  { value: 'bell', label: 'Bell' },
+  { value: 'ding', label: 'Ding' },
+  { value: 'chime', label: 'Chime' },
+  { value: 'whistle', label: 'Whistle' },
+]
+
+const NOTIFY_TYPE_OPTIONS = [
+  { value: 'system', label: 'System / Home-screen' },
+  { value: 'in_app', label: 'In-app only' },
+  { value: 'both', label: 'Both' },
+]
+
+interface AlertNotifValue {
+  soundEnabled: boolean
+  soundUri?: string | null
+  vibrateEnabled: boolean
+  notifyType: string
+}
+
+function AlertNotificationOptions({
+  value,
+  onChange,
+}: {
+  value: AlertNotifValue
+  onChange: (next: AlertNotifValue) => void
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <p className="text-sm font-medium">Notification</p>
+
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <Label className="text-sm">Play a sound</Label>
+          <p className="text-xs text-muted-foreground">Ringtone / alert tone when it triggers</p>
+        </div>
+        <Switch checked={value.soundEnabled} onCheckedChange={(c) => onChange({ ...value, soundEnabled: c })} />
+      </div>
+
+      {value.soundEnabled && (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Sound</Label>
+          <Select
+            value={value.soundUri ?? ''}
+            onValueChange={(v) => onChange({ ...value, soundUri: v || null })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Choose a sound" />
+            </SelectTrigger>
+            <SelectContent>
+              {SOUND_OPTIONS.map((s) => (
+                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <Label className="text-sm">Vibrate</Label>
+          <p className="text-xs text-muted-foreground">Vibration alert on your phone</p>
+        </div>
+        <Switch checked={value.vibrateEnabled} onCheckedChange={(c) => onChange({ ...value, vibrateEnabled: c })} />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Alert delivery</Label>
+        <Select
+          value={value.notifyType || 'system'}
+          onValueChange={(v) => onChange({ ...value, notifyType: v })}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {NOTIFY_TYPE_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  )
+}
+
 // ─── Loading Skeleton ──────────────────────────────────────────────────────────
 
 function AlertsSkeleton() {
