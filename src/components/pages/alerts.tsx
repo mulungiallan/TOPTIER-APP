@@ -321,41 +321,177 @@ function NotifyBadges({ value }: { value: AlertNotifValue }) {
   )
 }
 
+const RINGTONE_URLS: Record<string, string> = {}
+
+function generateWavBlob(sampleRate: number, channels: number, samples: Float32Array): Blob {
+  const numSamples = samples.length
+  const bytesPerSample = 2
+  const blockAlign = channels * bytesPerSample
+  const dataSize = numSamples * bytesPerSample
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+  }
+
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * blockAlign, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, 16, true)
+  writeStr(36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]))
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' })
+}
+
+function synthToDataUri(fn: (t: number) => number, duration: number, sampleRate = 44100): string {
+  const numSamples = Math.floor(sampleRate * duration)
+  const samples = new Float32Array(numSamples)
+  for (let i = 0; i < numSamples; i++) {
+    samples[i] = fn(i / sampleRate)
+  }
+  const blob = generateWavBlob(sampleRate, 1, samples)
+  return URL.createObjectURL(blob)
+}
+
+function buildRingtoneUrls() {
+  const easeIn = (t: number, start: number, dur: number) =>
+    t < start ? 0 : t > start + dur ? 1 : (t - start) / dur
+
+  const easeOut = (t: number, start: number, dur: number) =>
+    t < start ? 1 : t > start + dur ? 0 : 1 - (t - start) / dur
+
+  RINGTONE_URLS['bell'] = synthToDataUri((t) => {
+    const env = easeOut(t, 0, 0.8) * 0.3
+    return (Math.sin(2 * Math.PI * 880 * t) * 0.5 + Math.sin(2 * Math.PI * 1318 * t) * 0.5) * env
+  }, 0.9)
+
+  RINGTONE_URLS['ding'] = synthToDataUri((t) => {
+    const env = easeOut(t, 0, 0.6) * 0.35
+    return Math.sin(2 * Math.PI * 1318 * t) * env
+  }, 0.7)
+
+  RINGTONE_URLS['chime'] = synthToDataUri((t) => {
+    const env1 = easeOut(t, 0, 0.5) * 0.3
+    const env2 = easeOut(t, 0.12, 0.7) * 0.3
+    return Math.sin(2 * Math.PI * 1046 * t) * env1 + Math.sin(2 * Math.PI * 1568 * t) * env2
+  }, 0.85)
+
+  RINGTONE_URLS['whistle'] = synthToDataUri((t) => {
+    let env = 0
+    for (let i = 0; i < 3; i++) {
+      env += easeOut(t, i * 0.25, 0.25) * 0.2
+    }
+    return Math.sin(2 * Math.PI * 2093 * t) * Math.min(env, 0.5)
+  }, 0.9)
+
+  RINGTONE_URLS['alarm'] = synthToDataUri((t) => {
+    const on = Math.floor(t * 4) % 2 === 0
+    if (!on) return 0
+    const freq = 880 + Math.sin(t * 6) * 120
+    return Math.sin(2 * Math.PI * freq * t) * 0.3 * easeOut(t, 0, 0.15)
+  }, 1.6)
+
+  RINGTONE_URLS['siren'] = synthToDataUri((t) => {
+    const freq = 600 + Math.sin(t * 3.5) * 400
+    const env = 0.3 * easeOut(t, 0, 0.05)
+    return Math.sin(2 * Math.PI * freq * t) * env
+  }, 2.0)
+
+  RINGTONE_URLS['notification'] = synthToDataUri((t) => {
+    const freq1 = easeIn(t, 0, 0.01) * 880
+    const freq2 = easeIn(t, 0.1, 0.01) * 1174
+    const env1 = easeOut(t, 0, 0.3) * 0.3
+    const env2 = easeOut(t, 0.1, 0.3) * 0.3
+    return Math.sin(2 * Math.PI * freq1 * t) * env1 + Math.sin(2 * Math.PI * freq2 * t) * env2
+  }, 0.5)
+
+  RINGTONE_URLS['urgent'] = synthToDataUri((t) => {
+    const beat = t % 0.2
+    const on = beat < 0.12
+    if (!on) return 0
+    const freq = 1000 + Math.sin(t * 20) * 200
+    return Math.sin(2 * Math.PI * freq * t) * 0.35
+  }, 1.0)
+
+  RINGTONE_URLS['gentle'] = synthToDataUri((t) => {
+    const freq = 523 + Math.sin(t * 1.5) * 50
+    return Math.sin(2 * Math.PI * freq * t) * 0.2 * easeOut(t, 0, 1.5) * easeIn(t, 0, 0.05)
+  }, 1.6)
+}
+
+let ringtoneUrlsBuilt = false
+function ensureRingtoneUrls() {
+  if (!ringtoneUrlsBuilt) {
+    buildRingtoneUrls()
+    ringtoneUrlsBuilt = true
+  }
+}
+
 function playAlertSound(uri?: string | null) {
+  if (typeof window === 'undefined') return
+  ensureRingtoneUrls()
+
+  const selected = uri && uri !== '' && RINGTONE_URLS[uri] ? uri : 'bell'
+  const url = RINGTONE_URLS[selected]
+  if (!url) return
+
   try {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext
-    if (!Ctx) return
-    const ctx = new Ctx()
-    const now = ctx.currentTime
-    const selected = uri && ['bell', 'ding', 'chime', 'whistle'].includes(uri) ? uri : 'bell'
-
-    const tone = (freq: number, start: number, dur: number, type: OscillatorType = 'sine', gain = 0.25) => {
-      const osc = ctx.createOscillator()
-      const g = ctx.createGain()
-      osc.type = type
-      osc.frequency.value = freq
-      g.gain.setValueAtTime(0.0001, now + start)
-      g.gain.exponentialRampToValueAtTime(gain, now + start + 0.02)
-      g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur)
-      osc.connect(g)
-      g.connect(ctx.destination)
-      osc.start(now + start)
-      osc.stop(now + start + dur + 0.05)
-    }
-
-    if (selected === 'ding') {
-      tone(1318, 0, 0.6, 'sine') // E6
-    } else if (selected === 'chime') {
-      tone(1046, 0, 0.5, 'sine')
-      tone(1568, 0.12, 0.7, 'sine')
-    } else if (selected === 'whistle') {
-      tone(2093, 0, 0.25, 'sine', 0.2)
-      tone(2093, 0.25, 0.25, 'sine', 0.2)
-      tone(2093, 0.5, 0.3, 'sine', 0.2)
-    } else {
-      tone(880, 0, 0.4, 'sine') // A5
-      tone(1318, 0.18, 0.5, 'sine') // E6
-    }
+    const audio = new Audio(url)
+    audio.volume = 1.0
+    audio.play().catch(() => {
+      try {
+        const Ctx = window.AudioContext || (window as any).webkitAudioContext
+        if (!Ctx) return
+        const ctx = new Ctx()
+        const now = ctx.currentTime
+        const tone = (freq: number, start: number, dur: number, type: OscillatorType = 'sine', gain = 0.25) => {
+          const osc = ctx.createOscillator()
+          const g = ctx.createGain()
+          osc.type = type
+          osc.frequency.value = freq
+          g.gain.setValueAtTime(0.0001, now + start)
+          g.gain.exponentialRampToValueAtTime(gain, now + start + 0.02)
+          g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur)
+          osc.connect(g)
+          g.connect(ctx.destination)
+          osc.start(now + start)
+          osc.stop(now + start + dur + 0.05)
+        }
+        if (selected === 'ding') {
+          tone(1318, 0, 0.6, 'sine')
+        } else if (selected === 'chime') {
+          tone(1046, 0, 0.5, 'sine')
+          tone(1568, 0.12, 0.7, 'sine')
+        } else if (selected === 'alarm') {
+          tone(880, 0, 0.15, 'square', 0.2)
+          tone(880, 0.2, 0.15, 'square', 0.2)
+          tone(880, 0.4, 0.15, 'square', 0.2)
+          tone(880, 0.6, 0.15, 'square', 0.2)
+        } else if (selected === 'siren') {
+          tone(600, 0, 0.4, 'sawtooth', 0.15)
+          tone(1000, 0.4, 0.4, 'sawtooth', 0.15)
+          tone(600, 0.8, 0.4, 'sawtooth', 0.15)
+          tone(1000, 1.2, 0.4, 'sawtooth', 0.15)
+        } else {
+          tone(880, 0, 0.4, 'sine')
+          tone(1318, 0.18, 0.5, 'sine')
+        }
+      } catch (e) {}
+    })
   } catch (e) {}
 }
 
