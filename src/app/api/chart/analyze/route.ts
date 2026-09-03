@@ -57,18 +57,6 @@ export async function POST(request: NextRequest) {
       return errorResponse('Empty image data', 400)
     }
 
-    // ─── Quota enforcement (legacy free-tier daily cap; primary enforcement
-    // is now inside hybridChartAnalyzer based on per-user analysesLimit) ───
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { subscriptionTier: true, plan: true },
-    })
-
-    const isPremium =
-      user?.subscriptionTier === 'premium' ||
-      user?.subscriptionTier === 'lifetime' ||
-      (user?.plan && user.plan !== 'free')
-
     // ─── Create pending analysis record ──────────────────────────────────
     const analysis = await db.screenshotAnalysis.create({
       data: {
@@ -78,7 +66,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // ─── Run the hybrid analyzer (handles 90/10 split + quota) ──────────
+    // ─── Run the hybrid analyzer (ad-supported premium experience) ────────
     try {
       const hybridResult = await hybridChartAnalyzer.analyzeChart(imageBuffer, userId)
       const result = hybridResult
