@@ -295,24 +295,23 @@ function AlertNotificationOptions({
 }
 
 function NotifyBadges({ value }: { value: AlertNotifValue }) {
-  const items: { active: boolean; kind: 'sound' | 'vibrate' | 'system'; label: string }[] = [
-    { active: value.soundEnabled, kind: 'sound', label: 'Sound' },
-    { active: value.vibrateEnabled, kind: 'vibrate', label: 'Vibrate' },
-    { active: value.notifyType === 'system' || value.notifyType === 'both', kind: 'system', label: 'System' },
-  ]
-  const icon = (kind: 'sound' | 'vibrate' | 'system'): React.ReactNode => {
-    if (kind === 'sound') return <Volume2 className="size-3" />
-    if (kind === 'vibrate') return <Vibrate className="size-3" />
-    return <BellRing className="size-3" />
-  }
   return (
     <>
-      {items.filter((i) => i.active).map((i) => (
-        <Badge key={i.kind} variant="outline" className="gap-1 text-[10px]">
-          {icon(i.kind)}
-          {i.label}
+      {value.soundEnabled && (
+        <Badge variant="outline" className="gap-1 text-[10px]">
+          <Volume2 className="size-3" /> Sound
         </Badge>
-      ))}
+      )}
+      {value.vibrateEnabled && (
+        <Badge variant="outline" className="gap-1 text-[10px]">
+          <Vibrate className="size-3" /> Vibrate
+        </Badge>
+      )}
+      {(value.notifyType === 'system' || value.notifyType === 'both') && (
+        <Badge variant="outline" className="gap-1 text-[10px]">
+          <BellRing className="size-3" /> System
+        </Badge>
+      )}
     </>
   )
 }
