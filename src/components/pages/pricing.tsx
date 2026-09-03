@@ -215,6 +215,26 @@ export function PricingPage() {
 
   return (
     <div className="space-y-8 p-4 md:p-6 max-w-7xl mx-auto">
+      {/* Subscriptions Paused Banner */}
+      {!PAYMENTS_ENABLED && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="flex size-12 items-center justify-center rounded-xl bg-yellow-500/10">
+                <Zap className="size-6 text-yellow-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-yellow-600 dark:text-yellow-400">Subscriptions Temporarily Paused</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Online payments are currently disabled. All existing subscribers retain full access. New subscriptions will reopen soon.
+                </p>
+              </div>
+              <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20 shrink-0">Paused</Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
