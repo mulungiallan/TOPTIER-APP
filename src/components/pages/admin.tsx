@@ -819,6 +819,189 @@ function UserDetailDialog({ user, onChanged }: { user: ReturnType<typeof toRow>;
   )
 }
 
+// ─── Ad Revenue Calculator ────────────────────────────────────────────────────
+//
+// Estimates potential Google AdMob revenue from expected ad volumes, using
+// industry benchmark eCPMs (reset-able by the admin). Follows the standard
+// formula:  Revenue = (Impressions / 1000) × eCPM.
+//
+// Recommended AdMob benchmark eCPMs (industry averages):
+//   Banner       ~ $0.50 – $1.50   (default $1.00)
+//   Interstitial ~ $4.00 – $12.00  (default $6.00)
+//   Rewarded     ~ $8.00 – $20.00  (default $12.00)
+//   Native       ~ $2.00 – $5.00   (default $3.50)
+// These are estimates only; actual revenue depends on geo, fill rate, and demand.
+
+const ADMobDefaultEcpm: Record<string, number> = {
+  Banner: 1.0,
+  Interstitial: 6.0,
+  Rewarded: 12.0,
+  Native: 3.5,
+}
+
+const AD_FORMATS = ['Banner', 'Interstitial', 'Rewarded', 'Native'] as const
+type AdFormat = (typeof AD_FORMATS)[number]
+
+function AdRevenueCalculator() {
+  const [dau, setDau] = useState(10000)
+  const [sessions, setSessions] = useState(1.5)
+  const [imps, setImps] = useState<Record<AdFormat, number>>({
+    Banner: 2,
+    Interstitial: 1,
+    Rewarded: 10, // matches the analyzer's 10 ad steps per analysis
+    Native: 2,
+  })
+  const [ecpm, setEcpm] = useState<Record<AdFormat, number>>({ ...ADMobDefaultEcpm })
+
+  const rows = AD_FORMATS.map((f) => {
+    const imp = Math.round(dau * sessions * imps[f])
+    const rev = (imp / 1000) * ecpm[f]
+    return {
+      format: f,
+      impressions: imp,
+      ecpm: ecpm[f],
+      daily: rev,
+      monthly: rev * 30,
+      yearly: rev * 365,
+    }
+  })
+
+  const dailyTotal = rows.reduce((s, r) => s + r.daily, 0)
+  const monthlyTotal = rows.reduce((s, r) => s + r.monthly, 0)
+  const yearlyTotal = rows.reduce((s, r) => s + r.yearly, 0)
+
+  const chartData = rows.map((r) => ({
+    name: r.format,
+    'Daily ($)': Number(r.daily.toFixed(2)),
+    'Monthly ($)': Number(r.monthly.toFixed(2)),
+  }))
+
+  const setImpsFor = (f: AdFormat, v: string) => setImps((p) => ({ ...p, [f]: Math.max(0, Number(v) || 0) }))
+  const setEcpmFor = (f: AdFormat, v: string) => setEcpm((p) => ({ ...p, [f]: Math.max(0, Number(v) || 0) }))
+
+  const fmt = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  return (
+    <div className="space-y-4 mt-4">
+      {/* Top-level totals */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        <StatCard title="Est. Daily" value={`$${fmt(dailyTotal)}`} icon={DollarSign} sub="from all formats" />
+        <StatCard title="Est. Monthly" value={`$${fmt(monthlyTotal)}`} icon={TrendingUp} sub="30-day projection" change="AdMob est." changeType="up" />
+        <StatCard title="Est. Yearly" value={`$${fmt(yearlyTotal)}`} icon={TrendingUp} sub="365-day projection" />
+        <StatCard title="DAU" value={dau.toLocaleString()} icon={Users} sub="daily active users" />
+        <StatCard title="Sessions/User" value={sessions.toLocaleString()} icon={Activity} sub="avg per day" />
+      </div>
+
+      {/* Assumption inputs */}
+      <Card>
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Assumptions</CardTitle><CardDescription>Adjust inputs below — revenue recalculates live</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Daily Active Users (DAU)</Label>
+              <Input type="number" value={dau} onChange={(e) => setDau(Math.max(0, Number(e.target.value) || 0))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Sessions per user / day</Label>
+              <Input type="number" step="0.5" value={sessions} onChange={(e) => setSessions(Math.max(0, Number(e.target.value) || 0))} />
+            </div>
+            <div className="space-y-1.5 items-end">
+              <Button variant="outline" size="sm" className="mt-6" onClick={() => { setImps({ Banner: 2, Interstitial: 1, Rewarded: 10, Native: 2 }); setEcpm({ ...ADMobDefaultEcpm }) }}>
+                Reset defaults
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Per-format inputs */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {AD_FORMATS.map((f) => (
+              <div key={f} className="rounded-lg border p-3">
+                <p className="text-sm font-medium mb-2">{f}</p>
+                <div className="space-y-2">
+                  <div>
+                    <span className="text-xs text-muted-foreground">Impressions / session</span>
+                    <Input type="number" className="mt-1 h-8" value={imps[f]} onChange={(e) => setImpsFor(f, e.target.value)} />
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">eCPM (USD)</span>
+                    <Input type="number" step="0.25" className="mt-1 h-8" value={ecpm[f]} onChange={(e) => setEcpmFor(f, e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Revenue breakdown chart */}
+      <Card>
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Revenue by Format (Daily & Monthly)</CardTitle><CardDescription>Based on current assumptions</CardDescription></CardHeader>
+        <CardContent>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="Daily ($)" fill="#6366f1" />
+                <Bar dataKey="Monthly ($)" fill="#ec4899" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Breakdown table */}
+      <Card>
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><DollarSign className="h-5 w-5" /> Detailed Breakdown</CardTitle><CardDescription>Revenue = (Impressions ÷ 1000) × eCPM</CardDescription></CardHeader>
+        <CardContent className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">Format</TableHead>
+                <TableHead className="text-xs text-right">Impressions/day</TableHead>
+                <TableHead className="text-xs text-right">eCPM ($)</TableHead>
+                <TableHead className="text-xs text-right">Daily ($)</TableHead>
+                <TableHead className="text-xs text-right">Monthly ($)</TableHead>
+                <TableHead className="text-xs text-right">Yearly ($)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.format}>
+                  <TableCell className="text-sm font-medium">{r.format}</TableCell>
+                  <TableCell className="text-sm text-right">{r.impressions.toLocaleString()}</TableCell>
+                  <TableCell className="text-sm text-right">${fmt(r.ecpm)}</TableCell>
+                  <TableCell className="text-sm text-right">${fmt(r.daily)}</TableCell>
+                  <TableCell className="text-sm text-right">${fmt(r.monthly)}</TableCell>
+                  <TableCell className="text-sm text-right">${fmt(r.yearly)}</TableCell>
+                </TableRow>
+              ))}
+              <TableRow>
+                <TableCell className="text-sm font-bold">Total</TableCell>
+                <TableCell className="text-sm text-right font-medium">{rows.reduce((s, r) => s + r.impressions, 0).toLocaleString()}</TableCell>
+                <TableCell className="text-sm text-right">—</TableCell>
+                <TableCell className="text-sm text-right font-bold">${fmt(dailyTotal)}</TableCell>
+                <TableCell className="text-sm text-right font-bold">${fmt(monthlyTotal)}</TableCell>
+                <TableCell className="text-sm text-right font-bold">${fmt(yearlyTotal)}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <p className="text-xs text-muted-foreground">
+        Estimates use Google AdMob benchmark eCPMs (Banner ~$1.00, Interstitial ~$6.00, Rewarded ~$12.00, Native ~$3.50).
+        Actual earnings vary by ad region, fill rate, and demand. This is a planning tool, not a guarantee.
+      </p>
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminPage() {
