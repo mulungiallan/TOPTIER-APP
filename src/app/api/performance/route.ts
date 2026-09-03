@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         id: true, type: true, asset: true, marketType: true, strategy: true,
         status: true, resultType: true, confidence: true,
         riskRewardRatio: true, createdAt: true, resolvedAt: true,
-        timeframe: true, session: true,
+        timeframe: true, tradingSession: true,
       },
       orderBy: { createdAt: 'desc' },
     })
