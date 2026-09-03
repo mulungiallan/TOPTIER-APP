@@ -105,7 +105,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { alertCategory, alertId, isActive } = body
+    const { alertCategory, alertId } = body
 
     if (!alertCategory || !alertId) {
       return errorResponse('alertCategory and alertId are required', 400)
@@ -115,9 +115,20 @@ export async function PATCH(request: NextRequest) {
       const alert = await db.priceAlert.findFirst({ where: { id: alertId, userId } })
       if (!alert) return errorResponse('Alert not found', 404)
 
+      const data: Record<string, unknown> = {}
+      if (body.isActive !== undefined) data.isActive = body.isActive
+      if (body.asset !== undefined) data.asset = body.asset
+      if (body.alertType !== undefined) data.alertType = body.alertType
+      if (body.targetPrice !== undefined) data.targetPrice = parseFloat(body.targetPrice)
+      if (body.isRecurring !== undefined) data.isRecurring = !!body.isRecurring
+      if (body.soundEnabled !== undefined) data.soundEnabled = !!body.soundEnabled
+      if (body.soundUri !== undefined) data.soundUri = body.soundUri
+      if (body.vibrateEnabled !== undefined) data.vibrateEnabled = !!body.vibrateEnabled
+      if (body.notifyType !== undefined) data.notifyType = body.notifyType
+
       const updated = await db.priceAlert.update({
         where: { id: alertId },
-        data: { isActive: isActive !== undefined ? isActive : !alert.isActive },
+        data,
       })
 
       return successResponse(updated)
@@ -127,9 +138,17 @@ export async function PATCH(request: NextRequest) {
       const alert = await db.customAlert.findFirst({ where: { id: alertId, userId } })
       if (!alert) return errorResponse('Alert not found', 404)
 
+      const data: Record<string, unknown> = {}
+      if (body.isActive !== undefined) data.isActive = body.isActive
+      if (body.condition !== undefined) data.condition = typeof body.condition === 'string' ? body.condition : JSON.stringify(body.condition)
+      if (body.soundEnabled !== undefined) data.soundEnabled = !!body.soundEnabled
+      if (body.soundUri !== undefined) data.soundUri = body.soundUri
+      if (body.vibrateEnabled !== undefined) data.vibrateEnabled = !!body.vibrateEnabled
+      if (body.notifyType !== undefined) data.notifyType = body.notifyType
+
       const updated = await db.customAlert.update({
         where: { id: alertId },
-        data: { isActive: isActive !== undefined ? isActive : !alert.isActive },
+        data,
       })
 
       return successResponse(updated)
