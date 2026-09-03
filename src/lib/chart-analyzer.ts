@@ -268,7 +268,12 @@ export class ChartAnalyzer {
 
     const base64 = optimized.toString('base64')
 
-    // Try newer model first, older model as fallback (region availability)
+    // Try newer model first, older model as fallback (region availability).
+    // Transient errors (network blips, 429/5xx overload) should not abort the
+    // whole provider — keep trying the remaining models so a temporary 503 on
+    // one model doesn't force us down to the heuristic fallback.
+    const transientStatus = new Set([429, 500, 502, 503, 504])
+
     for (const model of GEMINI_MODELS) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
       const body = JSON.stringify({
@@ -283,23 +288,54 @@ export class ChartAnalyzer {
         generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
       })
 
-      let response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY as string },
-        body,
-      })
-      if (response.status === 401 || response.status === 403) {
-        response = await fetch(`${url}?key=${GEMINI_API_KEY}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-        })
+      // Up to 2 extra retries on network/transient failures per model.
+      let lastError: unknown = null
+      let response: Response | null = null
+
+      for (let attempt = 0; attempt < 3 && !response; attempt++) {
+        try {
+          let res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY as string },
+            body,
+          })
+          if (res.status === 401 || res.status === 403) {
+            res = await fetch(`${url}?key=${GEMINI_API_KEY}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body,
+            })
+          }
+
+          // 404 = model unavailable — move on to the next model, no retry.
+          if (res.status === 404) break
+
+          // Transient / overload: keep this response but try again next loop
+          // if we still don't have a good one.
+          if (res.ok) {
+            response = res
+            break
+          }
+          if (transientStatus.has(res.status)) {
+            lastError = new Error(`Gemini API error: ${res.status}`)
+          } else {
+            // Unrecoverable auth/validation error — try the next model.
+            lastError = new Error(`Gemini API error: ${res.status}`)
+            break
+          }
+        } catch (err) {
+          // fetch failed (network, DNS, TLS, proxy) — retry the request.
+          lastError = err
+        }
+
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+        }
       }
 
-      if (!response.ok) {
-        // 404 = model unavailable in this region — try the next one
-        if (response.status === 404) continue
-        throw new Error(`Gemini API error: ${response.status}`)
+      if (!response) {
+        if (lastError) console.warn(`[chart-analyzer] Gemini ${model} failed:`, (lastError as Error).message)
+        continue
       }
 
       const json = (await response.json()) as {
@@ -309,9 +345,7 @@ export class ChartAnalyzer {
         json?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim() || ''
 
       if (!text) {
-        if (model === GEMINI_MODELS[GEMINI_MODELS.length - 1]) {
-          throw new Error('Gemini returned an empty response')
-        }
+        console.warn(`[chart-analyzer] Gemini ${model} returned an empty response`)
         continue
       }
 
