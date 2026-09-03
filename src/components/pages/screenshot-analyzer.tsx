@@ -932,17 +932,8 @@ export function ScreenshotAnalyzer() {
           </p>
         </div>
         <Badge variant="outline" className="gap-1.5">
-          {isPremium ? (
-            <>
-              <Crown className="size-3 text-yellow-500" />
-              Unlimited analyses
-            </>
-          ) : (
-            <>
-              <Zap className="size-3" />
-              {freeAnalysesUsed}/{FREE_ANALYSIS_LIMIT} free analyses
-            </>
-          )}
+          <Zap className="size-3 text-amber-500" />
+          Unlimited · Ad-supported
         </Badge>
       </div>
 
