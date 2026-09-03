@@ -1045,6 +1045,10 @@ export function AlertsPage() {
         frequency: a.isRecurring ? 'recurring' : 'one-time',
         triggeredAt: a.triggeredAt || undefined,
         createdAt: a.createdAt,
+        soundEnabled: a.soundEnabled ?? true,
+        soundUri: a.soundUri ?? null,
+        vibrateEnabled: a.vibrateEnabled ?? true,
+        notifyType: a.notifyType || 'system',
       }))
 
       // Map API custom alerts to UI types
@@ -1056,6 +1060,10 @@ export function AlertsPage() {
         status: getAlertStatus(a.isActive, a.isTriggered),
         frequency: 'recurring',
         createdAt: a.createdAt,
+        soundEnabled: a.soundEnabled ?? true,
+        soundUri: a.soundUri ?? null,
+        vibrateEnabled: a.vibrateEnabled ?? true,
+        notifyType: a.notifyType || 'system',
       }))
 
       setPriceAlerts(mappedPriceAlerts.filter((a) => a.status !== 'triggered'))
