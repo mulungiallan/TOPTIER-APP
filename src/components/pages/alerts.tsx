@@ -1101,6 +1101,10 @@ export function AlertsPage() {
           isTriggered: boolean
           triggeredAt: string | null
           createdAt: string
+          soundEnabled: boolean
+          soundUri: string | null
+          vibrateEnabled: boolean
+          notifyType: string
         }>
         customAlerts?: Array<{
           id: string
@@ -1111,6 +1115,10 @@ export function AlertsPage() {
           isTriggered: boolean
           triggeredAt: string | null
           createdAt: string
+          soundEnabled: boolean
+          soundUri: string | null
+          vibrateEnabled: boolean
+          notifyType: string
         }>
       }
 
