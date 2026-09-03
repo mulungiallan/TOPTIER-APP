@@ -293,19 +293,21 @@ export class ChartAnalyzer {
       let response: Response | null = null
 
       for (let attempt = 0; attempt < 3 && !response; attempt++) {
+        // AbortController guard so a provider that hangs (never responds) can't
+        // stall the whole fallback chain. Falls through to the next model/etc.
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 45_000)
+
         try {
-          let res = await fetch(url, {
+          // Send the key as a query param (`?key=`), NOT the header. Some keys
+          // only authenticate via the query string and hang on the
+          // `x-goog-api-key` header, which would stall analysis indefinitely.
+          let res = await fetch(`${url}?key=${GEMINI_API_KEY}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY as string },
+            headers: { 'Content-Type': 'application/json' },
             body,
+            signal: controller.signal,
           })
-          if (res.status === 401 || res.status === 403) {
-            res = await fetch(`${url}?key=${GEMINI_API_KEY}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body,
-            })
-          }
 
           // 404 = model unavailable — move on to the next model, no retry.
           if (res.status === 404) break
@@ -324,8 +326,11 @@ export class ChartAnalyzer {
             break
           }
         } catch (err) {
-          // fetch failed (network, DNS, TLS, proxy) — retry the request.
+          // fetch failed (network, DNS, TLS, proxy, or AbortController timeout)
+          // — retry the request.
           lastError = err
+        } finally {
+          clearTimeout(timeout)
         }
 
         if (attempt < 2) {

@@ -362,8 +362,67 @@ function CameraCaptureDialog({ open, onClose, onCapture }: {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [isNative, setIsNative] = useState(false)
 
+  // Detect the native Capacitor shell on mount. Inside the Android app the
+  // WebView cannot reliably stream getUserMedia, so we use the native Camera
+  // plugin instead. In the browser/PWA we keep the live <video> preview.
   useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      const { Capacitor } = await import('@capacitor/core')
+      if (mounted) setIsNative(Capacitor.isNativePlatform())
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  // Capture natively (Android/iOS shell) via the Capacitor Camera plugin.
+  const captureNative = useCallback(async () => {
+    setCameraError(null)
+    try {
+      const { Capacitor } = await import('@capacitor/core')
+      const { Camera } = await import('@capacitor/camera')
+      if (!Capacitor.isNativePlatform()) return
+
+      let perms = await Camera.checkPermissions()
+      if (perms.camera === 'prompt' || perms.camera === 'denied') {
+        perms = await Camera.requestPermissions({ permissions: ['camera'] })
+      }
+      if (perms.camera === 'denied') {
+        setCameraError('Camera permission denied. Please allow camera access in Settings.')
+        return
+      }
+
+      const result = await Camera.takePhoto({
+        quality: 90,
+        encodingType: 0, // JPEG
+        correctOrientation: true,
+        saveToGallery: false,
+      })
+
+      const uri = result.webPath ?? result.uri
+      if (!uri) {
+        setCameraError('No image was returned from the camera.')
+        return
+      }
+
+      // Fetch the capacitor:// blob and wrap it as a File for the analyzer.
+      const res = await fetch(uri)
+      const blob = await res.blob()
+      const file = new File([blob], `capture-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
+      onCapture(file)
+      onClose()
+    } catch (err) {
+      console.warn('[Camera] Native capture failed:', err)
+      setCameraError('Unable to open the camera. Please allow camera permission or use file upload instead.')
+    }
+  }, [onCapture, onClose])
+
+  // Open the live <video> preview (web/PWA path only).
+  useEffect(() => {
+    if (isNative) return
     if (!open) {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
@@ -398,7 +457,7 @@ function CameraCaptureDialog({ open, onClose, onCapture }: {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
     }
-  }, [open])
+  }, [open, isNative])
 
   const capture = () => {
     const video = videoRef.current
@@ -421,23 +480,40 @@ function CameraCaptureDialog({ open, onClose, onCapture }: {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Take a Photo</DialogTitle>
-          <DialogDescription>Capture a chart screenshot with your camera</DialogDescription>
+          <DialogDescription>
+            {isNative ? 'Open the camera to capture a chart screenshot' : 'Capture a chart screenshot with your camera'}
+          </DialogDescription>
         </DialogHeader>
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted">
-          {cameraError ? (
-            <div className="flex h-full items-center justify-center p-4 text-center text-sm text-muted-foreground">
-              {cameraError}
+        {isNative ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
+            {cameraError ? (
+              <p className="text-sm text-muted-foreground">{cameraError}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">The native camera will open to take your photo.</p>
+            )}
+            <Button size="sm" className="gap-2" onClick={captureNative}>
+              <Camera className="size-4" /> Open Camera
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted">
+              {cameraError ? (
+                <div className="flex h-full items-center justify-center p-4 text-center text-sm text-muted-foreground">
+                  {cameraError}
+                </div>
+              ) : (
+                <video ref={videoRef} className="h-full w-full object-contain" playsInline muted autoPlay />
+              )}
             </div>
-          ) : (
-            <video ref={videoRef} className="h-full w-full object-contain" playsInline muted autoPlay />
-          )}
-        </div>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" className="gap-2" onClick={capture} disabled={!!cameraError}>
-            <Camera className="size-4" /> Capture
-          </Button>
-        </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+              <Button size="sm" className="gap-2" onClick={capture} disabled={!!cameraError}>
+                <Camera className="size-4" /> Capture
+              </Button>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

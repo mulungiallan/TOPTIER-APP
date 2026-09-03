@@ -290,7 +290,7 @@ function LandingPage() {
                 <Zap className="size-3 mr-1" />
                 AI-Powered Trading Platform
               </Badge>
-              <h1 className="font-display text-4xl lg:text-6xl font-bold leading-[1.05] tracking-tight">
+              <h1 className="font-display text-3xl sm:text-4xl lg:text-6xl font-bold leading-[1.1] tracking-tight break-words">
                 Every signal is <span className="text-[#1b4f9c]">scored.</span>
                 <br />
                 Every trader has a <span className="text-[#1b4f9c]">rank.</span>

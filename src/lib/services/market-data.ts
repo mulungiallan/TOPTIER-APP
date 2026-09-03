@@ -3,13 +3,33 @@
 // Free tier - no API key required for basic quotes
 
 import YahooFinance from 'yahoo-finance2'
+import { env } from '@/lib/env'
+
+const FINNHUB_API_KEY = env.finnhubApiKey
 
 // yahoo-finance2 v3 requires instantiation via `new YahooFinance()` before use.
 // Reuse a single instance across the whole process for connection pooling.
-const yahooFinance = new YahooFinance()
+//
+// Yahoo Finance bot-checks datacenter traffic and can answer requests with an
+// HTTP redirect to a consent/bot page, which the library surfaces as a
+// "Unexpected redirect to https://finance.yahoo.com/quote/<SYM>" error. Sending
+// a realistic browser User-Agent on every request is the standard mitigation and
+// greatly reduces the rate at which Yahoo redirects/rate-limits us.
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+const yahooFinance = new YahooFinance({
+  fetchOptions: {
+    headers: { 'User-Agent': USER_AGENT },
+  },
+  validation: { logErrors: false, logOptionsErrors: false },
+})
 
 // Suppress yahoo-finance2 deprecation notices in production
 ;(yahooFinance as any).suppressNotices?.(['yahooSurvey'])
+
+// Max attempts per quote as a safety net against Yahoo's transient redirects.
+const QUOTE_ATTEMPTS = 2
 
 export interface MarketPrice {
   symbol: string
@@ -74,6 +94,34 @@ function resolveYahooSymbol(symbol: string): string {
   return symbol
 }
 
+// Finnhub fallback used when Yahoo is IP-blocked. Covers the symbols Finnhub's
+// free /quote endpoint can actually serve (stocks, crypto via BINANCE, and EUR/
+// USD-style forex via OANDA). If a symbol has no Finnhub mapping it is passed
+// through as-is (works for plain stock tickers like AAPL).
+const FINNHUB_FALLBACK_MAP: Record<string, string> = {
+  'EUR/USD': 'OANDA:EURUSD',
+  'GBP/USD': 'OANDA:GBPUSD',
+  'USD/JPY': 'OANDA:USDJPY',
+  'USD/CHF': 'OANDA:USDCHF',
+  'AUD/USD': 'OANDA:AUDUSD',
+  'USD/CAD': 'OANDA:USDCAD',
+  'NZD/USD': 'OANDA:NZDUSD',
+  'EUR/GBP': 'OANDA:EURGBP',
+  'GBP/JPY': 'OANDA:GBPJPY',
+  'BTC/USD': 'BINANCE:BTCUSDT',
+  'BTC-USD': 'BINANCE:BTCUSDT',
+  'ETH/USD': 'BINANCE:ETHUSDT',
+  'ETH-USD': 'BINANCE:ETHUSDT',
+  'SOL/USD': 'BINANCE:SOLUSDT',
+  'XRP/USD': 'BINANCE:XRPUSDT',
+  'LTC/USD': 'BINANCE:LTCUSDT',
+}
+
+function resolveFinnhubSymbol(symbol: string): string {
+  const upper = symbol.toUpperCase()
+  return FINNHUB_FALLBACK_MAP[upper] || upper
+}
+
 export class MarketDataService {
   private cache: Map<string, { data: MarketPrice; timestamp: number }> = new Map()
   private historicalCache: Map<string, { data: HistoricalData[]; timestamp: number }> = new Map()
@@ -105,7 +153,26 @@ export class MarketDataService {
         return cached.data
       }
 
-      const quote = (await yahooFinance.quote(yahooSymbol)) as any
+      let quote: any
+      let lastErr: unknown
+
+      for (let attempt = 1; attempt <= QUOTE_ATTEMPTS; attempt++) {
+        try {
+          quote = (await yahooFinance.quote(yahooSymbol)) as any
+          break
+        } catch (err) {
+          lastErr = err
+          // Retry once after a short pause; a retry often succeeds when the
+          // failure was Yahoo's transient redirect/rate-limit.
+          if (attempt < QUOTE_ATTEMPTS) {
+            await new Promise(r => setTimeout(r, 500 * attempt))
+          }
+        }
+      }
+
+      if (!quote) {
+        throw lastErr ?? new Error(`No quote received for ${yahooSymbol}`)
+      }
 
       const price: MarketPrice = {
         symbol,
@@ -127,7 +194,44 @@ export class MarketDataService {
       this.evictexpired()
       return price
     } catch (error) {
+      // Yahoo is frequently IP-blocked from datacenter egress (it redirects to a
+      // bot-check page). When Yahoo fails, fall back to Finnhub so live prices
+      // still resolve for the symbols Finnhub can serve.
+      const fb = await this.fetchFinnhubPrice(symbol)
+      if (fb) {
+        this.cache.set(symbol.toUpperCase(), { data: fb, timestamp: Date.now() })
+        this.evictexpired()
+        return fb
+      }
       console.error(`Failed to fetch price for ${symbol}:`, error)
+      return null
+    }
+  }
+
+  private async fetchFinnhubPrice(symbol: string): Promise<MarketPrice | null> {
+    if (!FINNHUB_API_KEY) return null
+    try {
+      const mapped = resolveFinnhubSymbol(symbol)
+      const res = await fetch(
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(mapped)}`,
+        { headers: { 'X-Finnhub-Token': FINNHUB_API_KEY } }
+      )
+      if (!res.ok) return null
+      const data = await res.json()
+      if (!data || data.c === undefined || data.c === 0) return null
+      return {
+        symbol,
+        price: data.c,
+        change: data.d ?? 0,
+        changePercent: data.dp ?? 0,
+        volume: 0,
+        timestamp: new Date(data.t ? data.t * 1000 : Date.now()),
+        high: data.h && data.h !== 0 ? data.h : undefined,
+        low: data.l && data.l !== 0 ? data.l : undefined,
+        open: data.o && data.o !== 0 ? data.o : undefined,
+        previousClose: data.pc ?? undefined,
+      }
+    } catch {
       return null
     }
   }

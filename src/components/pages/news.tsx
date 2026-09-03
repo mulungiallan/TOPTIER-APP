@@ -64,11 +64,47 @@ interface MarketMover {
 
 // ─── Static sidebar data (no API for these) ────────────────────────────────────
 
-const marketSessions = [
-  { name: 'Asian', status: 'closed' as SessionStatus, time: 'Tokyo 09:00-18:00 JST' },
-  { name: 'European', status: 'open' as SessionStatus, time: 'London 08:00-17:00 GMT' },
-  { name: 'US', status: 'closed' as SessionStatus, time: 'New York 09:30-16:00 EST' },
+interface MarketSession {
+  name: string
+  status: SessionStatus
+  time: string
+}
+
+// Real forex session windows (open/close in UTC) so the session badges reflect
+// the actual live market instead of hardcoded values. Forex markets are closed
+// on weekends (Saturday/Sunday).
+const SESSION_DEFS: Array<{
+  name: string
+  label: string
+  openUTC: number
+  closeUTC: number
+}> = [
+  { name: 'Asian', label: 'Tokyo 09:00-18:00 JST', openUTC: 0, closeUTC: 9 }, // 00:00-09:00 UTC
+  { name: 'European', label: 'London 08:00-17:00 GMT', openUTC: 8, closeUTC: 17 }, // 08:00-17:00 UTC
+  { name: 'US', label: 'New York 09:30-16:00 EST', openUTC: 14.5, closeUTC: 21 }, // 14:30-21:00 UTC
 ]
+
+function getMarketSessions(): MarketSession[] {
+  const now = new Date()
+  const day = now.getUTCDay() // 0=Sun, 6=Sat
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+
+  // Forex is closed on weekends.
+  if (day === 0 || day === 6) {
+    return SESSION_DEFS.map((s) => ({ name: s.name, status: 'closed' as SessionStatus, time: s.label }))
+  }
+
+  return SESSION_DEFS.map((s) => {
+    const openMin = s.openUTC * 60
+    const closeMin = s.closeUTC * 60
+    const open = utcMinutes >= openMin && utcMinutes < closeMin
+    return {
+      name: s.name,
+      status: (open ? 'open' : 'closed') as SessionStatus,
+      time: s.label,
+    }
+  })
+}
 
 const topGainers: MarketMover[] = [
   { asset: 'GBP/JPY', change: '+128', changePercent: '+0.67%', direction: 'up' },
@@ -321,6 +357,13 @@ export function NewsPage() {
     }
   })
 
+  // Market sessions recomputed live so open/closed badges stay accurate.
+  const [sessions, setSessions] = useState<MarketSession[]>(() => getMarketSessions())
+  useEffect(() => {
+    const id = setInterval(() => setSessions(getMarketSessions()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
   // Debounce search input
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   useEffect(() => {
@@ -522,7 +565,7 @@ export function NewsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {marketSessions.map((session) => (
+            {sessions.map((session) => (
               <SessionIndicator key={session.name} {...session} />
             ))}
             {/* Session Overlap Note */}
