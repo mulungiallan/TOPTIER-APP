@@ -312,6 +312,40 @@ function NotifyBadges({ value }: { value: AlertNotifValue }) {
   )
 }
 
+const ALERT_SOUND_URIS: Record<string, string> = {
+  bell: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+  ding: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+  chime: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+  whistle: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+}
+
+function playAlertSound(uri?: string | null) {
+  if (typeof window === 'undefined' || typeof Audio === 'undefined') return
+  const defaultUri = ALERT_SOUND_URIS.bell
+  const audio = new Audio(uri && ALERT_SOUND_URIS[uri] ? ALERT_SOUND_URIS[uri] : defaultUri)
+  audio.volume = 0.7
+  audio.play().catch(() => {})
+}
+
+function fireAlertNotification(prefs: AlertNotifValue) {
+  if (typeof navigator === 'undefined') return
+  if (prefs.soundEnabled) playAlertSound(prefs.soundUri)
+  if (prefs.vibrateEnabled && typeof navigator.vibrate === 'function') {
+    try { navigator.vibrate([200, 80, 200, 80, 200]) } catch (e) {}
+  }
+  if (prefs.notifyType === 'system' || prefs.notifyType === 'both') {
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window &&
+          Notification.permission === 'granted') {
+        new Notification('TOPTIER Alert', {
+          body: 'Your alert has been triggered.',
+          icon: '/icons/toptier-icon-192.png',
+        })
+      }
+    } catch (e) {}
+  }
+}
+
 // ─── Loading Skeleton ──────────────────────────────────────────────────────────
 
 function AlertsSkeleton() {
