@@ -556,7 +556,6 @@ export function ScreenshotAnalyzer() {
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
-
   // State
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
