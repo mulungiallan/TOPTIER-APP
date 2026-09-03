@@ -295,7 +295,7 @@ function AlertNotificationOptions({
 }
 
 function NotifyBadges({ value }: { value: AlertNotifValue }) {
-  const items: { active: boolean; icon: JSX.Element; label: string }[] = [
+  const items: { active: boolean; icon: React.ReactNode; label: string }[] = [
     { active: value.soundEnabled, icon: <Volume2 className="size-3" />, label: 'Sound' },
     { active: value.vibrateEnabled, icon: <Vibrate className="size-3" />, label: 'Vibrate' },
     { active: value.notifyType === 'system' || value.notifyType === 'both', icon: <BellRing className="size-3" />, label: 'System' },
