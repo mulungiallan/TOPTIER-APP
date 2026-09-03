@@ -1197,6 +1197,37 @@ export function AlertsPage() {
     })
   }, [triggeredAlerts, livePriceMap])
 
+  // Fire sound + vibration + system notification when an alert is first
+  // detected as triggered (server flips isTriggered during polling).
+  const seenTriggeredRef = useRef<Set<string>>(new Set())
+  const notifiedTriggeredRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const fresh = new Set<string>()
+    triggeredAlerts.forEach((a) => {
+      fresh.add(a.id)
+      if (!seenTriggeredRef.current.has(a.id) && !notifiedTriggeredRef.current.has(a.id)) {
+        notifiedTriggeredRef.current.add(a.id)
+        fireAlertNotification({
+          soundEnabled: a.soundEnabled,
+          soundUri: a.soundUri,
+          vibrateEnabled: a.vibrateEnabled,
+          notifyType: a.notifyType,
+        })
+        toast('Alert triggered', {
+          description: `${a.asset} price alert was triggered`,
+        })
+      }
+    })
+    seenTriggeredRef.current = fresh
+  }, [triggeredAlerts])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const isLive = source === 'finnhub' || source === 'yahoo' || source === 'mixed'
 
   const activeAlerts = priceAlerts.filter((a) => a.status === 'active').length
