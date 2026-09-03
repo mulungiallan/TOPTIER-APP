@@ -1,6 +1,8 @@
 name: Play Store Deploy
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       track:
@@ -13,21 +15,15 @@ on:
           - alpha
           - beta
           - production
-      release_status:
-        description: 'Release status'
-        required: true
-        default: 'completed'
-        type: choice
-        options:
-          - completed
-          - inProgress
-          - draft
   release:
     types: [published]
 
 concurrency:
   group: play-store-deploy
   cancel-in-progress: false
+
+env:
+  TRACK: production
 
 jobs:
   release:
@@ -53,6 +49,32 @@ jobs:
       - run: npm ci
       - run: npx cap sync android
 
+      - name: Resolve track
+        id: track
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "track=${{ inputs.track }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "track=production" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-increment versionCode + versionName
+        shell: bash
+        run: |
+          set -e
+          FILE=android/app/build.gradle
+          VC=$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$FILE")
+          VN=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([0-9.]*\)".*/\1/p' "$FILE")
+          NEW_VC=$((VC + 1))
+          IFS='.' read -r MAJ MIN PATCH <<< "$VN"
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VN="${MAJ}.${MIN}.${NEW_PATCH}"
+          sed -i "s/^\([[:space:]]*versionCode[[:space:]]*\)[0-9][0-9]*/\1${NEW_VC}/" "$FILE"
+          sed -i "s/^\([[:space:]]*versionName[[:space:]]*\"\)[0-9.]*\(\"\)/\1${NEW_VN}\2/" "$FILE"
+          echo "Bumped versionCode ${VC} -> ${NEW_VC}, versionName ${VN} -> ${NEW_VN}"
+          sed -n '/versionCode\|versionName/p' "$FILE"
+
       - name: Restore release keystore
         shell: bash
         run: |
@@ -77,6 +99,6 @@ jobs:
           serviceAccountJson: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.toptier.app
           releaseFiles: android/app/build/outputs/bundle/release/*.aab
-          track: ${{ github.event_name == 'release' && 'production' || inputs.track }}
-          releaseStatus: ${{ github.event_name == 'release' && 'completed' || inputs.release_status }}
+          track: ${{ steps.track.outputs.track }}
+          releaseStatus: completed
           whatsNewDirectory: playstore-release-notes/
