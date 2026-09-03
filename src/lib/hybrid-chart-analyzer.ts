@@ -103,19 +103,11 @@ export class HybridChartAnalyzer {
     return {
       ...result,
       planUsed,
-      packageSplitRatio: splitRatio,
+      packageSplitRatio: 100,
       analysesUsed: updated.analysesUsed,
       analysesLimit,
       analysesRemaining,
     }
-  }
-
-  /**
-   * Free path: Hugging Face only, no paid fallbacks (Gemini is skipped).
-   * If HF fails, returns the heuristic result (still $0 cost).
-   */
-  private async freePathAnalysis(imageBuffer: Buffer): Promise<ChartAnalysisResult> {
-    return chartAnalyzer.analyzeChart(imageBuffer, 'free')
   }
 }
 
