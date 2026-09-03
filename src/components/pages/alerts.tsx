@@ -600,6 +600,12 @@ function CreateCustomAlertWizard({ onCreated }: { onCreated: () => void }) {
   const [condition, setCondition] = useState('')
   const [threshold, setThreshold] = useState('')
   const [creating, setCreating] = useState(false)
+  const [notif, setNotif] = useState<AlertNotifValue>({
+    soundEnabled: true,
+    soundUri: null,
+    vibrateEnabled: true,
+    notifyType: 'system',
+  })
 
   const conditionPresets: Record<CustomAlertType, string[]> = {
     RSI: ['RSI below', 'RSI above'],
