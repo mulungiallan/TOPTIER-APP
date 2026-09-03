@@ -1191,24 +1191,24 @@ export function ScreenshotAnalyzer() {
       </div>
 
       {/* ─── Free Tier Warning ──────────────────────────────────── */}
-      {!isPremium && !freeLimitReached && (
-        <div className="flex items-center gap-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
-          <AlertTriangle className="size-5 text-yellow-500 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">Free tier: {FREE_ANALYSIS_LIMIT - freeAnalysesUsed} analyses remaining</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Watch a short ad to analyze your chart, or upgrade to Premium for ad-free unlimited analyses.
-            </p>
-          </div>
-          <Button size="sm" variant="outline" onClick={() => setPage('subscriptions')} className="shrink-0">
-            <Crown className="size-3.5 mr-1" />
-            Upgrade
-          </Button>
+      <div className="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+        <Zap className="size-5 text-amber-500 shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm font-medium">Unlimited AI analysis — ad-supported</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {referralCount >= 20
+              ? 'You get a reduced ad load (5 ads/analysis). Thanks for sharing!'
+              : 'Refer 20 friends who download via your link to drop ads from 10 to 5 per analysis.'}
+          </p>
         </div>
-      )}
+        <Button size="sm" variant="outline" onClick={() => setPage('subscriptions')} className="shrink-0">
+          <Crown className="size-3.5 mr-1" />
+          Refer
+        </Button>
+      </div>
 
-      {/* ─── Rewarded AdFlow gate (free users only, phased) ─────────── */}
-      {showAdFlow && !isPremium && (
+      {/* ─── Rewarded AdFlow gate (all users, phased, reduced for 20+ referrals) ─── */}
+      {showAdFlow && (
         <AdFlow
           phase={adPhase}
           onComplete={handleAdComplete}
