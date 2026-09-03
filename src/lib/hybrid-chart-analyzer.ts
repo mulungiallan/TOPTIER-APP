@@ -69,40 +69,12 @@ export class HybridChartAnalyzer {
       })
     }
 
-    // Enforce quota (0 = unlimited)
-    if (analysesLimit > 0 && analysesUsed >= analysesLimit) {
-      throw new Error(
-        `Analysis limit reached (${analysesUsed}/${analysesLimit}). Upgrade your plan for more analyses.`
-      )
-    }
+    // ─── Route: everyone receives the premium analysis experience ────────
+    // (Ad-supported: all users are served the AdFlow on the client.)
+    const planUsed: 'free' | 'premium' = 'premium'
 
-    // Resolve the user's package (if any) to read splitRatio
-    const packageName = user.plan
-    let splitRatio = 0 // free users = 0% premium
-    if (packageName && packageName !== 'free') {
-      // Plan name is stored lowercased with underscores, e.g. "premium_annual"
-      // SQLite doesn't support mode: 'insensitive', so we fetch all packages
-      // and compare lowercased in JS.
-      const allPackages = await db.package.findMany({
-        where: { isActive: true },
-        select: { name: true, splitRatio: true },
-      })
-      const normalizedPlan = packageName.replace(/_/g, ' ').toLowerCase()
-      const matched =
-        allPackages.find((p) => p.name.toLowerCase() === normalizedPlan) ||
-        allPackages.find((p) => p.name.toLowerCase().includes(normalizedPlan))
-      splitRatio = matched?.splitRatio ?? 90
-    }
-
-    // ─── Route: free vs premium ───────────────────────────────────────────
-    const isPremiumUser = splitRatio > 0
-    const usePremiumPath = isPremiumUser && Math.random() * 100 < splitRatio
-    const planUsed: 'free' | 'premium' = usePremiumPath ? 'premium' : 'free'
-
-    // Run analysis — premium path uses full fallback chain; free path is restricted
-    const result = usePremiumPath
-      ? await chartAnalyzer.analyzeChart(imageBuffer, 'standard')
-      : await this.freePathAnalysis(imageBuffer)
+    // Run analysis — full fallback chain (premium path)
+    const result = await chartAnalyzer.analyzeChart(imageBuffer, 'standard')
 
     // ─── Record usage ─────────────────────────────────────────────────────
     const updated = await db.user.update({
