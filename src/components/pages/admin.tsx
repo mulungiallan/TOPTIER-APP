@@ -1224,6 +1224,7 @@ export default function AdminPage() {
           <TabsTrigger value="calendar" className="gap-1.5 text-xs">Calendar</TabsTrigger>
           <TabsTrigger value="bots" className="gap-1.5 text-xs">Bots</TabsTrigger>
           <TabsTrigger value="ads" className="gap-1.5 text-xs">Ads</TabsTrigger>
+          <TabsTrigger value="revenue" className="gap-1.5 text-xs">Ad Revenue</TabsTrigger>
           <TabsTrigger value="analyses" className="gap-1.5 text-xs">Analyses</TabsTrigger>
           <TabsTrigger value="content" className="gap-1.5 text-xs">Coupons &amp; Tickets</TabsTrigger>
           <TabsTrigger value="audit" className="gap-1.5 text-xs">Activity</TabsTrigger>
