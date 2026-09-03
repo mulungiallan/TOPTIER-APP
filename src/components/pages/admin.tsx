@@ -2004,6 +2004,10 @@ export default function AdminPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        {/* ─── Ad Revenue Calculator ───────────────────────────────── */}
+        <TabsContent value="revenue" className="space-y-4 mt-4">
+          <AdRevenueCalculator />
+        </TabsContent>
         <TabsContent value="analyses" className="space-y-4 mt-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard title="Total" value={(overview?.stats.analyses.total ?? 0).toLocaleString()} icon={Cpu} />
