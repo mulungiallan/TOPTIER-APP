@@ -40,6 +40,7 @@ import {
   ScanLine,
   Cpu,
   LineChart,
+  MessageSquareText,
 } from 'lucide-react'
 import { useStore, type Page } from '@/lib/store'
 import { Button } from '@/components/ui/button'
@@ -79,6 +80,7 @@ const navItems: NavItem[] = [
   { id: 'dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
   { id: 'signals', labelKey: 'nav.signals', icon: TrendingUp },
   { id: 'screenshot', labelKey: 'nav.screenshot', icon: Camera },
+  { id: 'chat-analyser', labelKey: 'nav.chat-analyser', icon: MessageSquareText },
   { id: 'watchlist', labelKey: 'nav.watchlist', icon: Eye },
   { id: 'alerts', labelKey: 'nav.alerts', icon: Bell },
   { id: 'calendar', labelKey: 'nav.calendar', icon: Calendar },

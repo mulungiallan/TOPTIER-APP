@@ -33,6 +33,7 @@ import { Badge } from '@/components/ui/badge'
 import { initUsageTracking, trackEvent } from '@/lib/tracking'
 
 const ScreenshotAnalyzer = dynamic(() => import('@/components/pages/screenshot-analyzer').then(m => m.ScreenshotAnalyzer), { ssr: false })
+const ChatAnalyserPage = dynamic(() => import('@/components/pages/chat-analyser').then(m => m.ChatAnalyserPage), { ssr: false })
 const WatchlistPage = dynamic(() => import('@/components/pages/watchlist').then(m => m.WatchlistPage), { ssr: false })
 const DashboardPage = dynamic(() => import('@/components/pages/dashboard').then(m => m.DashboardPage), { ssr: false })
 const SignalsPage = dynamic(() => import('@/components/pages/signals').then(m => m.SignalsPage), { ssr: false })
@@ -72,6 +73,7 @@ const pageComponents: Record<Page, React.ReactNode> = {
   dashboard: <DashboardPage />,
   signals: <SignalsPage />,
   screenshot: <ScreenshotAnalyzer />,
+  'chat-analyser': <ChatAnalyserPage />,
   watchlist: <WatchlistPage />,
   alerts: <AlertsPage />,
   calendar: <CalendarPage />,
@@ -238,10 +240,10 @@ function LandingPage() {
 
       {/* ─── Nav ──────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <BrandLogo className="size-9" />
-            <span className="font-display text-lg font-bold tracking-tight">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <BrandLogo className="size-9 shrink-0" />
+            <span className="font-display text-base sm:text-lg font-bold tracking-tight">
               TOP<span className="text-[#1b4f9c]">TIER</span>
             </span>
           </div>
@@ -251,17 +253,18 @@ function LandingPage() {
             <button onClick={() => setAuthMode('register')} className="hover:text-foreground transition-colors">Community</button>
             <button onClick={() => setAuthMode('register')} className="hover:text-foreground transition-colors">Pricing</button>
           </nav>
-          <div className="flex items-center gap-2.5">
+          <div className="flex shrink-0 items-center gap-2.5">
             <Button
               variant="ghost"
               size="sm"
+              className="px-2.5 sm:px-3"
               onClick={() => setAuthMode('login')}
             >
               Sign In
             </Button>
             <Button
               size="sm"
-              className="bg-[#1b4f9c] hover:bg-[#16385e] text-white"
+              className="bg-[#1b4f9c] hover:bg-[#16385e] text-white px-3 sm:px-4"
               onClick={() => setAuthMode('register')}
             >
               Get Started
@@ -278,24 +281,25 @@ function LandingPage() {
         </div>
 
         {/* ─── Hero ───────────────────────────────────────────────────── */}
-        <section className="relative mx-auto max-w-7xl px-6 pt-6 pb-10 lg:pt-10">
-          <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
+        <section className="relative mx-auto max-w-7xl px-5 pt-6 pb-10 sm:px-6 lg:pt-10">
+          <div className="grid items-center gap-8 sm:gap-12 lg:grid-cols-[1.1fr_1fr]">
             {/* Left — copy */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
+              className="min-w-0"
             >
               <Badge className="mb-5 bg-[#e8eff9] dark:bg-[#1b4f9c]/15 text-[#1b4f9c] border-[#1b4f9c]/20 hover:bg-[#e8eff9] dark:hover:bg-[#1b4f9c]/20 font-medium">
                 <Zap className="size-3 mr-1" />
                 AI-Powered Trading Platform
               </Badge>
-              <h1 className="font-display text-3xl sm:text-4xl lg:text-6xl font-bold leading-[1.1] tracking-tight break-words">
+              <h1 className="font-display text-[clamp(1.8rem,7vw,3.75rem)] font-bold leading-[1.08] tracking-tight break-words">
                 Every signal is <span className="text-[#1b4f9c]">scored.</span>
                 <br />
                 Every trader has a <span className="text-[#1b4f9c]">rank.</span>
               </h1>
-              <p className="mt-5 max-w-xl text-lg text-muted-foreground leading-relaxed">
+              <p className="mt-5 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed">
                 TOPTIER scores every signal by confidence and ranks every trader on
                 live proof — win rate, profit factor, and drawdown. No deleted
                 losers. No fake results.
@@ -303,7 +307,7 @@ function LandingPage() {
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
                 <Button
                   size="lg"
-                  className="gap-2 bg-[#1b4f9c] hover:bg-[#16385e] text-white"
+                  className="gap-2 bg-[#1b4f9c] hover:bg-[#16385e] text-white w-full sm:w-auto"
                   onClick={() => setAuthMode('register')}
                 >
                   Get Signals
@@ -312,6 +316,7 @@ function LandingPage() {
                 <Button
                   variant="outline"
                   size="lg"
+                  className="w-full sm:w-auto"
                   onClick={() => setAuthMode('login')}
                 >
                   View Live Rank
@@ -319,14 +324,14 @@ function LandingPage() {
               </div>
 
               {/* Proof stats — fetched from /api/health or shown as placeholder */}
-              <div className="mt-10 flex flex-wrap gap-x-10 gap-y-5">
+              <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-y-6 gap-x-10">
                 {[
                   { value: 'AI-Powered', label: 'confidence scoring' },
                   { value: 'Transparent', label: 'no deleted results' },
                   { value: 'Live', label: 'proof-of-performance' },
                 ].map((stat) => (
-                  <div key={stat.label}>
-                    <p className="font-mono text-3xl font-bold text-foreground">{stat.value}</p>
+                  <div key={stat.label} className="min-w-0">
+                    <p className="font-mono text-2xl sm:text-3xl font-bold text-foreground break-words">{stat.value}</p>
                     <p className="text-sm text-muted-foreground">{stat.label}</p>
                   </div>
                 ))}
@@ -426,7 +431,7 @@ function LandingPage() {
         </section>
 
         {/* ─── Features ───────────────────────────────────────────────── */}
-        <section className="mx-auto max-w-7xl px-6 pb-20">
+        <section className="mx-auto max-w-7xl px-5 sm:px-6 pb-20">
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl font-bold tracking-tight">
               Everything You Need to Trade Smarter
@@ -460,8 +465,8 @@ function LandingPage() {
         </section>
 
         {/* ─── Tier ladder section ────────────────────────────────────── */}
-        <section className="mx-auto max-w-7xl px-6 pb-20">
-          <div className="rounded-2xl border border-border bg-card p-8 lg:p-12">
+        <section className="mx-auto max-w-7xl px-5 sm:px-6 pb-20">
+          <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 lg:p-12">
             <div className="text-center mb-10">
               <h2 className="font-display text-3xl font-bold tracking-tight">Choose Your Tier</h2>
               <p className="mt-2 text-muted-foreground max-w-xl mx-auto">
@@ -523,7 +528,7 @@ function LandingPage() {
 
         {/* ─── Footer ─────────────────────────────────────────────────── */}
         <footer className="border-t border-border">
-          <div className="mx-auto max-w-7xl px-6 py-8">
+          <div className="mx-auto max-w-7xl px-5 sm:px-6 py-8">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <Zap className="size-4 text-[#1b4f9c]" />
@@ -580,7 +585,7 @@ export default function Home() {
     const pageParam = params.get('page')
     if (pageParam && isAuthenticated) {
       // Validate the page param against known Page IDs (light validation)
-      const valid: string[] = ['dashboard', 'signals', 'screenshot', 'watchlist', 'alerts', 'calendar', 'news', 'performance', 'subscriptions', 'pricing', 'pricing-dashboard', 'social', 'leaderboards', 'competitions', 'messages', 'groups', 'copy-trading', 'paper-trading', 'trading-bot', 'backtesting', 'ai-predictions', 'patterns', 'strategy-builder', 'tradingview', 'settings', 'community', 'education', 'support', 'profile', 'stats', 'monetization']
+      const valid: string[] = ['dashboard', 'signals', 'screenshot', 'chat-analyser', 'watchlist', 'alerts', 'calendar', 'news', 'performance', 'subscriptions', 'pricing', 'pricing-dashboard', 'social', 'leaderboards', 'competitions', 'messages', 'groups', 'copy-trading', 'paper-trading', 'trading-bot', 'backtesting', 'ai-predictions', 'patterns', 'strategy-builder', 'tradingview', 'settings', 'community', 'education', 'support', 'profile', 'stats', 'monetization']
       if (valid.includes(pageParam) && pageParam !== currentPage) {
         setPage(pageParam as any)
       }

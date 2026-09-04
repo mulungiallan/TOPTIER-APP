@@ -6,6 +6,7 @@ export type Page =
   | 'dashboard'
   | 'signals'
   | 'screenshot'
+  | 'chat-analyser'
   | 'watchlist'
   | 'alerts'
   | 'calendar'

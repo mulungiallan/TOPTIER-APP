@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store'
 import { getAdSettings, applyAdSettings } from '@/lib/ads'
 import { adService, type AdStep, type AdCreative, type AdStepPhase } from '@/lib/services/ad-service'
 import { trackAd } from '@/lib/ads'
-import { X, Gift, Zap, Crown, CheckCircle2 } from 'lucide-react'
+import { X, Gift, Zap, Crown, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AdFlowProps {
@@ -130,11 +130,8 @@ export function AdFlow({ onComplete, onSkip, onUpgrade, phase = 'start' }: AdFlo
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
         <div className="flex w-full max-w-sm flex-col items-center rounded-2xl bg-background p-8 text-center shadow-2xl">
-          <CheckCircle2 className="size-16 text-green-500" />
-          <h3 className="mt-4 text-xl font-bold">All ads complete!</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Unlocking your analysis…
-          </p>
+          <Loader2 className="size-10 animate-spin text-primary" />
+          <h3 className="mt-4 text-lg font-bold">Loading your analysis…</h3>
         </div>
       </div>
     )

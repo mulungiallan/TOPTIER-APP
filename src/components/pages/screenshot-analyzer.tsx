@@ -29,8 +29,6 @@ import {
 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
-import { AdFlow } from '@/components/ads'
-import { adService, type AdStepPhase } from '@/lib/services/ad-service'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -645,9 +643,6 @@ export function ScreenshotAnalyzer() {
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all')
   const [showAdFlow, setShowAdFlow] = useState(false)
   const [pendingAnalyze, setPendingAnalyze] = useState(false)
-  const [adPhase, setAdPhase] = useState<AdStepPhase>('start')
-  const [pendingResult, setPendingResult] = useState(false)
-  const pendingResultRef = useRef<AnalysisResult | null>(null)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cropOpen, setCropOpen] = useState(false)
   const [cropImageUrl, setCropImageUrl] = useState<string | null>(null)
@@ -773,7 +768,6 @@ export function ScreenshotAnalyzer() {
   // Runs the actual chart analysis request.
   const runAnalysis = useCallback(async () => {
     setPendingAnalyze(false)
-    setPendingResult(false)
     setIsAnalyzing(true)
     setAnalysisResult(null)
 
@@ -854,9 +848,11 @@ export function ScreenshotAnalyzer() {
       // New endpoint returns nested { analysis, result, quota, provider }
       const d = responseData.data.analysis || responseData.data
       const result = mapResult(d)
-      pendingResultRef.current = result
       setAnalysisCount((c) => c + 1)
       setIsAnalyzing(false)
+      setShowAdFlow(false)
+      // Reveal the result immediately — no ad gate.
+      setAnalysisResult(result)
 
       const providerInfo = responseData.data.provider
       const quotaInfo = responseData.data.quota
@@ -874,11 +870,6 @@ export function ScreenshotAnalyzer() {
         toast.success(`Chart analyzed! ${costMsg}${cachedMsg}${remainingMsg}`)
       }
       fetchHistory()
-      // Users watch the "results" phase ads before the result is revealed.
-      setAdPhase('results')
-      setShowAdFlow(true)
-      setPendingResult(true)
-      pendingResultRef.current = result
     } catch {
       // Network/parse error — never fabricate a result.
       setIsAnalyzing(false)
@@ -886,17 +877,14 @@ export function ScreenshotAnalyzer() {
     }
   }, [selectedFile, previewUrl, fetchHistory])
 
-  // All users are served the rewarded AdFlow (ad-supported premium experience).
-  // Ads are reduced from 10 to 5 for users who referred >= 20 downloads.
+  // Analyses run immediately with no forced-ad interstitial. Reaching the result
+  // only depends on a successful API call, not on completing an ad phase.
   const handleAnalyze = useCallback(async () => {
     if (freeLimitReached) return
-    if (showAdFlow || pendingAnalyze || pendingResult) return
-    adService.setReducedAds(user?.id || 'guest', (user?.referralCount ?? 0) >= 20)
-    adService.resetForNewAnalysis(user?.id || 'guest')
-    setAdPhase('start')
-    setShowAdFlow(true)
-    setPendingAnalyze(true)
-  }, [freeLimitReached, showAdFlow, pendingAnalyze, pendingResult, user?.id, user?.referralCount])
+    if (pendingAnalyze) return
+    setShowAdFlow(false)
+    runAnalysis()
+  }, [freeLimitReached, pendingAnalyze, runAnalysis])
 
   // Save to history
   const handleSave = useCallback(() => {
@@ -908,56 +896,14 @@ export function ScreenshotAnalyzer() {
     }
   }, [analysisResult, fetchHistory])
 
-  // Analyze another — users first watch the "next" phase ads as the transition
-  // into a fresh analysis.
+  // Analyze another — instant reset, no interstitial.
   const handleAnalyzeAnother = useCallback(() => {
-    if (!showAdFlow) {
-      setAdPhase('next')
-      setShowAdFlow(true)
-      setPendingAnalyze(true)
-      return
-    }
+    setShowAdFlow(false)
     setSelectedFile(null)
     setPreviewUrl(null)
     setAnalysisResult(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [showAdFlow])
-
-  // Progresses the phased AdFlow once a phase is fully watched.
-  const handleAdComplete = useCallback(() => {
-    setShowAdFlow(false)
-    if (adPhase === 'start') {
-      // Start ads done → kick off the analysis, playing the loading ad while it runs.
-      setAdPhase('processing')
-      setShowAdFlow(true)
-      runAnalysis()
-    } else if (adPhase === 'processing') {
-      // Loading ad done — the analysis request continues in the background.
-    } else if (adPhase === 'results') {
-      setPendingResult(false)
-      setAnalysisResult(pendingResultRef.current)
-      pendingResultRef.current = null
-    } else if (adPhase === 'next') {
-      setPendingAnalyze(false)
-      setSelectedFile(null)
-      setPreviewUrl(null)
-      setAnalysisResult(null)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }, [adPhase, runAnalysis])
-
-  const handleAdSkip = useCallback(() => {
-    setShowAdFlow(false)
-    setPendingAnalyze(false)
-    setPendingResult(false)
   }, [])
-
-  const handleAdUpgrade = useCallback(() => {
-    setShowAdFlow(false)
-    setPendingAnalyze(false)
-    setPendingResult(false)
-    setPage('subscriptions')
-  }, [setPage])
 
   // Delete from history
   const handleDeleteHistory = useCallback(async (id: string) => {
@@ -1266,33 +1212,6 @@ export function ScreenshotAnalyzer() {
           </ScrollArea>
         )}
       </div>
-
-      {/* ─── Free Tier Warning ──────────────────────────────────── */}
-      <div className="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
-        <Zap className="size-5 text-amber-500 shrink-0" />
-        <div className="flex-1">
-          <p className="text-sm font-medium">Unlimited AI analysis — ad-supported</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {referralCount >= 20
-              ? 'You get a reduced ad load (5 ads/analysis). Thanks for sharing!'
-              : 'Refer 20 friends who download via your link to drop ads from 10 to 5 per analysis.'}
-          </p>
-        </div>
-        <Button size="sm" variant="outline" onClick={() => setPage('subscriptions')} className="shrink-0">
-          <Crown className="size-3.5 mr-1" />
-          Refer
-        </Button>
-      </div>
-
-      {/* ─── Rewarded AdFlow gate (all users, phased, reduced for 20+ referrals) ─── */}
-      {showAdFlow && (
-        <AdFlow
-          phase={adPhase}
-          onComplete={handleAdComplete}
-          onSkip={handleAdSkip}
-          onUpgrade={handleAdUpgrade}
-        />
-      )}
     </div>
   )
 }

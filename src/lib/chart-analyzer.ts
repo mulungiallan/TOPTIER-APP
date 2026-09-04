@@ -60,10 +60,12 @@ const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 const PRIMARY_VLM = 'llava-hf/llava-1.5-7b-hf'
 const BACKUP_VLM = 'llava-hf/llava-v1.6-mistral-7b-hf'
 
-// Google Gemini models (free tier). Older ids (2.0/1.5 flash) are retired for
-// new accounts, so we use current models verified to work. gemini-flash-latest
-// tracks the newest flash; the rest are fallbacks if a model is unavailable.
-const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-3.1-flash-lite']
+// Google Gemini models (free tier). Order matters: the first model that returns
+// content wins. `gemini-3.6-flash` is confirmed to return content with our key;
+// `gemini-flash-latest` currently returns HTTP 200 with EMPTY content, so it is
+// kept only as a last fallback instead of first. Older ids (2.0/1.5 flash) are
+// retired for new accounts (404).
+const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest']
 
 // Anthropic Claude vision model for the screenshot analyzer (AI vote #3).
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -114,8 +116,14 @@ Detection checklist:
 Rules:
 - Confidence 50-65 = weak/setup, 65-75 = moderate, 75-85 = strong, >85 = very strong (rare)
 - Use HOLD when chart is ambiguous or sideways
-- Never invent numbers — use null if you cannot read them from the chart
-- Keep reasoning concise and tied to visible evidence`
+- Never invent numbers — always read the price axis. entryPrice/stopLoss/takeProfit are DERIVED by you from the visible structure (see below); support/resistance must be read from the visible levels.
+- Keep reasoning concise and tied to visible evidence
+
+Deriving trade levels (IMPORTANT):
+- entryPrice: use the last/current visible price near where you would enter, i.e. the price at the rightmost candle (or the nearest support in an uptrend / resistance in a downtrend). Read it from the visible price axis.
+- stopLoss: place below the nearest recent swing low (for BUY) or above the nearest recent swing high (for SELL), ~1.5-2x the recent ATR/average candle range away. Read the price from the visible axis.
+- takeProfit1/2/3: 1R, 2R and 3R away from entry (R = entry-to-stop distance) in the direction of the trade, using the axis values. For a HOLD signal leave them null.
+- Always compute and return actual numeric levels (entryPrice, stopLoss, takeProfit1) whenever the price axis is legible — do not default to null. Only use null if the axis cannot be read at all.`
 
 // ─── Main Analyzer Class ────────────────────────────────────────────────────
 
