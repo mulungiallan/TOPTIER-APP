@@ -60,10 +60,13 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Chat analyze POST error:', error)
     const message = error instanceof Error ? error.message : 'Unknown error'
-    if (message.includes('limit')) {
+    if (message.includes('limit') || message.includes('429')) {
       return errorResponse(message, 429)
     }
-    return errorResponse('Chat analysis failed. Please try again.', 500)
+    if (message.includes('empty') || message.includes('limit') || message.includes('exceeds')) {
+      return errorResponse(message, 400)
+    }
+    return errorResponse(message || 'Chat analysis failed. Please try again.', 500)
   }
 }
 

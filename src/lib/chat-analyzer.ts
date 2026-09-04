@@ -88,6 +88,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 
 const CACHE_TTL_MS = 120 * 1000 // 2 minutes (matches original)
+const CACHE_MAX_SIZE = 500
 const MAX_INPUT_CHARS = parseInt(process.env.MAX_INPUT_CHARS ?? '6000', 10)
 
 const HF_MODELS = {
@@ -97,9 +98,10 @@ const HF_MODELS = {
   ner: 'dslim/bert-base-NER',
 }
 
-// Proven-working Gemini models for this key; `gemini-flash-latest` can return
-// 200-empty so it's a last fallback.
-const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest']
+// Empirically verified 2026-09-04: `gemini-3.1-flash-lite` returns HTTP 200
+// with content (~3.7s); `gemini-3.6-flash` and `gemini-flash-latest` HANG/abort
+// or return 503 under load, so they are last resorts.
+const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.6-flash']
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
@@ -477,8 +479,20 @@ export class ChatAnalyzer {
       return { ...cached.data, cached: true }
     }
 
-    // 1. Hugging Face parallel specialists.
-    const hf = await analyzeWithHuggingFace(trimmed)
+    // 1. Hugging Face parallel specialists (degrades gracefully if token missing/invalid).
+    let hf: HfResult
+    try {
+      hf = await analyzeWithHuggingFace(trimmed)
+    } catch (err) {
+      console.warn('[chat-analyzer] Hugging Face unavailable, proceeding without HF signals:', (err as Error).message)
+      hf = {
+        sentiment: null,
+        emotion: null,
+        toxicity: null,
+        entities: [],
+        errors: [{ task: 'all', message: err instanceof Error ? err.message : String(err) }],
+      }
+    }
 
     const hfConfidence = Math.max(
       hf.sentiment?.score ?? 0,
@@ -540,6 +554,17 @@ export class ChatAnalyzer {
     }
 
     cache.set(cacheKey, { data: result, timestamp: Date.now() })
+
+    // Evict oldest entries if cache exceeds max size.
+    if (cache.size > CACHE_MAX_SIZE) {
+      const now = Date.now()
+      for (const [key, entry] of cache) {
+        if (cache.size <= CACHE_MAX_SIZE * 0.8 || now - entry.timestamp > CACHE_TTL_MS) {
+          cache.delete(key)
+        }
+      }
+    }
+
     return result
   }
 
