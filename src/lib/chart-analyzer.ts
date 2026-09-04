@@ -516,31 +516,103 @@ export class ChartAnalyzer {
       tp3,
     })
 
+    // ─── Volatility-aware stop widening ───────────────────────────────────
+    // High-volatility pairs (crypto, indices, metals, JPY) can easily knock
+    // out a correctly-placed but tight stop. Widen the stop outward so a
+    // valid winner is not stopped out by normal noise. We never widen past the
+    // point where risk:reward drops below 1.0, so the trade stays protective.
+    const widened = this.widenStopForVolatility(
+      validated.signal,
+      validated.entry,
+      validated.stop,
+      validated.tp1,
+      (parsed.detectedAsset as string) || ''
+    )
+
     // Confidence cap: never above 78 so we never overstate conviction.
     const confidence =
-      validated.signal === 'HOLD'
+      widened.signal === 'HOLD'
         ? Math.min(rawConfidence, 50)
         : Math.min(rawConfidence, 78)
 
     return {
-      signal: validated.signal,
+      signal: widened.signal,
       confidence,
       pattern,
       patterns,
-      trend: this.sanitizeTrend(parsed.trend as string, validated.signal),
+      trend: this.sanitizeTrend(parsed.trend as string, widened.signal),
       detectedAsset: (parsed.detectedAsset as string) || null,
       detectedTimeframe: (parsed.detectedTimeframe as string) || null,
-      entryPrice: validated.entry,
-      stopLoss: validated.stop,
-      takeProfit1: validated.tp1,
-      takeProfit2: validated.tp2,
-      takeProfit3: validated.tp3,
+      entryPrice: widened.entry,
+      stopLoss: widened.stop,
+      takeProfit1: widened.tp1,
+      takeProfit2: widened.tp2,
+      takeProfit3: widened.tp3,
       support: this.sanitizeNumber(parsed.support),
       resistance: this.sanitizeNumber(parsed.resistance),
       reasoning:
         (parsed.reasoning as string) ||
-        `AI detected ${pattern} with ${validated.signal} bias at ${confidence}% confidence.`,
+        `AI detected ${pattern} with ${widened.signal} bias at ${confidence}% confidence.`,
     }
+  }
+
+  /**
+   * Widens the stop-loss outward for high-volatility symbols so that normal
+   * market noise does not prematurely stop out a valid trade.
+   *
+   * - Uses a volatility multiplier derived from the detected symbol.
+   * - The stop is moved further from the entry (away from price).
+   * - Widening is capped so risk:reward stays >= 1.0; if that cannot be met,
+   *   the original stop is kept (we never degrade the trade).
+   */
+  private widenStopForVolatility(
+    signal: 'BUY' | 'SELL' | 'HOLD',
+    entry: number | null,
+    stop: number | null,
+    tp1: number | null,
+    symbol: string
+  ): { signal: 'BUY' | 'SELL' | 'HOLD'; entry: number | null; stop: number | null; tp1: number | null; tp2: number | null; tp3: number | null } {
+    const out = {
+      signal,
+      entry: entry as number | null,
+      stop: stop as number | null,
+      tp1: tp1 as number | null,
+      tp2: null as number | null,
+      tp3: null as number | null,
+    }
+    if (signal === 'HOLD' || entry === null || stop === null || tp1 === null) return out
+
+    const mult = this.volatilityMultiplier(symbol)
+    if (mult <= 1) return out
+
+    const stopDistance = Math.abs(entry - stop)
+    const reward = Math.abs(tp1 - entry)
+    const newStopDistance = stopDistance * mult
+
+    // Never allow risk:reward to drop below 1.0.
+    if (reward / newStopDistance < 1.0) {
+      return out
+    }
+
+    const newStop = signal === 'BUY' ? entry - newStopDistance : entry + newStopDistance
+    return { ...out, stop: newStop }
+  }
+
+  /**
+   * Returns a stop-widening multiplier based on the detected asset's volatility.
+   * High-volatility / easy-to-knockout pairs get a wider multiplier.
+   */
+  private volatilityMultiplier(symbol: string): number {
+    const s = (symbol || '').toUpperCase()
+    const HIGH: RegExp[] = [
+      /BTC/, /ETH/, /SOL/, /XRP/, /DOGE/, /ADA/, /DOT/, /LINK/, /AVAX/,
+      /FTSE/, /NAS/, /SP500/, /SPX/, /GER/, /DAX/, /NDX/, /US30/, /UK100/,
+      /XAU/, /XAG/, /USOIL/, /WTI/, /BITCOIN/, /ETHEREUM/,
+    ]
+    if (HIGH.some((r) => r.test(s))) return 1.6
+    if (/JPY/.test(s)) return 1.4
+    if (/GBP|EUR|AUD|NZD|CAD|CHF/.test(s)) return 1.2
+    return 1.0
   }
 
   /**
