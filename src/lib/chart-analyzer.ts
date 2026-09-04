@@ -63,11 +63,11 @@ const PRIMARY_VLM = 'llava-hf/llava-1.5-7b-hf'
 const BACKUP_VLM = 'llava-hf/llava-v1.6-mistral-7b-hf'
 
 // Google Gemini models (free tier). Order matters: the first model that returns
-// content wins. `gemini-3.6-flash` is confirmed to return content with our key;
-// `gemini-flash-latest` currently returns HTTP 200 with EMPTY content, so it is
-// kept only as a last fallback instead of first. Older ids (2.0/1.5 flash) are
-// retired for new accounts (404).
-const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest']
+// content wins. Empirically verified on 2026-09-04: `gemini-3.1-flash-lite`
+// returns HTTP 200 with content (~3.7s); `gemini-3.6-flash` and
+// `gemini-flash-latest` HANG/abort or return 503 (high demand), so they are
+// moved last. Older ids (2.0/1.5 flash) are retired for new accounts (404).
+const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.6-flash']
 
 // Anthropic Claude vision model for the screenshot analyzer (AI vote #3).
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
