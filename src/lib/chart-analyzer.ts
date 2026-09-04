@@ -56,6 +56,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 const PROVIDER_TIMEOUT_MS = 20_000 // Per-provider cap so a hanging provider can't stall analysis
+const GEMINI_TIMEOUT_MS = 60_000 // Gemini image analysis can legitimately take 10-40s; don't abort it early
 
 // Vision-Language Models on Hugging Face (all free with HF token)
 const PRIMARY_VLM = 'llava-hf/llava-1.5-7b-hf'
@@ -325,7 +326,7 @@ export class ChartAnalyzer {
         // AbortController guard so a provider that hangs (never responds) can't
         // stall the whole fallback chain. Falls through to the next model/etc.
         const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
+        const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
 
         try {
           // Send the key as a query param (`?key=`), NOT the header. Some keys
