@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       const updated = await db.screenshotAnalysis.update({
         where: { id: analysis.id },
         data: {
-          signalType: result.signal,
+          signalType: result.signal === 'HOLD' ? 'NEUTRAL' : result.signal,
           entryPrice: result.entryPrice,
           stopLoss: result.stopLoss,
           takeProfit1: result.takeProfit1,
