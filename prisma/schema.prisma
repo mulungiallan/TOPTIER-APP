@@ -120,7 +120,7 @@ model User {
 
 model Signal {
   id              String    @id @default(cuid())
-  generatedKey    String?   @unique
+  generatedKey    String?
   type            String // BUY, SELL, NEUTRAL
   asset           String
   entryPrice      Float

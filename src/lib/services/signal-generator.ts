@@ -242,15 +242,15 @@ export class SignalGenerator {
 
     const levels = deriveLevels(direction, currentPrice, candles)
 
-    // Persist a fresh active signal (upsert by asset+type to avoid duplicates).
+    // Persist a fresh active signal (remove any prior generation for this key
+    // first so we never accumulate duplicates across refresh cycles).
     const expiry = new Date(Date.now() + (target.timeframe === '1h' ? 4 : 24) * 60 * 60 * 1000)
+    const generatedKey = `${target.symbol}:${direction}:${target.timeframe}`
 
-    await db.signal.upsert({
-      where: {
-        generatedKey: `${target.symbol}:${direction}:${target.timeframe}`,
-      },
-      create: {
-        generatedKey: `${target.symbol}:${direction}:${target.timeframe}`,
+    await db.signal.deleteMany({ where: { generatedKey } })
+    await db.signal.create({
+      data: {
+        generatedKey,
         type: direction,
         asset: target.symbol,
         entryPrice: levels.entry,
@@ -262,19 +262,6 @@ export class SignalGenerator {
         confidence: confidenceToInt(decision.confidence),
         strategy: target.strategy,
         timeframe: target.timeframe,
-        reason: decision.reason,
-        status: 'active',
-        expiryDate: expiry,
-        marketType: target.marketType,
-      },
-      update: {
-        entryPrice: levels.entry,
-        stopLoss: levels.stop,
-        takeProfit1: levels.tp1,
-        takeProfit2: levels.tp2,
-        takeProfit3: levels.tp3,
-        riskRewardRatio: levels.rr,
-        confidence: confidenceToInt(decision.confidence),
         reason: decision.reason,
         status: 'active',
         expiryDate: expiry,
