@@ -55,6 +55,7 @@ const HF_TOKEN = process.env.HF_TOKEN
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+const PROVIDER_TIMEOUT_MS = 20_000 // Per-provider cap so a hanging provider can't stall analysis
 
 // Vision-Language Models on Hugging Face (all free with HF token)
 const PRIMARY_VLM = 'llava-hf/llava-1.5-7b-hf'
@@ -166,14 +167,33 @@ export class ChartAnalyzer {
       return { ...cached.data, cached: true }
     }
 
-    // 2. Try primary: Hugging Face LLaVA
+    // 2. Fast path: race the primary HF model and Gemini in parallel so the
+    //    first provider that returns a good result wins. This caps perceived
+    //    latency instead of waiting on a hanging provider.
+    const fastPath: Promise<ChartAnalysisResult>[] = []
     if (this.hf) {
+      fastPath.push(
+        this.analyzeWithHuggingFace(imageBuffer, PRIMARY_VLM).catch((err) => {
+          console.warn('[chart-analyzer] Primary HF model failed:', (err as Error).message)
+          throw err
+        })
+      )
+    }
+    if (GEMINI_API_KEY) {
+      fastPath.push(
+        this.analyzeWithGemini(imageBuffer).catch((err) => {
+          console.warn('[chart-analyzer] Gemini fallback failed:', (err as Error).message)
+          throw err
+        })
+      )
+    }
+    if (fastPath.length > 0) {
       try {
-        const result = await this.analyzeWithHuggingFace(imageBuffer, PRIMARY_VLM)
+        const result = await this.firstSuccess(fastPath)
         cache.set(cacheKey, { data: result, timestamp: Date.now() })
         return result
-      } catch (err) {
-        console.warn('[chart-analyzer] Primary HF model failed, trying backup:', (err as Error).message)
+      } catch {
+        console.warn('[chart-analyzer] All fast-path providers failed, trying backups...')
       }
     }
 
@@ -188,18 +208,7 @@ export class ChartAnalyzer {
       }
     }
 
-    // 4. Try Google Gemini Flash (free tier — separate quota from HF)
-    if (GEMINI_API_KEY) {
-      try {
-        const result = await this.analyzeWithGemini(imageBuffer)
-        cache.set(cacheKey, { data: result, timestamp: Date.now() })
-        return result
-      } catch (err) {
-        console.warn('[chart-analyzer] Gemini fallback failed:', (err as Error).message)
-      }
-    }
-
-    // 5. Try Anthropic Claude vision (acts as an independent AI vote)
+    // 4. Try Anthropic Claude vision (acts as an independent AI vote)
     if (ANTHROPIC_API_KEY) {
       try {
         const result = await this.analyzeWithClaude(imageBuffer)
@@ -252,10 +261,14 @@ export class ChartAnalyzer {
     const blob = new Blob([new Uint8Array(optimized)], { type: 'image/jpeg' })
 
     // Use the image-to-text endpoint for LLaVA vision-language model
-    const response = await this.hf!.imageToText({
-      model,
-      data: blob,
-    })
+    const response = await this.withTimeout(
+      this.hf!.imageToText({
+        model,
+        data: blob,
+      }),
+      PROVIDER_TIMEOUT_MS,
+      `HF ${model}`
+    )
 
     // LLaVA returns { generated_text: "..." } on the HF inference API
     const rawText =
@@ -308,11 +321,11 @@ export class ChartAnalyzer {
       let lastError: unknown = null
       let response: Response | null = null
 
-      for (let attempt = 0; attempt < 3 && !response; attempt++) {
+      for (let attempt = 0; attempt < 2 && !response; attempt++) {
         // AbortController guard so a provider that hangs (never responds) can't
         // stall the whole fallback chain. Falls through to the next model/etc.
         const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 45_000)
+        const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
 
         try {
           // Send the key as a query param (`?key=`), NOT the header. Some keys
@@ -666,6 +679,51 @@ export class ChartAnalyzer {
     }
 
     return { signal, entry, stop, tp1, tp2, tp3 }
+  }
+
+  // ─── Private: Concurrency / timeout helpers ───────────────────────────────
+
+  /**
+   * Resolves with the value of the first promise that fulfills, or rejects only
+   * when every promise rejects. Used to race cheap/fast providers in parallel
+   * and return the first good result, instead of waiting on a hanging one.
+   */
+  private firstSuccess<T>(promises: Promise<T>[]): Promise<T> {
+    let settled = 0
+    return new Promise<T>((resolve, reject) => {
+      for (const p of promises) {
+        p.then(
+          (v) => resolve(v),
+          () => {
+            settled++
+            if (settled === promises.length) reject(new Error('All providers failed'))
+          }
+        )
+      }
+    })
+  }
+
+  /**
+   * Rejects a promise after `ms` if it has not settled, so a provider that
+   * hangs (never responds) cannot stall the whole analysis path.
+   */
+  private withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms
+      )
+      promise.then(
+        (v) => {
+          clearTimeout(timer)
+          resolve(v)
+        },
+        (e) => {
+          clearTimeout(timer)
+          reject(e)
+        }
+      )
+    })
   }
 
   // ─── Private: Input normalization ─────────────────────────────────────────
