@@ -51,6 +51,8 @@ jobs:
         run: npm run build
         env:
           CI: '1'
+      - name: Ensure Capacitor asset dirs exist (server.url mode, web assets not bundled)
+        run: mkdir -p out android/app/src/main/assets/public
       - run: npx cap sync android
 
       - name: Resolve track
