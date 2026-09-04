@@ -83,14 +83,14 @@ if (monthStart.getDate() !== 1) {
 
 // ─── Prompt for chart analysis ──────────────────────────────────────────────
 
-const CHART_ANALYSIS_PROMPT = `You are an expert technical analyst reviewing a trading chart screenshot.
+const CHART_ANALYSIS_PROMPT = `You are a world-class, conservative technical analyst reviewing a trading chart screenshot. Your #1 priority is PROTECTING CAPITAL. When in any doubt, prefer HOLD with null trade levels. Never encourage a trade you are not confident about.
 
 Analyze the chart carefully and respond with ONLY valid JSON (no markdown, no explanation outside JSON) in this exact shape:
 
 {
   "signal": "BUY" | "SELL" | "HOLD",
   "confidence": <integer 0-100>,
-  "pattern": "<primary pattern name>",
+  "pattern": "<primary pattern name or 'No clear pattern'>",
   "patterns": ["<pattern 1>", "<pattern 2>", ...],
   "trend": "bullish" | "bearish" | "neutral",
   "detectedAsset": "<symbol like EUR/USD, BTC/USD, AAPL — or null if unclear>",
@@ -102,7 +102,7 @@ Analyze the chart carefully and respond with ONLY valid JSON (no markdown, no ex
   "takeProfit3": <number or null>,
   "support": <number or null>,
   "resistance": <number or null>,
-  "reasoning": "<2-3 sentence explanation referencing the visible evidence>"
+  "reasoning": "<2-3 sentence explanation referencing the visible price evidence>"
 }
 
 Detection checklist:
@@ -113,17 +113,25 @@ Detection checklist:
 5. Candlestick patterns: engulfing, doji, hammer, shooting star
 6. Volume confirmation if visible
 
-Rules:
-- Confidence 50-65 = weak/setup, 65-75 = moderate, 75-85 = strong, >85 = very strong (rare)
-- Use HOLD when chart is ambiguous or sideways
-- Never invent numbers — always read the price axis. entryPrice/stopLoss/takeProfit are DERIVED by you from the visible structure (see below); support/resistance must be read from the visible levels.
-- Keep reasoning concise and tied to visible evidence
+CONSERVATISM RULES (the most important part):
+- Confidence 45-55 = weak (default to HOLD), 55-70 = moderate, 70-78 = strong (rare), NEVER above 78. Overconfidence causes losses.
+- Use HOLD with ALL trade levels set to null when ANY of these hold:
+  a) the chart is ambiguous, sideways, or choppy (no clean trend)
+  b) the price axis is illegible or the numbers are unclear — do NOT invent levels
+  c) the setup is not clean / there is no well-defined swing high/low structure
+  d) price is extremely overextended from the mean (late entry risk)
+  e) you cannot confidently define an entry, a stop and a target
+- It is ALWAYS acceptable to answer HOLD/null. Answering HOLD is a win when the picture is unclear.
 
-Deriving trade levels (IMPORTANT):
-- entryPrice: use the last/current visible price near where you would enter, i.e. the price at the rightmost candle (or the nearest support in an uptrend / resistance in a downtrend). Read it from the visible price axis.
-- stopLoss: place below the nearest recent swing low (for BUY) or above the nearest recent swing high (for SELL), ~1.5-2x the recent ATR/average candle range away. Read the price from the visible axis.
-- takeProfit1/2/3: 1R, 2R and 3R away from entry (R = entry-to-stop distance) in the direction of the trade, using the axis values. For a HOLD signal leave them null.
-- Always compute and return actual numeric levels (entryPrice, stopLoss, takeProfit1) whenever the price axis is legible — do not default to null. Only use null if the axis cannot be read at all.`
+Deriving trade levels (only when you answer BUY or SELL):
+- These MUST be internally consistent and read from the visible price axis:
+  - For BUY:  stopLoss  <  entryPrice  <  takeProfit1 < takeProfit2 < takeProfit3
+  - For SELL: stopLoss  >  entryPrice  >  takeProfit1 > takeProfit2 > takeProfit3
+- entryPrice: the last/current visible price where you would realistically enter, near the rightmost candle or the nearest support (BUY) / resistance (SELL) retest. Read from the axis.
+- stopLoss: just BELOW (BUY) / ABOVE (SELL) the nearest recent swing low/high, ~1-1.5x the recent average candle range away. Read from the visible axis. Widen if volatility warrants; a stop that is too tight causes premature loss.
+- takeProfit1/2/3: 1R, 2R and 3R away from entry (R = entry-to-stop distance) in the direction of the trade, rounded to axis-plausible values.
+- If you cannot produce a full, internally-consistent BUY/SELL with all three of entry/stop/target readable, fall back to HOLD and set them all to null.
+- reasoning: 2-3 plain-English sentences that specifically cite the levels you chose and the price evidence you saw — a user must be able to verify your logic against the chart.`
 
 // ─── Main Analyzer Class ────────────────────────────────────────────────────
 
@@ -484,30 +492,108 @@ export class ChartAnalyzer {
       }
     }
 
-    const signal = this.sanitizeSignal(parsed.signal as string)
-    const confidence = this.sanitizeConfidence(parsed.confidence)
+    const rawSignal = this.sanitizeSignal(parsed.signal as string)
+    const rawConfidence = this.sanitizeConfidence(parsed.confidence)
     const patterns = this.sanitizePatterns(parsed.patterns)
-    const pattern = (parsed.pattern as string) || patterns[0] || 'Unknown'
+    const pattern = (parsed.pattern as string) || patterns[0] || 'No clear pattern'
+
+    const entry = this.sanitizeNumber(parsed.entryPrice)
+    const stop = this.sanitizeNumber(parsed.stopLoss)
+    const tp1 = this.sanitizeNumber(parsed.takeProfit1)
+    const tp2 = this.sanitizeNumber(parsed.takeProfit2)
+    const tp3 = this.sanitizeNumber(parsed.takeProfit3)
+
+    // ─── Protective validation ────────────────────────────────────────────
+    // A BUY/SELL is the only actionable signal and may only reach the user if
+    // its entry, stop and target are complete AND internally consistent. If the
+    // model produced a signal but the levels are missing, reversed or broken,
+    // we downgrade to HOLD with null levels. Never guess. Protect capital.
+    const validated = this.validateTrade(rawSignal, {
+      entry,
+      stop,
+      tp1,
+      tp2,
+      tp3,
+    })
+
+    // Confidence cap: never above 78 so we never overstate conviction.
+    const confidence =
+      validated.signal === 'HOLD'
+        ? Math.min(rawConfidence, 50)
+        : Math.min(rawConfidence, 78)
 
     return {
-      signal,
+      signal: validated.signal,
       confidence,
       pattern,
       patterns,
-      trend: this.sanitizeTrend(parsed.trend as string, signal),
+      trend: this.sanitizeTrend(parsed.trend as string, validated.signal),
       detectedAsset: (parsed.detectedAsset as string) || null,
       detectedTimeframe: (parsed.detectedTimeframe as string) || null,
-      entryPrice: this.sanitizeNumber(parsed.entryPrice),
-      stopLoss: this.sanitizeNumber(parsed.stopLoss),
-      takeProfit1: this.sanitizeNumber(parsed.takeProfit1),
-      takeProfit2: this.sanitizeNumber(parsed.takeProfit2),
-      takeProfit3: this.sanitizeNumber(parsed.takeProfit3),
+      entryPrice: validated.entry,
+      stopLoss: validated.stop,
+      takeProfit1: validated.tp1,
+      takeProfit2: validated.tp2,
+      takeProfit3: validated.tp3,
       support: this.sanitizeNumber(parsed.support),
       resistance: this.sanitizeNumber(parsed.resistance),
       reasoning:
         (parsed.reasoning as string) ||
-        `AI detected ${pattern} with ${signal} bias at ${confidence}% confidence.`,
+        `AI detected ${pattern} with ${validated.signal} bias at ${confidence}% confidence.`,
     }
+  }
+
+  /**
+   * Returns validated trade levels for a signal, downgrading unsafe outputs.
+   *
+   * BUY  requires: stop < entry < tp1, with tp2/tp3 (if present) increasing.
+   * SELL requires: stop > entry > tp1, with tp2/tp3 (if present) decreasing.
+   * HOLD  always returns null levels.
+   *
+   * Any BUY/SELL that is missing a level or is inconsistent becomes HOLD.
+   */
+  private validateTrade(
+    signal: 'BUY' | 'SELL' | 'HOLD',
+    lv: { entry: number | null; stop: number | null; tp1: number | null; tp2: number | null; tp3: number | null }
+  ): { signal: 'BUY' | 'SELL' | 'HOLD'; entry: number | null; stop: number | null; tp1: number | null; tp2: number | null; tp3: number | null } {
+    const nullLevels = { entry: null, stop: null, tp1: null, tp2: null, tp3: null }
+
+    if (signal === 'HOLD') {
+      return { signal: 'HOLD', ...nullLevels }
+    }
+
+    const { entry, stop, tp1, tp2, tp3 } = lv
+
+    // All core levels must be present and in the correct relation to enter.
+    if (
+      entry === null || stop === null || tp1 === null || entry <= 0 || stop <= 0 || tp1 <= 0
+    ) {
+      return { signal: 'HOLD', ...nullLevels }
+    }
+
+    // Optional TP2/TP3, if present, must extend the target sequence.
+    const tpsValid = (() => {
+      if (signal === 'BUY') {
+        const seq = [tp1, tp2, tp3].filter((x): x is number => x !== null)
+        for (let i = 1; i < seq.length; i++) if (seq[i] <= seq[i - 1]) return false
+        return true
+      } else {
+        const seq = [tp1, tp2, tp3].filter((x): x is number => x !== null)
+        for (let i = 1; i < seq.length; i++) if (seq[i] >= seq[i - 1]) return false
+        return true
+      }
+    })()
+
+    const consistent = signal === 'BUY'
+      ? stop < entry && entry < tp1
+      : stop > entry && entry > tp1
+
+    if (!consistent || !tpsValid) {
+      // Malformed levels — do not hand the user a broken trade.
+      return { signal: 'HOLD', ...nullLevels }
+    }
+
+    return { signal, entry, stop, tp1, tp2, tp3 }
   }
 
   // ─── Private: Input normalization ─────────────────────────────────────────
@@ -531,7 +617,7 @@ export class ChartAnalyzer {
   private sanitizeConfidence(value: unknown): number {
     const n = Number(value)
     if (!Number.isFinite(n)) return 50
-    return Math.min(85, Math.max(30, Math.round(n)))
+    return Math.min(78, Math.max(30, Math.round(n)))
   }
 
   private sanitizePatterns(value: unknown): string[] {

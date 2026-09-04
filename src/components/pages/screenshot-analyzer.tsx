@@ -286,6 +286,13 @@ function AnalysisResultCard({
 
           <Separator />
 
+          {/* Protective disclaimer */}
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+            This is an AI-assisted educational analysis, not financial advice. Signals and levels are produced
+            from a chart screenshot and can be wrong. Only risk what you can afford to lose — always apply your
+            own stop-loss and risk management before acting. Past signals are not a guarantee of future results.
+          </div>
+
           {/* Actions */}
           <div className="flex gap-3">
             <Button className="flex-1 gap-2" onClick={onSave}>
