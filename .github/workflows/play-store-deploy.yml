@@ -47,6 +47,10 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Build web app (produces out/ webDir for Capacitor)
+        run: npm run build
+        env:
+          CI: '1'
       - run: npx cap sync android
 
       - name: Resolve track
