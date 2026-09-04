@@ -713,26 +713,40 @@ function formatSignalPrice(asset: string, price: number): string {
   return price.toFixed(2)
 }
 
+function toTitleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
+}
+
 function mapApiSignal(s: any): MockSignal {
   const now = Date.now()
+  const rawMarket = (s.marketType || s.market || '').toLowerCase()
+  const marketTitle = toTitleCase(rawMarket)
+  const expiryMs =
+    s.expiryDate
+      ? new Date(s.expiryDate).getTime()
+      : s.expiresAt
+      ? Number(s.expiresAt)
+      : s.expires
+      ? new Date(s.expires).getTime()
+      : now + 14400000
   return {
     id: s.id || s.signalId || '',
     asset: s.asset || s.pair || '',
-    market: s.market || s.marketType || 'Forex',
-    direction: s.direction || (s.type === 'long' || s.type === 'buy' ? 'BUY' : 'SELL'),
+    market: (marketTitle as MarketType) || 'Forex',
+    direction: s.direction || (String(s.type || '').toUpperCase() === 'BUY' || String(s.type || '').toUpperCase() === 'LONG' ? 'BUY' : 'SELL'),
     entryPrice: s.entryPrice || s.entry || 0,
     stopLoss: s.stopLoss || s.sl || 0,
     takeProfit1: s.takeProfit1 || s.tp1 || 0,
     takeProfit2: s.takeProfit2 || s.tp2 || 0,
     takeProfit3: s.takeProfit3 || s.tp3 || 0,
-    riskReward: s.riskReward || s.rr || '1:2.0',
+    riskReward: s.riskReward || `1:${(s.riskRewardRatio || 2).toFixed(1)}`,
     confidence: s.confidence || 0,
-    strategy: s.strategy === 'Swing' ? 'Swing' : 'Scalp',
+    strategy: String(s.strategy || 'Scalp').toLowerCase().startsWith('swing') ? 'Swing' : 'Scalp',
     timeframe: s.timeframe || '1h',
-    session: s.session || 'London',
-    expiresAt: s.expiresAt || (s.expires ? new Date(s.expires).getTime() : now + 14400000),
+    session: s.session || s.tradingSession || 'London',
+    expiresAt: expiryMs,
     reason: s.reason || s.analysis || '',
-    status: s.status || 'Active',
+    status: s.status === 'hit_tp' ? 'Hit TP' : s.status === 'hit_sl' ? 'Hit SL' : s.status === 'expired' ? 'Expired' : 'Active',
     accepted: s.accepted || false,
     ignored: s.ignored || false,
     thumbsUp: s.thumbsUp || false,

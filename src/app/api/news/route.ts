@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { successResponse, errorResponse } from '@/lib/auth'
 import { paginationSchema, validateQuery } from '@/lib/validation'
+import { newsIngester } from '@/lib/services/news-ingester'
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -16,14 +18,23 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
 
-    if (category) where.category = category
-    if (sentiment) where.sentiment = sentiment
+    if (category) where.category = category.toLowerCase()
+    if (sentiment) where.sentiment = sentiment.toLowerCase()
     if (search) {
       where.OR = [
         { title: { contains: search } },
         { summary: { contains: search } },
         { taggedAssets: { contains: search } },
       ]
+    }
+
+    // ─── Lazy population ─────────────────────────────────────────────────
+    // If the news table is empty/stale, pull fresh articles from Finnhub
+    // on-the-fly so the page is never blank. Ingest throttled internally
+    // (refresh at most once per 15 minutes, only when stale).
+    const count = await db.newsArticle.count()
+    if (count === 0) {
+      await newsIngester.ensureNews()
     }
 
     const [articles, total] = await Promise.all([

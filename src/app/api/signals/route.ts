@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { notifyUsers } from '@/lib/services/notifications'
+import { signalGenerator } from '@/lib/services/signal-generator'
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,10 +21,23 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
 
-    if (market) where.marketType = market
-    if (strategy) where.strategy = strategy
-    if (status) where.status = status
+    // Normalize market filter to the lowercase form stored in the DB.
+    if (market) where.marketType = market.toLowerCase()
+
+    if (strategy) where.strategy = strategy.toLowerCase()
+    if (status) where.status = status.toLowerCase()
     if (asset) where.asset = { contains: asset }
+
+    // ─── Lazy population ─────────────────────────────────────────────────
+    // If there are no active signals to show, generate a fresh set of
+    // real-data signals on-the-fly so the page is never empty. Throttled
+    // internally (max once per 10 minutes).
+    const activeCount = await db.signal.count({
+      where: { ...where, status: 'active', expiryDate: { gt: new Date() } },
+    })
+    if (activeCount === 0) {
+      await signalGenerator.ensureSignals()
+    }
 
     const [signals, total] = await Promise.all([
       db.signal.findMany({
@@ -37,6 +51,19 @@ export async function GET(request: NextRequest) {
       }),
       db.signal.count({ where }),
     ])
+
+    // If we just generated and the user asked for a specific market with no
+    // results for that market, fall back to showing all generated signals.
+    if (total === 0 && market) {
+      const all = await db.signal.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: {
+          _count: { select: { comments: true, reactions: true } },
+        },
+      })
+      return successResponse({ signals: all, total: all.length, limit, offset: 0 })
+    }
 
     return successResponse({ signals, total, limit, offset })
   } catch (error) {
