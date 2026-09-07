@@ -315,12 +315,25 @@ function AnalysisResultCard({
 function HistoryItem({
   item,
   onDelete,
+  onReopen,
 }: {
   item: AnalysisResult
   onDelete: (id: string) => void
+  onReopen: (item: AnalysisResult) => void
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border p-3 hover:bg-muted/30 transition-colors">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onReopen(item)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onReopen(item)
+        }
+      }}
+      className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 hover:bg-muted/30 transition-colors"
+    >
       {/* Thumbnail placeholder */}
       <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted">
         <ImageIcon className="size-5 text-muted-foreground" />
@@ -337,21 +350,42 @@ function HistoryItem({
           <span>{item.timeframe}</span>
           <span>{item.pattern}</span>
         </div>
+        <div className="flex items-center gap-1 mt-1.5">
+          <Clock className="size-3 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Reopen available for 1 hour</span>
+        </div>
       </div>
 
-      {/* Date & Delete */}
+      {/* Date & Actions */}
       <div className="flex flex-col items-end gap-1 shrink-0">
         <span className="text-xs text-muted-foreground">
           {item.createdAt.toLocaleDateString()} {item.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground hover:text-destructive"
-          onClick={() => onDelete(item.id)}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={(e) => {
+              e.stopPropagation()
+              onReopen(item)
+            }}
+          >
+            <RotateCcw className="size-3.5" />
+            Reopen
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(item.id)
+            }}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -924,6 +958,17 @@ export function ScreenshotAnalyzer() {
     toast.success('Analysis removed from history')
   }, [])
 
+  // Reopen a previous analysis — results stay reopenable for 1 hour, then the
+  // server deletes them automatically.
+  const handleReopen = useCallback((item: AnalysisResult) => {
+    setAnalysisResult(item)
+    setSelectedFile(null)
+    setPreviewUrl(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    toast.success('Previous analysis restored — available for 1 hour')
+  }, [])
+
   // Clear all history
   const handleClearHistory = useCallback(() => {
     setHistory([])
@@ -1213,7 +1258,7 @@ export function ScreenshotAnalyzer() {
           <ScrollArea className="max-h-96">
             <div className="space-y-2">
               {filteredHistory.map((item) => (
-                <HistoryItem key={item.id} item={item} onDelete={handleDeleteHistory} />
+                <HistoryItem key={item.id} item={item} onDelete={handleDeleteHistory} onReopen={handleReopen} />
               ))}
             </div>
           </ScrollArea>

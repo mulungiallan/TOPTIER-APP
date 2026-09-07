@@ -48,6 +48,16 @@ export async function register() {
     // internally throttled + guarded against overlapping runs.
     const { signalGenerator } = await import("./lib/services/signal-generator");
     signalGenerator.startBackgroundRefresh();
+
+    // Chart/screenshot analyses are kept for 1 hour then deleted automatically.
+    // Purge on a schedule (not just on API access) so expired records never
+    // linger.
+    const { purgeExpiredAnalyses } = await import("./lib/services/analysis-cleanup");
+    purgeExpiredAnalyses().catch(() => {});
+    const cleanupTimer = setInterval(() => {
+      purgeExpiredAnalyses().catch(() => {});
+    }, 10 * 60 * 1000);
+    if (typeof cleanupTimer.unref === "function") cleanupTimer.unref();
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { chartAnalyzer } from '@/lib/chart-analyzer'
 import { hybridChartAnalyzer } from '@/lib/hybrid-chart-analyzer'
+import { purgeExpiredAnalyses } from '@/lib/services/analysis-cleanup'
 
 /**
  * POST /api/chart/analyze
@@ -24,6 +25,10 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return errorResponse('Unauthorized', 401)
     }
+
+    // Analyses self-destruct after 1 hour — clean up expired records so the
+    // user can only ever reopen results from the last hour.
+    await purgeExpiredAnalyses().catch(() => {})
 
     // ─── Extract image from request ──────────────────────────────────────
     let imageBuffer: Buffer | null = null

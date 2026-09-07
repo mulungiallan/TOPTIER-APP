@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { purgeExpiredAnalyses } from '@/lib/services/analysis-cleanup'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp']
@@ -59,6 +60,9 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return errorResponse('Unauthorized', 401)
     }
+
+    // Analyses expire after 1 hour — drop anything older before serving work.
+    await purgeExpiredAnalyses().catch(() => {})
 
     const formData = await request.formData()
     const imageFile = formData.get('image') as File | null
@@ -220,6 +224,10 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return errorResponse('Unauthorized', 401)
     }
+
+    // Analyses self-destruct after 1 hour — purge expired ones first so the
+    // history list only ever contains results the user can still reopen.
+    await purgeExpiredAnalyses().catch(() => {})
 
     const { searchParams } = new URL(request.url)
     const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '20')), 100)
