@@ -64,73 +64,67 @@ interface TournamentDef {
   freshWindow: () => { start: Date; end: Date }
 }
 
-const TOURNAMENTS: TournamentDef[] = [
-  {
-    name: 'Weekly Win Rate Cup',
-    description: 'Rank by win rate over the next 7 days. Top 3 land on the leaderboard and split a $250 prize.',
-    type: 'win_rate',
-    entryFee: 0,
-    prizePool: 250,
-    maxParticipants: 500,
-    freshWindow: () => {
-      const start = addDays(atToday(0), -1)
-      return { start, end: addDays(start, 7) }
-    },
-  },
-  {
-    name: 'Monthly Profit Tournament',
-    description: 'Biggest net profit over 30 days wins. Bragging rights, a $1,000 prize pool and a profile badge.',
+// The "$10 entry / 12 players / winner takes $100" package ladder. Each next
+// package DOUBLES the entry fee up to the last package. Winner takes home
+// entryFee × 10 (12 players × $10 = $120 collected → winner gets $100).
+const PACKAGE_COUNT = 8
+const PACKAGE_PLAYERS = 12
+const PACKAGE_DURATION_DAYS = 14
+
+function entryFeeForPackage(packageNo: number): number {
+  return 10 * Math.pow(2, packageNo - 1)
+}
+
+const TOURNAMENTS: TournamentDef[] = Array.from({ length: PACKAGE_COUNT }, (_, i) => {
+  const packageNo = i + 1
+  const entryFee = entryFeeForPackage(packageNo)
+  const prizePool = entryFee * 10
+  return {
+    name: `Package ${packageNo} - $${entryFee} Entry`,
+    description: `${PACKAGE_PLAYERS} players - winner takes home $${prizePool}. Entry $${entryFee} - payment opens when this pack fills up.`,
     type: 'profit',
-    entryFee: 5,
-    prizePool: 1000,
-    maxParticipants: 1000,
+    entryFee,
+    prizePool,
+    maxParticipants: PACKAGE_PLAYERS,
     freshWindow: () => {
-      const start = addDays(atToday(0), 2)
-      return { start, end: addDays(start, 30) }
+      const start = addDays(atToday(0), -1 + (packageNo - 1) * 2)
+      return { start, end: addDays(start, PACKAGE_DURATION_DAYS) }
     },
-  },
-  {
-    name: 'Weekend Forex Sprint',
-    description: '2-day sprint. Highest profit % on any FX pair takes the $150 pot.',
-    type: 'profit',
-    entryFee: 0,
-    prizePool: 150,
-    maxParticipants: 300,
-    freshWindow: () => {
-      const start = nextWeekdayDow(6, 8)
-      return { start, end: addDays(start, 2) }
-    },
-  },
-  {
-    name: 'Crypto Signal Challenge',
-    description: 'BTC, ETH & alts. Highest ROI using AI signals in 14 days wins $400.',
-    type: 'win_rate',
-    entryFee: 0,
-    prizePool: 400,
-    maxParticipants: 750,
-    freshWindow: () => {
-      const start = addDays(atToday(0), 5)
-      return { start, end: addDays(start, 14) }
-    },
-  },
-  {
-    name: 'Accuracy Masters',
-    description: '24-hour test of precision: stay closest to the AI entry, exit and stop levels.',
-    type: 'accuracy',
-    entryFee: 0,
-    prizePool: 100,
-    maxParticipants: 200,
-    freshWindow: () => {
-      const start = addDays(atToday(0), -9)
-      return { start, end: addDays(start, 7) }
-    },
-  },
+  }
+})
+
+// Clean up the generic demo tournaments that ran before the package ladder
+// (their records would otherwise sit alongside the new packages forever).
+const OLD_DEMO_TOURNAMENTS = [
+  'Weekly Win Rate Cup',
+  'Monthly Profit Tournament',
+  'Weekend Forex Sprint',
+  'Crypto Signal Challenge',
+  'Accuracy Masters',
 ]
 
 async function ensureAutoTournaments() {
   const creatorId = await systemCreatorId()
   if (!creatorId) return
   const now = new Date()
+
+  // Normalize earlier-created package names that used a non-ASCII separator.
+  const nonAscii = await db.competition.findMany({
+    where: { creatorId, name: { contains: '·' } },
+    select: { id: true, name: true },
+  })
+  for (const c of nonAscii) {
+    await db.competition.update({
+      where: { id: c.id },
+      data: { name: c.name.replace(/[·—]/g, '-') },
+    })
+  }
+
+  // Prune leftover demo tournaments (pre-package-ladder) created by the system.
+  await db.competition.deleteMany({
+    where: { creatorId, name: { in: OLD_DEMO_TOURNAMENTS } },
+  })
+
   for (const def of TOURNAMENTS) {
     const existing = await db.competition.findFirst({
       where: { name: def.name, creatorId },
