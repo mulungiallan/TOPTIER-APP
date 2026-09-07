@@ -106,6 +106,7 @@ const FINNHUB_UNSUPPORTED = new Set([
   'GBP/CAD',
   'AUD/CAD',
   'AUD/CHF',
+  'AUD/NZD',
   'NZD/JPY',
   'NZD/CAD',
   'NZD/CHF',

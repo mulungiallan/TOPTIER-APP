@@ -58,6 +58,7 @@ const FOREX_CROSSES: SignalTarget[] = [
   { symbol: 'GBP/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'AUD/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'AUD/CHF', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'AUD/NZD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'NZD/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'NZD/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'NZD/CHF', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
