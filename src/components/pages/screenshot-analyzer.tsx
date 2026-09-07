@@ -691,6 +691,7 @@ export function ScreenshotAnalyzer() {
   const [pendingCropPick, setPendingCropPick] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pageTopRef = useRef<HTMLDivElement>(null)
 
   const freeAnalysesUsed = analysisCount
   const freeLimitReached = false // analyzer is free & unlimited (ad-supported)
@@ -959,13 +960,17 @@ export function ScreenshotAnalyzer() {
   }, [])
 
   // Reopen a previous analysis — results stay reopenable for 1 hour, then the
-  // server deletes them automatically.
+  // server deletes them automatically. Scrolls the app's real scroll container
+  // (the <main> element, since this app does not scroll the window) to the top
+  // so the restored result card is visible.
   const handleReopen = useCallback((item: AnalysisResult) => {
     setAnalysisResult(item)
     setSelectedFile(null)
     setPreviewUrl(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    requestAnimationFrame(() => {
+      pageTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
     toast.success('Previous analysis restored — available for 1 hour')
   }, [])
 
@@ -997,7 +1002,7 @@ export function ScreenshotAnalyzer() {
   }
 
   return (
-    <div className="p-3 sm:p-4 space-y-5 max-w-4xl mx-auto">
+    <div ref={pageTopRef} className="p-3 sm:p-4 space-y-5 max-w-4xl mx-auto">
       {/* Analysis Counter */}
       <div className="flex items-center justify-between">
         <div>
