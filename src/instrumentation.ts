@@ -42,6 +42,12 @@ export async function register() {
     // so we must start the monitor here (it polls prices + notifies on trigger).
     const { startAlertMonitor } = await import("./lib/services/alert-monitor");
     startAlertMonitor(null);
+
+    // Start the background signal generator so the Signals feed stays populated
+    // without blocking API requests. It refreshes every few minutes and is
+    // internally throttled + guarded against overlapping runs.
+    const { signalGenerator } = await import("./lib/services/signal-generator");
+    signalGenerator.startBackgroundRefresh();
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

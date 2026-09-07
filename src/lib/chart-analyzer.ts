@@ -126,7 +126,7 @@ Deriving trade levels (when you answer BUY or SELL — these are REQUIRED, not o
   - For BUY:  stopLoss  <  entryPrice  <  takeProfit1 < takeProfit2 < takeProfit3
   - For SELL: stopLoss  >  entryPrice  >  takeProfit1 > takeProfit2 > takeProfit3
 - entryPrice: the last/current visible price near the rightmost candle or nearest support (BUY) / resistance (SELL) retest. Read from the axis.
-- stopLoss: just BELOW (BUY) / ABOVE (SELL) the nearest recent swing low/high, ~1-1.5x the recent average candle range away. Read from the visible axis.
+- stopLoss: a TIGHT stop just BELOW (BUY) / ABOVE (SELL) the nearest recent swing low/high — about 0.3-0.5x the recent average candle range away, and never more than ~1% of price. Keep it tight; a wide stop signals a weak setup. Read from the visible axis.
 - takeProfit1/2/3: 1R, 2R and 3R away from entry (R = entry-to-stop distance) in the direction of the trade.
 - You MUST provide entry, stopLoss, and at least takeProfit1 for any BUY or SELL signal. If you cannot produce all three, then use HOLD.
 - reasoning: 2-3 plain-English sentences that cite the specific levels you chose and the price evidence you saw on the chart.`
@@ -567,13 +567,15 @@ export class ChartAnalyzer {
   }
 
   /**
-   * Widens the stop-loss outward for high-volatility symbols so that normal
-   * market noise does not prematurely stop out a valid trade.
+   * Tightens the stop-loss for high-volatility symbols that are sensitive to
+   * noise, so trades are not summarily "stopped out" by a single crazy candle.
    *
-   * - Uses a volatility multiplier derived from the detected symbol.
-   * - The stop is moved further from the entry (away from price).
+   * - Uses a small volatility multiplier derived from the detected symbol.
+   * - The stop is moved slightly further from the entry (away from price).
    * - Widening is capped so risk:reward stays >= 1.0; if that cannot be met,
    *   the original stop is kept (we never degrade the trade).
+   * - A hard cap (1.5% of price) guarantees the stop can never be absurdly
+   *   wide no matter what the model read off the axis.
    */
   private widenStopForVolatility(
     signal: 'BUY' | 'SELL' | 'HOLD',
@@ -597,11 +599,19 @@ export class ChartAnalyzer {
 
     const stopDistance = Math.abs(entry - stop)
     const reward = Math.abs(tp1 - entry)
-    const newStopDistance = stopDistance * mult
+    let newStopDistance = stopDistance * mult
 
     // Never allow risk:reward to drop below 1.0.
     if (reward / newStopDistance < 1.0) {
       return out
+    }
+
+    // Hard cap: even after widening, a stop further than 1.5% of price is more
+    // cost than protection — high-volatility assets (BTC, gold, indices) swing
+    // 2-4% on a single candle, so anything wider is not a realistic stop.
+    const maxDistance = entry * 0.015
+    if (newStopDistance > maxDistance) {
+      newStopDistance = maxDistance
     }
 
     const newStop = signal === 'BUY' ? entry - newStopDistance : entry + newStopDistance
@@ -610,7 +620,8 @@ export class ChartAnalyzer {
 
   /**
    * Returns a stop-widening multiplier based on the detected asset's volatility.
-   * High-volatility / easy-to-knockout pairs get a wider multiplier.
+   * Kept deliberately small — the goal is noise protection, not inflating the
+   * stop. High-volatility / easy-to-knockout pairs get a slightly larger one.
    */
   private volatilityMultiplier(symbol: string): number {
     const s = (symbol || '').toUpperCase()
@@ -619,9 +630,9 @@ export class ChartAnalyzer {
       /FTSE/, /NAS/, /SP500/, /SPX/, /GER/, /DAX/, /NDX/, /US30/, /UK100/,
       /XAU/, /XAG/, /USOIL/, /WTI/, /BITCOIN/, /ETHEREUM/,
     ]
-    if (HIGH.some((r) => r.test(s))) return 1.6
-    if (/JPY/.test(s)) return 1.4
-    if (/GBP|EUR|AUD|NZD|CAD|CHF/.test(s)) return 1.2
+    if (HIGH.some((r) => r.test(s))) return 1.15
+    if (/JPY/.test(s)) return 1.1
+    if (/GBP|EUR|AUD|NZD|CAD|CHF/.test(s)) return 1.05
     return 1.0
   }
 

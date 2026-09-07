@@ -24,25 +24,133 @@ interface SignalTarget {
   timeframe: string       // 1h | 4h | 1d
 }
 
-// A curated, representative set of liquid instruments across all markets. Each
-// is supported by the market-data layer (Yahoo primary, Finnhub fallback).
-const SIGNAL_TARGETS: SignalTarget[] = [
+// full coverage of the liquid, tradeable market — all major forex pairs,
+// crosses and liquid exotics, the top crypto pairs, the global indices,
+// commodities, and blue-chip US stocks. Every symbol here resolves through the
+// market-data layer (Yahoo Finance primary, Finnhub fallback) — see the symbol
+// maps in market-data.ts / live-market-data.ts, which MUST contain a mapping
+// for any forex cross/exotic, crypto, or commodity added below.
+//
+// To keep the batch run within a 5-min refresh budget (rate-limit friendly),
+// each symbol is generated sequentially with a small stagger.
+const FOREX_MAJORS: SignalTarget[] = [
   { symbol: 'EUR/USD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'GBP/USD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'USD/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'USD/CHF', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
   { symbol: 'AUD/USD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'USD/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'NZD/USD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+]
+
+const FOREX_CROSSES: SignalTarget[] = [
+  { symbol: 'EUR/GBP', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'EUR/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'GBP/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'AUD/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'CAD/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'CHF/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'EUR/CHF', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'EUR/AUD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'EUR/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'GBP/CHF', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'GBP/AUD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'GBP/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'AUD/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'AUD/CHF', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'NZD/JPY', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'NZD/CAD', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+  { symbol: 'NZD/CHF', marketType: 'forex', strategy: 'scalp', timeframe: '1h' },
+]
+
+const FOREX_EXOTICS: SignalTarget[] = [
+  { symbol: 'USD/ZAR', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/TRY', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/MXN', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/SGD', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/NOK', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/SEK', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/PLN', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/HUF', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/CZK', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/THB', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/KRW', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/INR', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'USD/BRL', marketType: 'forex', strategy: 'swing', timeframe: '4h' },
+]
+
+const CRYPTO_PAIRS: SignalTarget[] = [
   { symbol: 'BTC/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
   { symbol: 'ETH/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'SOL/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
   { symbol: 'XRP/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
-  { symbol: 'AAPL', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
-  { symbol: 'TSLA', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
-  { symbol: 'MSFT', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
-  { symbol: 'NVDA', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'LTC/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'ADA/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'BNB/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'DOGE/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'AVAX/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'LINK/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'DOT/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'POL/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'UNI/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'TON/USD', marketType: 'crypto', strategy: 'swing', timeframe: '4h' },
+]
+
+const INDEX_TARGETS: SignalTarget[] = [
   { symbol: 'SPX500', marketType: 'indices', strategy: 'swing', timeframe: '1d' },
   { symbol: 'NASDAQ', marketType: 'indices', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'DOW', marketType: 'indices', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'DAX', marketType: 'indices', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'FTSE', marketType: 'indices', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'NIKKEI', marketType: 'indices', strategy: 'swing', timeframe: '1d' },
+]
+
+const COMMODITY_TARGETS: SignalTarget[] = [
   { symbol: 'GOLD', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
   { symbol: 'SILVER', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
   { symbol: 'OIL', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'BRENT', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'COPPER', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'NATGAS', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'PLATINUM', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
+  { symbol: 'PALLADIUM', marketType: 'commodities', strategy: 'swing', timeframe: '4h' },
+]
+
+const STOCK_TARGETS: SignalTarget[] = [
+  { symbol: 'AAPL', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'MSFT', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'GOOGL', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'AMZN', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'META', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'NVDA', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'TSLA', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'NFLX', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'AMD', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'INTC', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'JPM', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'BAC', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'V', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'MA', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'JNJ', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'UNH', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'PG', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'KO', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'DIS', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'MCD', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'WMT', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'COST', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'ORCL', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+  { symbol: 'CRM', marketType: 'stocks', strategy: 'swing', timeframe: '1d' },
+]
+
+const SIGNAL_TARGETS: SignalTarget[] = [
+  ...FOREX_MAJORS,
+  ...FOREX_CROSSES,
+  ...FOREX_EXOTICS,
+  ...CRYPTO_PAIRS,
+  ...INDEX_TARGETS,
+  ...COMMODITY_TARGETS,
+  ...STOCK_TARGETS,
 ]
 
 // ─── Indicator helpers ───────────────────────────────────────────────────────
@@ -164,15 +272,22 @@ function confidenceToInt(c: number): number {
  * Safe to call on every GET — it is throttled by a short in-memory TTL.
  */
 export class SignalGenerator {
-  private lastRun = 0
+  private lastRun = Date.now()
+  private running = false
   private static REFRESH_MS = 5 * 60 * 1000 // regenerate at most every 5 min
+  private static STAGGER_MS = 250
 
   /**
-   * Ensure the Signal table is populated with recent, real-data signals.
+   * Ensure the Signal table is populated — without ever blocking the caller.
    *
-   * Regenerates on a rolling time budget (every REFRESH_MS) so the feed keeps
-   * updating with the market instead of going stale, and always regenerates if
-   * the table is empty. Returns true if the table now has data.
+   * Return is fast in every case:
+   *   - data is fresh    → return immediately (nothing to do)
+   *   - a generation is already in flight → return immediately (don't stack)
+   *   - otherwise → kick off a background generation (fire-and-forget) and
+   *     return immediately; the feed fills in as symbols resolve.
+   *
+   * The heavy batch is rate-limit friendly (~2 requests per symbol, staggered),
+   * so it must never sit in a request's critical path.
    */
   async ensureSignals(force = false): Promise<boolean> {
     const now = Date.now()
@@ -181,15 +296,32 @@ export class SignalGenerator {
       where: { status: 'active', expiryDate: { gt: new Date() } },
     })
 
-    // Refresh past the TTL even when active signals exist (keeps prices/levels
-    // current), and always regenerate when the table is empty.
+    // Fast path: fresh, non-empty feed already present.
     const pastTtl = now - this.lastRun >= SignalGenerator.REFRESH_MS
     if (!force && !pastTtl && recentActive > 0) {
       return true
     }
 
+    // Never stack two generations — the background loop keeps the feed fresh.
+    if (this.running) return true
+
     this.lastRun = now
-    return this.generateBatch()
+    this.running = true
+    void this.generateBatch().finally(() => {
+      this.running = false
+    })
+    return true
+  }
+
+  /**
+   * Kick off an immediate warm-up and then refresh every REFRESH_MS.
+   * Called from src/instrumentation.ts on server boot so production and the
+   * dev server populate the feed in the background without blocking requests.
+   */
+  startBackgroundRefresh(): void {
+    const loop = () => void this.ensureSignals(false)
+    setTimeout(loop, 3000) // let the server boot + DB warm first
+    setInterval(loop, SignalGenerator.REFRESH_MS)
   }
 
   private async generateBatch(): Promise<boolean> {
@@ -212,7 +344,7 @@ export class SignalGenerator {
         )
       }
       // Small stagger to respect Yahoo/Finnhub rate limits.
-      await new Promise((r) => setTimeout(r, 250))
+      await new Promise((r) => setTimeout(r, SignalGenerator.STAGGER_MS))
     }
 
     return stored > 0

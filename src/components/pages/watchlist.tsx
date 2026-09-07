@@ -860,9 +860,9 @@ export function WatchlistPage() {
 
       {/* ─── Premium Upsell ─────────────────────────────────────── */}
       {!isPremium && (
-        <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <Crown className="size-5 text-primary shrink-0" />
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">Unlock pro analysis tools</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Get advanced signal analysis, priority support, and more.
