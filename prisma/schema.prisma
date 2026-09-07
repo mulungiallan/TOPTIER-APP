@@ -838,6 +838,27 @@ model CompetitionEntry {
   @@index([userId])
 }
 
+// Auto-generated and/or admin-created scheduled events shown alongside
+// competitions in the Competitions hub: webinars, live trade sessions, AMAs,
+// workshops and challenges. Status is computed at read time (upcoming | live |
+// ended) from startAt/endAt, so nothing needs a cron to flip statuses.
+model TradingEvent {
+  id          String   @id @default(cuid())
+  slug        String   @unique // stable key for rolling re-generation
+  title       String
+  description String?
+  category    String   @default("live_session") // webinar, live_session, ama, challenge, workshop
+  host        String?
+  startAt     DateTime
+  endAt       DateTime
+  reward      String? // "Free for all tiers", "$50 trading credit", etc.
+  capacity    Int?
+  registered  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([startAt])
+}
+
 // ─── Trading: Paper Trading ─────────────────────────────────────────────────
 
 model PaperTrade {

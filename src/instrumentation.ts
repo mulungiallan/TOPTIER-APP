@@ -58,6 +58,15 @@ export async function register() {
       purgeExpiredAnalyses().catch(() => {});
     }, 10 * 60 * 1000);
     if (typeof cleanupTimer.unref === "function") cleanupTimer.unref();
+
+    // Keep the Competitions & Events hub populated with a rolling schedule of
+    // tournaments and trading events (also seeded on first API visit).
+    const { ensureHubContent } = await import("./lib/services/event-hub");
+    ensureHubContent().catch(() => {});
+    const hubTimer = setInterval(() => {
+      ensureHubContent().catch(() => {});
+    }, 30 * 60 * 1000);
+    if (typeof hubTimer.unref === "function") hubTimer.unref();
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

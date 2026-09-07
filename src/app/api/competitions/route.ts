@@ -1,12 +1,16 @@
 import { NextRequest } from 'next/server'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { CompetitionService } from '@/lib/services/social'
+import { ensureHubContent } from '@/lib/services/event-hub'
 
 // GET /api/competitions?status=active
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+
+    // Fire-and-forget: keep the rolling tournaments populated on first visit.
+    ensureHubContent().catch((err) => console.error('Event hub seed error:', err))
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') || undefined

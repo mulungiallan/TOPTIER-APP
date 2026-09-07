@@ -622,8 +622,7 @@ export class CompetitionService {
   }
 
   static async listCompetitions(status?: string) {
-    return db.competition.findMany({
-      where: status ? { status } : undefined,
+    const competitions = await db.competition.findMany({
       orderBy: { startDate: 'desc' },
       take: 50,
       include: {
@@ -631,6 +630,29 @@ export class CompetitionService {
         _count: { select: { entries: true } },
       },
     })
+
+    // Effective status is computed from start/end dates so competitions roll
+    // between upcoming → active → ended without any cron flipping the field.
+    const now = new Date()
+    const order: Record<string, number> = { active: 0, upcoming: 1, ended: 2, cancelled: 3 }
+    let mapped = competitions
+      .map((c) => ({
+        ...c,
+        status: c.status === 'cancelled'
+          ? 'cancelled'
+          : c.endDate < now
+            ? 'ended'
+            : c.startDate > now
+              ? 'upcoming'
+              : 'active',
+      }))
+      .sort((a, b) => {
+        if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status]
+        return a.startDate.getTime() - b.startDate.getTime()
+      })
+
+    if (status) mapped = mapped.filter((c) => c.status === status)
+    return mapped
   }
 
   static async joinCompetition(competitionId: string, userId: string) {
