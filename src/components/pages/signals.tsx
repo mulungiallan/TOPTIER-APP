@@ -802,6 +802,15 @@ export function SignalsPage() {
     fetchSignals()
   }, [fetchSignals])
 
+  // Auto-refresh the feed so signals update over time (levels & directions
+  // re-issue every few minutes from the live generator, prices tick each 30s).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSignals(true)
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [fetchSignals])
+
   // Fetch live prices for every asset referenced by the visible signals
   const signalSymbols = useMemo(() => {
     const set = new Set<string>()

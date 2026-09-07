@@ -395,6 +395,20 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
           )}
         </div>
 
+        {collapsed && (
+          <div className="mt-2 flex justify-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+              onClick={handleLogout}
+              title={t('common.loggedOut', locale)}
+            >
+              <LogOut className="size-4" />
+            </Button>
+          </div>
+        )}
+
         {/* Powered by BAGMUL */}
         <div className={cn('mt-3 pt-2 border-t border-border/50', collapsed && 'flex justify-center')}>
           {collapsed ? (
@@ -419,7 +433,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const setPage = useStore((s) => s.setPage)
   const goBack = useStore((s) => s.goBack)
   const locale = useStore((s) => s.locale)
+  const logout = useStore((s) => s.logout)
   const isMobile = useIsMobile()
+
+  const handleLogout = () => {
+    logout()
+    toast.success(t('common.loggedOut', locale))
+  }
 
   // Apply document language + direction (RTL for Arabic) to match the locale.
   React.useEffect(() => {
@@ -603,6 +623,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {notificationCount > 9 ? '9+' : notificationCount}
                 </span>
               )}
+            </Button>
+
+            {/* Logout */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={handleLogout}
+              aria-label={t('common.loggedOut', locale)}
+              title={t('common.loggedOut', locale)}
+            >
+              <LogOut className="size-4" />
             </Button>
           </div>
         </header>

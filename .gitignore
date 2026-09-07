@@ -83,6 +83,8 @@ server.log
 /db/custom.db
 /db/custom.db-shm
 /db/custom.db-wal
+# Local SQLite database (created by prisma db push on the dev machine)
+/prisma/prisma/
 
 # User uploads — never commit
 /upload/

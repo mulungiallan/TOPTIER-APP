@@ -29,15 +29,10 @@ export async function GET(request: NextRequest) {
     if (asset) where.asset = { contains: asset }
 
     // ─── Lazy population ─────────────────────────────────────────────────
-    // If there are no active signals to show, generate a fresh set of
-    // real-data signals on-the-fly so the page is never empty. Throttled
-    // internally (max once per 10 minutes).
-    const activeCount = await db.signal.count({
-      where: { ...where, status: 'active', expiryDate: { gt: new Date() } },
-    })
-    if (activeCount === 0) {
-      await signalGenerator.ensureSignals()
-    }
+    // Always give the generator a chance to refresh (it is time-throttled
+    // internally, max once per 5 min) so the feed updates as the market moves
+    // instead of showing the same stale entries forever.
+    await signalGenerator.ensureSignals()
 
     const [signals, total] = await Promise.all([
       db.signal.findMany({

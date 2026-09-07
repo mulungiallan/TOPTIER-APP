@@ -165,24 +165,27 @@ function confidenceToInt(c: number): number {
  */
 export class SignalGenerator {
   private lastRun = 0
-  private static REFRESH_MS = 10 * 60 * 1000 // regenerate at most every 10 min
+  private static REFRESH_MS = 5 * 60 * 1000 // regenerate at most every 5 min
 
   /**
    * Ensure the Signal table is populated with recent, real-data signals.
-   * Returns true if it generated signals (i.e. the table now has data).
+   *
+   * Regenerates on a rolling time budget (every REFRESH_MS) so the feed keeps
+   * updating with the market instead of going stale, and always regenerates if
+   * the table is empty. Returns true if the table now has data.
    */
   async ensureSignals(force = false): Promise<boolean> {
     const now = Date.now()
 
-    // Throttle: if we generated recently, only check whether data still exists.
     const recentActive = await db.signal.count({
       where: { status: 'active', expiryDate: { gt: new Date() } },
     })
-    if (!force && recentActive > 0) {
-      return recentActive > 0
-    }
-    if (!force && now - this.lastRun < SignalGenerator.REFRESH_MS) {
-      return recentActive > 0
+
+    // Refresh past the TTL even when active signals exist (keeps prices/levels
+    // current), and always regenerate when the table is empty.
+    const pastTtl = now - this.lastRun >= SignalGenerator.REFRESH_MS
+    if (!force && !pastTtl && recentActive > 0) {
+      return true
     }
 
     this.lastRun = now
