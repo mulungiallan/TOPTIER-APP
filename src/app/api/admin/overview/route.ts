@@ -209,6 +209,29 @@ export async function GET(request: NextRequest) {
 
     const signalPerformance = await db.signal.groupBy({ by: ['status'], _count: { id: true } })
 
+    // Ops block (top-1% panel): payout queue, refunds, moderation, live session,
+    // leverage totals — computed fresh for mission control.
+    const [pendingPayouts, paidPayouts30, refundedTx, refundedTotal, pendingReviews, pendingDeletions, liveSessions, totalEarnings, lifetimeCopiesDue] = await Promise.all([
+      db.payoutRequest.findMany({
+        where: { status: { in: ['pending', 'processing'] } },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+        include: { account: true },
+      }),
+      db.payoutRequest.aggregate({
+        where: { status: 'paid', paidAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) } },
+        _count: true,
+        _sum: { amount: true },
+      }),
+      db.paymentTransaction.count({ where: { status: 'refunded' } }),
+      db.paymentTransaction.aggregate({ where: { status: 'refunded' }, _sum: { amount: true } }),
+      db.review.count({ where: { status: 'pending' } }),
+      db.dataDeletionRequest.count({ where: { status: 'pending' } }),
+      db.usageSession.count({ where: { endedAt: null } }),
+      db.platformEarning.aggregate({ _sum: { amount: true } }),
+      db.copySettlement.aggregate({ where: { status: 'due' }, _sum: { providerAmount: true } }),
+    ])
+
     return successResponse({
       generatedAt: new Date().toISOString(),
       admin: { id: user.id, email: user.email, name: user.name, role: user.role },
@@ -288,6 +311,15 @@ export async function GET(request: NextRequest) {
       })),
       copySettlements,
       recentBotTrades,
+      ops: {
+        pendingPayouts,
+        paidPayouts30: { count: paidPayouts30._count, total: Math.round((paidPayouts30._sum.amount ?? 0) * 100) / 100 },
+        refunds: { count: refundedTx, total: Math.round((refundedTotal._sum.amount ?? 0) * 100) / 100 },
+        moderation: { pendingReviews, pendingDeletions },
+        liveSessions,
+        totalEarnings: Math.round((totalEarnings._sum.amount ?? 0) * 100) / 100,
+        copyBrokerDue: Math.round((lifetimeCopiesDue._sum.providerAmount ?? 0) * 100) / 100,
+      },
     })
   } catch (error) {
     console.error('Admin overview GET error:', error)

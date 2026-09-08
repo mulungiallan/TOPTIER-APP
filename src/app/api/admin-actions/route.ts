@@ -17,8 +17,10 @@ import {
 import { emailService } from '@/lib/services/email'
 import { notifyUser, notifyUsers } from '@/lib/services/notifications'
 import { requireAdmin } from '@/lib/admin-guard'
+import { requirePermission, ADMIN_ROLES, adminCan } from '@/lib/admin-permissions'
 import { ManagedCopyService } from '@/lib/services/managed-copy'
 import { escapeHtml } from '@/lib/security'
+import { fireOps } from '@/lib/ops-notify'
 
 // NOTE: The JWT secret comes from the shared auth module. There is no
 // hardcoded fallback — missing secret is a fatal misconfiguration.
@@ -50,6 +52,47 @@ async function logAdminAction(adminId: string, action: string, details: Record<s
   }
 }
 
+function permForAction(action: string): string | null {
+  const map: Record<string, string> = {
+    impersonate: 'impersonate',
+    run_job: 'system.jobs',
+    suspend_user: 'users.write',
+    warn_user: 'users.write',
+    ban_user: 'users.write',
+    unban_user: 'users.write',
+    bulk_action: 'users.write',
+    set_user_role: 'users.admin',
+    reset_user_2fa: 'users.write',
+    force_logout: 'users.admin',
+    delete_user: 'users.gdpr',
+    set_subscription: 'users.admin',
+    generate_signal: 'signals.write',
+    override_signal: 'signals.write',
+    expire_signals: 'signals.write',
+    approve_payout: 'payments.payout',
+    reject_payout: 'payments.payout',
+    mark_payout_paid: 'payments.payout',
+    refund_transaction: 'payments.write',
+    record_earning: 'payments.write',
+    log_ad_revenue: 'payments.write',
+    create_coupon: 'content.write',
+    bulk_create_coupons: 'content.write',
+    deactivate_coupon: 'content.write',
+    dismiss_report: 'tickets.manage',
+    ticket_assign: 'tickets.manage',
+    ticket_reply: 'tickets.manage',
+    approve_review: 'content.write',
+    reject_review: 'content.write',
+    create_news: 'content.write',
+    delete_news: 'content.write',
+    create_event: 'content.write',
+    delete_event: 'content.write',
+    process_data_deletion: 'users.gdpr',
+    settle_broker_copy: 'payments.write',
+  }
+  return map[action] ?? null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { error, user } = await requireAdmin(request)
@@ -59,6 +102,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { action } = body
     const adminId = user.id
+
+    // RBAC gate: every action maps to a permission; the admin's role must hold it.
+    const actionPerm = permForAction(action)
+    if (actionPerm && !adminCan(user.role, actionPerm as any)) {
+      return errorResponse(`Forbidden: role "${user.role}" lacks permission "${actionPerm}"`, 403)
+    }
 
     switch (action) {
       case 'impersonate':
@@ -93,6 +142,49 @@ export async function POST(request: NextRequest) {
         return await handleSettleBrokerCopy(adminId, body)
       case 'log_ad_revenue':
         return await handleLogAdRevenue(adminId, body)
+      // ── RBAC / account management (files: admin-permissions) ──
+      case 'set_user_role':
+        return await handleSetUserRole(adminId, body)
+      case 'reset_user_2fa':
+        return await handleResetUser2fa(adminId, body)
+      case 'force_logout':
+        return await handleForceLogout(adminId, body)
+      case 'delete_user':
+        return await handleDeleteUser(adminId, body)
+      case 'set_subscription':
+        return await handleSetSubscription(adminId, body)
+      case 'bulk_action':
+        return await handleBulkAction(adminId, body)
+      // ── Payments / ledger ──
+      case 'approve_payout':
+        return await handleApprovePayout(adminId, body)
+      case 'reject_payout':
+        return await handleRejectPayout(adminId, body)
+      case 'mark_payout_paid':
+        return await handleMarkPayoutPaid(adminId, body)
+      case 'refund_transaction':
+        return await handleRefundTransaction(adminId, body)
+      case 'record_earning':
+        return await handleRecordEarning(adminId, body)
+      // ── Trading ops ──
+      case 'expire_signals':
+        return await handleExpireSignals(adminId, body)
+      case 'run_job':
+        return await handleRunJob(adminId, body)
+      // ── Content / support ──
+      case 'bulk_create_coupons':
+        return await handleBulkCreateCoupons(adminId, body)
+      case 'ticket_assign':
+        return await handleTicketAssign(adminId, body)
+      case 'ticket_reply':
+        return await handleTicketReply(adminId, body)
+      case 'approve_review':
+        return await handleReviewModeration(adminId, body, 'approved')
+      case 'reject_review':
+        return await handleReviewModeration(adminId, body, 'rejected')
+      // ── Compliance ──
+      case 'process_data_deletion':
+        return await handleProcessDataDeletion(adminId, body)
       default:
         return errorResponse('Invalid action', 400)
     }
@@ -730,6 +822,116 @@ export async function GET(request: NextRequest) {
         description: 'Manually log ad revenue (e.g. from Google AdSense) into the payout ledger',
         requiredFields: ['amount'],
       },
+      {
+        action: 'set_user_role',
+        description: 'Change a user role (owner/super_admin/admin/moderator/support/analyst/read_only)',
+        requiredFields: ['userId', 'role'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'reset_user_2fa',
+        description: 'Clear a user two-factor secret and force re-setup',
+        requiredFields: ['userId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'force_logout',
+        description: 'Invalidate a user sessions everywhere',
+        requiredFields: ['userId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'delete_user',
+        description: 'Soft-delete a user account and open/approve a GDPR deletion request',
+        requiredFields: ['userId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'set_subscription',
+        description: 'Grant/adjust a subscription tier and billing window',
+        requiredFields: ['userId'],
+        optionalFields: ['tier', 'plan', 'startDate', 'endDate'],
+      },
+      {
+        action: 'bulk_action',
+        description: 'Apply ban|suspend|unban|warn to many users at once',
+        requiredFields: ['userIds[]', 'action'],
+        optionalFields: ['reason', 'duration (days, for suspend)'],
+      },
+      {
+        action: 'approve_payout',
+        description: 'Move a payout request into processing',
+        requiredFields: ['payoutId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'reject_payout',
+        description: 'Reject/fail a payout request',
+        requiredFields: ['payoutId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'mark_payout_paid',
+        description: 'Mark a payout request as paid (with optional tx hash)',
+        requiredFields: ['payoutId'],
+        optionalFields: ['txHash'],
+      },
+      {
+        action: 'refund_transaction',
+        description: 'Refund a payment and write a reverse ledger entry',
+        requiredFields: ['transactionId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'record_earning',
+        description: 'Manually record a platform earning (premium_payment|copy_fee|bot_profit_share|referral_revenue|ads_revenue)',
+        requiredFields: ['source', 'amount'],
+        optionalFields: ['currency', 'reference'],
+      },
+      {
+        action: 'expire_signals',
+        description: 'Expire all active signals past their expiry date',
+      },
+      {
+        action: 'run_job',
+        description: 'Run a background job manually (signals|expire|prune_notifications)',
+        requiredFields: ['job'],
+      },
+      {
+        action: 'bulk_create_coupons',
+        description: 'Generate many coupon codes at once',
+        requiredFields: ['count', 'discountType', 'discountAmount'],
+        optionalFields: ['prefix', 'maxUses', 'expiresAt', 'minPlan'],
+      },
+      {
+        action: 'ticket_assign',
+        description: 'Set priority/status/assignee on a support ticket',
+        requiredFields: ['ticketId'],
+        optionalFields: ['priority', 'status', 'assigneeId'],
+      },
+      {
+        action: 'ticket_reply',
+        description: 'Reply to a support ticket (notifies the user)',
+        requiredFields: ['ticketId', 'message'],
+      },
+      {
+        action: 'approve_review',
+        description: 'Approve a community review',
+        requiredFields: ['reviewId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'reject_review',
+        description: 'Reject a community review',
+        requiredFields: ['reviewId'],
+        optionalFields: ['reason'],
+      },
+      {
+        action: 'process_data_deletion',
+        description: 'Approve or reject a GDPR data-deletion request',
+        requiredFields: ['requestId', 'action'],
+        optionalFields: ['reason'],
+      },
     ],
     note: 'POST to this endpoint with { action, ...fields } to execute.',
   })
@@ -769,4 +971,402 @@ async function handleLogAdRevenue(adminId: string, body: any) {
   })
 
   return successResponse({ earning, message: `Logged $${numAmount} ad revenue` })
+}
+
+// ─── RBAC / account management ───────────────────────────────────────────────
+
+async function handleSetUserRole(adminId: string, body: any) {
+  const { userId, role, reason } = body
+  if (!userId) return errorResponse('userId required', 400)
+  if (!ADMIN_ROLES.includes(role)) return errorResponse(`role must be one of: ${ADMIN_ROLES.join(', ')}`, 400)
+
+  const target = await db.user.findUnique({ where: { id: userId } })
+  if (!target) return errorResponse('User not found', 404)
+  if (target.role === 'owner') return errorResponse('Cannot change the owner role', 403)
+  if (target.role === 'super_admin') return errorResponse('Protected account', 403)
+  const requester = await db.user.findUnique({ where: { id: adminId }, select: { role: true } })
+  if ((role === 'super_admin' || role === 'owner') && requester?.role !== 'super_admin' && requester?.role !== 'owner') {
+    return errorResponse('Only super_admin or owner can grant super_admin/owner roles', 403)
+  }
+
+  await db.user.update({ where: { id: userId }, data: { role } })
+  await logAdminAction(adminId, 'SET_USER_ROLE', { targetUserId: userId, from: target.role, to: role, reason: reason || null })
+  fireOps('Role changed', { adminId, userId, from: target.role, to: role })
+
+  return successResponse({ userId, role, from: target.role })
+}
+
+async function handleResetUser2fa(adminId: string, body: any) {
+  const { userId, reason } = body
+  if (!userId) return errorResponse('userId required', 400)
+  const target = await db.user.update({
+    where: { id: userId },
+    data: { twoFactorSecret: null, twoFactorEnabled: false },
+    select: { id: true, email: true, twoFactorEnabled: true },
+  })
+  await notifyUser(userId, {
+    type: 'system',
+    title: '2FA Reset',
+    message: 'Your two-factor authentication was reset by support. Please re-enable it from your profile settings.',
+    actionUrl: '/settings',
+  })
+  await logAdminAction(adminId, 'RESET_USER_2FA', { targetUserId: userId, reason: reason || null })
+  return successResponse(target)
+}
+
+async function handleForceLogout(adminId: string, body: any) {
+  const { userId, reason } = body
+  if (!userId) return errorResponse('userId required', 400)
+  const target = await db.user.findUnique({ where: { id: userId }, select: { id: true, email: true, isBanned: true } })
+  if (!target) return errorResponse('User not found', 404)
+
+  await db.user.update({
+    where: { id: userId },
+    data: { tokenVersion: { increment: 1 } },
+  })
+  const pushed = await notifyUser(userId, {
+    type: 'system',
+    title: 'Signed out from all devices',
+    message: 'Your session was ended by support. Please sign in again.',
+    actionUrl: '/login',
+  })
+  await logAdminAction(adminId, 'FORCE_LOGOUT', { targetUserId: userId, reason: reason || null })
+  return successResponse({ userId: target.id, notified: pushed.delivered })
+}
+
+async function handleDeleteUser(adminId: string, body: any) {
+  const { userId, reason } = body
+  if (!userId) return errorResponse('userId required', 400)
+  const target = await db.user.findUnique({ where: { id: userId } })
+  if (!target) return errorResponse('User not found', 404)
+  if (adminCan(target.role, 'panel.access')) return errorResponse('Cannot delete an admin account', 403)
+
+  // Soft-delete + revoke sessions + open GDPR request (keyed by email).
+  await db.user.update({
+    where: { id: userId },
+    data: { deletedAt: new Date(), isBanned: true, tokenVersion: { increment: 1 } },
+  })
+  await db.dataDeletionRequest.upsert({
+    where: { id: `pending_${target.email}` as any },
+    update: { status: 'completed' },
+    create: { email: target.email, status: 'completed', reason },
+  }).catch(async () => {
+    // Email may not have a unique constraint; create a fresh one if upsert fails.
+    await db.dataDeletionRequest.create({
+      data: { email: target.email, status: 'completed', reason },
+    })
+  })
+  await logAdminAction(adminId, 'DELETE_USER', { targetUserId: userId, reason: reason || null })
+  fireOps('User deleted', { adminId, userId, email: target.email })
+
+  return successResponse({ deleted: true, userId })
+}
+
+async function handleSetSubscription(adminId: string, body: any) {
+  const { userId, tier, plan, startDate, endDate } = body
+  if (!userId) return errorResponse('userId required', 400)
+  const target = await db.user.findUnique({ where: { id: userId }, select: { id: true, email: true } })
+  if (!target) return errorResponse('User not found', 404)
+
+  const data: Record<string, unknown> = { updatedAt: new Date() }
+  if (tier) data.subscriptionTier = tier
+  if (plan) data.plan = plan
+  const start = startDate ? new Date(startDate) : null
+  const end = endDate ? new Date(endDate) : null
+  if (start) {
+    data.trialStartDate = start
+    data.subscriptionStartDate = start
+  }
+  if (end) data.subscriptionEndDate = end
+
+  const updated = await db.user.update({ where: { id: userId }, data, select: { id: true, email: true, subscriptionTier: true, plan: true } })
+  await notifyUser(userId, {
+    type: 'subscription',
+    title: 'Account plan updated',
+    message: `Your account plan was updated by support to ${tier || plan}.`,
+    actionUrl: '/pricing',
+  })
+  await logAdminAction(adminId, 'SET_SUBSCRIPTION', { targetUserId: userId, tier: tier || null, plan: plan || null, endDate: end ? end.toISOString() : null })
+  return successResponse(updated)
+}
+
+async function handleBulkAction(adminId: string, body: any) {
+  const { userIds, action, reason, duration } = body
+  const ids: string[] = Array.isArray(userIds) ? userIds.filter(Boolean) : []
+  if (ids.length === 0) return errorResponse('userIds[] required', 400)
+  if (!['ban', 'suspend', 'unban', 'warn'].includes(action)) return errorResponse('action must be ban|suspend|unban|warn', 400)
+
+  const targets = await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, email: true, role: true } })
+  const safe = targets.filter((t) => !adminCan(t.role, 'panel.access'))
+  const excluded = targets.length - safe.length
+
+  if (action === 'ban') {
+    await db.user.updateMany({
+      where: { id: { in: safe.map((t) => t.id) } },
+      data: { isBanned: true, banReason: `BANNED | Reason: ${reason || 'Bulk ban'}` },
+    })
+    for (const t of safe) {
+      await notifyUser(t.id, { type: 'system', title: 'Account Banned', message: `Your account has been banned. Reason: ${reason || 'Violation of terms'}`, actionUrl: '/support' }).catch(() => {})
+    }
+    await db.user.updateMany({ where: { id: { in: safe.map((t) => t.id) } }, data: { tokenVersion: { increment: 1 } } })
+  } else if (action === 'suspend') {
+    const days = parseInt(duration) || 7
+    const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+    await db.user.updateMany({
+      where: { id: { in: safe.map((t) => t.id) } },
+      data: { isBanned: true, banReason: `SUSPENDED until ${until.toISOString()} | Reason: ${reason || 'Bulk suspension'}` },
+    })
+    for (const t of safe) {
+      await notifyUser(t.id, { type: 'system', title: 'Account Suspended', message: `Your account was suspended for ${days} days. Reason: ${reason || 'Violation of terms'}`, actionUrl: '/support' }).catch(() => {})
+    }
+  } else if (action === 'unban') {
+    await db.user.updateMany({
+      where: { id: { in: safe.map((t) => t.id) } },
+      data: { isBanned: false, banReason: null },
+    })
+  } else if (action === 'warn') {
+    for (const t of safe) {
+      await notifyUser(t.id, { type: 'system', title: 'Warning from TOPTIER Team', message: reason || 'You have received a warning.', actionUrl: '/support' }).catch(() => {})
+    }
+  }
+
+  await logAdminAction(adminId, 'BULK_ACTION', { action, count: safe.length, excluded, reason: reason || null, userIds: safe.map((t) => t.id) })
+  return successResponse({ action, applied: safe.length, excluded })
+}
+
+// ─── Payments / ledger ───────────────────────────────────────────────────────
+
+async function handleApprovePayout(adminId: string, body: any) {
+  const { payoutId, reason } = body
+  if (!payoutId) return errorResponse('payoutId required', 400)
+  const req = await db.payoutRequest.findUnique({ where: { id: payoutId } })
+  if (!req) return errorResponse('Payout request not found', 404)
+
+  const updated = await db.payoutRequest.update({ where: { id: payoutId }, data: { status: 'processing' } })
+  await logAdminAction(adminId, 'APPROVE_PAYOUT', { payoutId, amount: req.amount, reason: reason || null })
+  fireOps('Payout approved', { adminId, payoutId, amount: req.amount, method: req.method })
+
+  return successResponse(updated)
+}
+
+async function handleRejectPayout(adminId: string, body: any) {
+  const { payoutId, reason } = body
+  if (!payoutId) return errorResponse('payoutId required', 400)
+  const req = await db.payoutRequest.findUnique({ where: { id: payoutId } })
+  if (!req) return errorResponse('Payout request not found', 404)
+  if (req.status === 'paid') return errorResponse('Cannot reject an already-paid payout', 400)
+
+  const updated = await db.payoutRequest.update({ where: { id: payoutId }, data: { status: 'failed', failureReason: reason || 'Rejected by admin' } })
+  await logAdminAction(adminId, 'REJECT_PAYOUT', { payoutId, amount: req.amount, reason: reason || null })
+  fireOps('Payout rejected', { adminId, payoutId, amount: req.amount, reason: reason || null })
+
+  return successResponse(updated)
+}
+
+async function handleMarkPayoutPaid(adminId: string, body: any) {
+  const { payoutId, txHash } = body
+  if (!payoutId) return errorResponse('payoutId required', 400)
+  const req = await db.payoutRequest.findUnique({ where: { id: payoutId } })
+  if (!req) return errorResponse('Payout request not found', 404)
+
+  const updated = await db.payoutRequest.update({
+    where: { id: payoutId },
+    data: { status: 'paid', txHash: txHash || null, paidAt: new Date() },
+  })
+  await logAdminAction(adminId, 'MARK_PAYOUT_PAID', { payoutId, txHash: txHash || null })
+  return successResponse(updated)
+}
+
+async function handleRefundTransaction(adminId: string, body: any) {
+  const { transactionId, reason } = body
+  if (!transactionId) return errorResponse('transactionId required', 400)
+  const tx = await db.paymentTransaction.findUnique({ where: { id: transactionId } })
+  if (!tx) return errorResponse('Transaction not found', 404)
+  if (tx.status === 'refunded') return errorResponse('Transaction already refunded', 400)
+
+  const [updated, earning] = await db.$transaction([
+    db.paymentTransaction.update({ where: { id: transactionId }, data: { status: 'refunded' } }),
+    db.platformEarning.create({ data: { source: 'premium_payment', amount: -tx.amount, currency: tx.currency, reference: `refund_${transactionId}`, status: 'available' } }),
+  ])
+
+  await notifyUser(tx.userId, {
+    type: 'system',
+    title: 'Refund issued',
+    message: `A refund of ${tx.currency} ${tx.amount} was issued for your payment. ${reason || ''}`.trim(),
+    actionUrl: '/support',
+  }).catch(() => {})
+
+  await logAdminAction(adminId, 'REFUND_TRANSACTION', { transactionId, amount: tx.amount, reason: reason || null })
+  fireOps('Refund issued', { adminId, transactionId, userId: tx.userId, amount: tx.amount })
+
+  return successResponse({ transaction: updated, ledgerEarningId: earning.id })
+}
+
+async function handleRecordEarning(adminId: string, body: any) {
+  const { source, amount, currency, reference } = body
+  if (!source || !amount) return errorResponse('source and amount required', 400)
+  const num = Number(amount)
+  if (!Number.isFinite(num)) return errorResponse('Invalid amount', 400)
+  const allowed = ['premium_payment', 'copy_fee', 'bot_profit_share', 'referral_revenue', 'ads_revenue']
+  if (!allowed.includes(source)) return errorResponse(`source must be one of: ${allowed.join(', ')}`, 400)
+
+  const earning = await db.platformEarning.create({
+    data: { source, amount: num, currency: currency || 'USD', reference: reference || `manual_${Date.now()}` },
+  })
+  await logAdminAction(adminId, 'RECORD_EARNING', { earningId: earning.id, source, amount: num })
+  return successResponse(earning)
+}
+
+// ─── Trading ops ─────────────────────────────────────────────────────────────
+
+async function handleExpireSignals(adminId: string, body: any) {
+  const res = await db.signal.updateMany({
+    where: { status: 'active', expiryDate: { lte: new Date() } },
+    data: { status: 'expired', resolvedAt: new Date() },
+  })
+  await logAdminAction(adminId, 'EXPIRE_SIGNALS', { count: res.count })
+  return successResponse({ expired: res.count })
+}
+
+async function handleRunJob(adminId: string, body: any) {
+  const job = String(body.job || '')
+  const startedAt = Date.now()
+  let output: Record<string, unknown> = {}
+
+  if (job === 'signals') {
+    const { signalGenerator } = await import('@/lib/services/signal-generator')
+    const ok = await signalGenerator.ensureSignals(true)
+    output = { ok }
+  } else if (job === 'expire') {
+    const res = await db.signal.updateMany({ where: { status: 'active', expiryDate: { lte: new Date() } }, data: { status: 'expired' } })
+    output = { expired: res.count }
+  } else if (job === 'prune_notifications') {
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+    const res = await db.notification.deleteMany({ where: { createdAt: { lt: cutoff }, isRead: true } })
+    output = { deleted: res.count }
+  } else if (job === 'bots_sync') {
+    output = { note: 'Bot instances sync happens via the MT5 service; nothing to run server-side.' }
+  } else {
+    return errorResponse(`Unknown job: ${job}`, 400)
+  }
+
+  const ms = Date.now() - startedAt
+  await logAdminAction(adminId, 'RUN_JOB', { job, ms, output })
+  return successResponse({ job, ok: true, ms, output })
+}
+
+// ─── Content / support ───────────────────────────────────────────────────────
+
+async function handleBulkCreateCoupons(adminId: string, body: any) {
+  const { count, prefix, discountType, discountAmount, maxUses, expiresAt, minPlan } = body
+  const n = Math.min(parseInt(count) || 1, 200)
+  if (!discountType || !discountAmount) return errorResponse('discountType and discountAmount required', 400)
+
+  const created: string[] = []
+  const pre = String(prefix || 'TOPTIER').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+  for (let i = 0; i < n; i++) {
+    const code = `${pre}-${Math.random().toString(36).toUpperCase().slice(2, 8)}`
+    await db.couponCode.create({
+      data: {
+        code,
+        discountType,
+        discountAmount: parseFloat(discountAmount),
+        maxUses: maxUses ? parseInt(maxUses) : null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        minPlan: minPlan || null,
+        isActive: true,
+      },
+    })
+    created.push(code)
+  }
+  await logAdminAction(adminId, 'BULK_CREATE_COUPONS', { count: created.length, discountType, discountAmount })
+  return successResponse({ created })
+}
+
+async function handleTicketAssign(adminId: string, body: any) {
+  const { ticketId, priority, status, assigneeId } = body
+  if (!ticketId) return errorResponse('ticketId required', 400)
+  const ticket = await db.supportTicket.findUnique({ where: { id: ticketId } })
+  if (!ticket) return errorResponse('Ticket not found', 404)
+
+  const data: Record<string, unknown> = {}
+  if (priority && ['low', 'medium', 'high', 'critical'].includes(priority)) data.priority = priority
+  if (status && ['open', 'in_progress', 'resolved', 'closed'].includes(status)) data.status = status
+  if (assigneeId) {
+    const assignee = await db.user.findUnique({ where: { id: assigneeId }, select: { id: true, name: true, email: true } })
+    if (!assignee) return errorResponse('Assignee not found', 404)
+  }
+  await db.supportTicket.update({ where: { id: ticketId }, data })
+
+  await logAdminAction(adminId, 'TICKET_ASSIGN', { ticketId, priority: priority || null, status: status || null, assigneeId: assigneeId || null })
+  return successResponse({ ticketId, ...data })
+}
+
+async function handleTicketReply(adminId: string, body: any) {
+  const { ticketId, message } = body
+  if (!ticketId) return errorResponse('ticketId required', 400)
+  if (!message || !String(message).trim()) return errorResponse('message required', 400)
+  const ticket = await db.supportTicket.findUnique({ where: { id: ticketId } })
+  if (!ticket) return errorResponse('Ticket not found', 404)
+
+  await db.supportTicket.update({ where: { id: ticketId }, data: { status: 'in_progress' } })
+  const pushed = await notifyUser(ticket.userId, {
+    type: 'system',
+    title: `Support response: ${ticket.subject}`,
+    message: String(message).slice(0, 500),
+    actionUrl: '/support',
+  })
+  if (ticket.status === 'open') {
+    await db.supportTicket.update({ where: { id: ticketId }, data: { status: 'in_progress' } })
+  }
+
+  await logAdminAction(adminId, 'TICKET_REPLY', { ticketId, message: String(message).slice(0, 300) })
+  return successResponse({ replied: true, notified: pushed.delivered })
+}
+
+async function handleReviewModeration(adminId: string, body: any, next: 'approved' | 'rejected') {
+  const { reviewId, reason } = body
+  if (!reviewId) return errorResponse('reviewId required', 400)
+  const review = await db.review.findUnique({ where: { id: reviewId } })
+  if (!review) return errorResponse('Review not found', 404)
+
+  const updated = await db.review.update({ where: { id: reviewId }, data: { status: next } })
+  await notifyUser(review.userId, {
+    type: 'system',
+    title: next === 'approved' ? 'Your review was approved' : 'Your review was rejected',
+    message: next === 'approved' ? 'Your review is now public.' : `Your review was not approved. ${reason || ''}`.trim(),
+    actionUrl: '/community',
+  }).catch(() => {})
+  await logAdminAction(adminId, next === 'approved' ? 'APPROVE_REVIEW' : 'REJECT_REVIEW', { reviewId, reason: reason || null })
+
+  return successResponse(updated)
+}
+
+// ─── Compliance ──────────────────────────────────────────────────────────────
+
+async function handleProcessDataDeletion(adminId: string, body: any) {
+  const { requestId, action, reason } = body
+  if (!requestId) return errorResponse('requestId required', 400)
+  if (!['approve', 'reject'].includes(action)) return errorResponse('action must be approve|reject', 400)
+
+  const req = await db.dataDeletionRequest.findUnique({ where: { id: requestId } })
+  if (!req) return errorResponse('Request not found', 404)
+
+  if (action === 'approve') {
+    // Find the requesting user by email.
+    const requestingUser = await db.user.findFirst({ where: { email: req.email, deletedAt: null } })
+    if (requestingUser) {
+      await db.user.update({
+        where: { id: requestingUser.id },
+        data: { deletedAt: new Date(), isBanned: true, tokenVersion: { increment: 1 } },
+      })
+    }
+    await db.dataDeletionRequest.update({ where: { id: requestId }, data: { status: 'completed', reason: reason || null } })
+    fireOps('GDPR deletion approved', { adminId, requestId })
+  } else {
+    await db.dataDeletionRequest.update({ where: { id: requestId }, data: { status: 'completed', reason: reason || 'Rejected by admin' } })
+  }
+
+  await logAdminAction(adminId, 'PROCESS_DATA_DELETION', { requestId, action, reason: reason || null })
+  return successResponse({ requestId, action })
 }

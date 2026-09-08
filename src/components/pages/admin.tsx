@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -46,6 +46,14 @@ import {
   Bot,
   MessageSquare,
   Link2,
+  Download,
+  Filter,
+  Brain,
+  LogOut,
+  Copy,
+  ExternalLink,
+  ShieldCheck,
+  AlertCircle,
 } from 'lucide-react'
 import {
   LineChart,
@@ -139,6 +147,13 @@ interface OverviewData {
     trader: { user: { id: string; name: string | null; email: string } | null }
     follower: { name: string | null; email: string } | null
   }>
+  ops?: {
+    pendingPayouts: any[]
+    refunds: { count: number; total: number }
+    moderation: { pendingDeletions: number; pendingReviews: number }
+    liveSessions: number
+    totalEarnings: number
+  }
 }
 
 interface AdminUser {
@@ -1005,6 +1020,17 @@ function AdRevenueCalculator() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+function CmdKShortcut({ onOpen }: { onOpen: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); onOpen() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onOpen])
+  return null
+}
+
 export default function AdminPage() {
   const user = useStore((s) => s.user)
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
@@ -1032,18 +1058,67 @@ export default function AdminPage() {
     premiumPrice: '29.99',
     proPrice: '59.99',
     maintenanceMode: false,
+    adminRequire2fa: false,
   })
   const [savingSettings, setSavingSettings] = useState(false)
   const [savingFlagId, setSavingFlagId] = useState<string | null>(null)
+
+  // ── Top-1% panel additions ──────────────────────────────────────────
+  // Security gate
+  const [security, setSecurity] = useState<{
+    required: boolean; enabled: boolean; secretPreview: string | null;
+    setupPayload: { secret: string; otpauth: string } | null;
+    myRole: string; permissions: string[];
+  } | null>(null)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [securityError, setSecurityError] = useState('')
+
+  // Global ⌘K search
+  const [cmdOpen, setCmdOpen] = useState(false)
+  const [cmdQ, setCmdQ] = useState('')
+  const [cmdResults, setCmdResults] = useState<any[]>([])
+  const [cmdLoading, setCmdLoading] = useState(false)
+  const cmdInputRef = useRef<HTMLInputElement>(null)
+
+  // Job health
+  const [jobs, setJobs] = useState<any[]>([])
+
+  // AI anomalies + ask
+  const [aiAnomalies, setAiAnomalies] = useState<any[]>([])
+  const [aiAskQ, setAiAskQ] = useState('')
+  const [aiAnswer, setAiAnswer] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+
+  // Bulk ops (users)
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
+  const [bulkAction, setBulkAction] = useState('')
+  const [bulkReason, setBulkReason] = useState('')
+
+  // Payout queue
+  const [payouts, setPayouts] = useState<any[]>([])
+
+  // Audit filters
+  const [auditFilter, setAuditFilter] = useState('all')
+
+  // Ticket reply
+  const [ticketReplyTarget, setTicketReplyTarget] = useState<any>(null)
+  const [ticketReplyMsg, setTicketReplyMsg] = useState('')
+  const [ticketDraftLoading, setTicketDraftLoading] = useState(false)
+
+  // Export
+  const [exporting, setExporting] = useState<string | null>(null)
 
   const fetchAll = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true)
       setError(null)
-      const [overviewRes, dataRes, settingsRes] = await Promise.all([
+      const [overviewRes, dataRes, settingsRes, secRes, jobsRes, aiRes] = await Promise.all([
         api.get<{ success: boolean; data: OverviewData }>('/admin/overview', { signal }),
         api.get<{ success: boolean; data: { users?: any[]; signals?: any[]; coupons?: any[]; tickets?: any[]; auditLog?: any[]; adUsage?: any[]; recentAdEvents?: any[] } }>('/admin/data', { signal }),
         api.get<{ success: boolean; data: { featureFlags?: any[]; appSettings?: any } }>('/admin/settings', { signal }),
+        api.get<{ success: boolean; data: any }>('/admin/security', { signal }).catch(() => null),
+        api.get<{ success: boolean; data: any }>('/admin/jobs', { signal }).catch(() => null),
+        api.get<{ success: boolean; data: any }>('/admin/ai', { signal }).catch(() => null),
       ])
       if (!signal?.aborted) {
         if (overviewRes?.success && overviewRes?.data) setOverview(overviewRes.data)
@@ -1064,6 +1139,10 @@ export default function AdminPage() {
             setAppSettings((prev) => ({ ...prev, ...settingsRes.data.appSettings }))
           }
         }
+        if (secRes?.success && secRes?.data) setSecurity(secRes.data)
+        if (jobsRes?.success && jobsRes?.data?.jobs) setJobs(jobsRes.data.jobs)
+        if (aiRes?.success && aiRes?.data?.anomalies) setAiAnomalies(aiRes.data.anomalies)
+        if (overviewRes?.data?.ops?.pendingPayouts) setPayouts(overviewRes.data.ops.pendingPayouts)
       }
     } catch (err: unknown) {
       if (!signal?.aborted) setError(err instanceof Error ? err.message : 'Failed to load admin data')
@@ -1105,6 +1184,26 @@ export default function AdminPage() {
     } finally {
       setSavingFlagId(null)
     }
+  }
+
+  const handleAiAsk = async () => {
+    if (!aiAskQ.trim()) return
+    setAiLoading(true); setAiAnswer('')
+    try {
+      const res = await api.post<{ success: boolean; data: { answer: string } }>('/admin/ai', { action: 'ask', question: aiAskQ })
+      setAiAnswer(res?.data?.answer || 'No answer returned.')
+    } catch (e) { setAiAnswer('Error: ' + (e instanceof Error ? e.message : 'Request failed')) } finally { setAiLoading(false) }
+  }
+
+  const handleBulkAction = async () => {
+    if (!bulkAction || selectedUsers.size === 0) return
+    const userIds = Array.from(selectedUsers)
+    try {
+      await runAdminAction('bulk_action', { action: bulkAction, userIds, reason: bulkReason })
+      toast.success(`${bulkAction} applied to ${userIds.length} users`)
+      setSelectedUsers(new Set()); setBulkAction(''); setBulkReason('')
+      fetchAll()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Bulk action failed') }
   }
 
   const toggleCoupon = async (coupon: any) => {
@@ -1214,11 +1313,94 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* ─── 2FA Gate ──────────────────────────────────────────── */}
+      {security?.required && !security.enabled && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-amber-500" /> 2FA required to access admin panel</CardTitle>
+            <CardDescription>Set up two-factor authentication or enter your current code to continue.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-2 items-end">
+            {security.setupPayload && (
+              <div className="text-xs bg-muted p-2 rounded font-mono break-all">{security.setupPayload.secret}</div>
+            )}
+            <Input className="max-w-[200px]" placeholder="6-digit code" value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} maxLength={6} />
+            <Button size="sm" disabled={twoFactorCode.length < 6} onClick={async () => {
+              try {
+                await api.post('/admin/security', { action: 'verify', code: twoFactorCode })
+                toast.success('2FA verified')
+                setSecurity((s) => s ? { ...s, enabled: true } : s)
+                setSecurityError('')
+              } catch (e) { setSecurityError(e instanceof Error ? e.message : 'Invalid code') }
+            }}>Verify</Button>
+          </CardContent>
+          {securityError && <p className="text-xs text-destructive px-6 pb-3">{securityError}</p>}
+        </Card>
+      )}
+
+      {/* ─── Cmd+K search trigger ──────────────────────────────── */}
+      <button onClick={() => { setCmdOpen(true); setTimeout(() => cmdInputRef.current?.focus(), 50) }}
+        className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted transition-colors cursor-pointer w-full max-w-sm">
+        <Search className="h-3.5 w-3.5" /> Search users, signals, tickets… <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
+      </button>
+
+      {/* ─── Command palette modal ──────────────────────────────── */}
+      {cmdOpen && (
+        <Dialog open onOpenChange={setCmdOpen}>
+          <DialogContent className="max-w-lg p-0 overflow-hidden">
+            <div className="flex items-center border-b px-3">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <input ref={cmdInputRef} autoFocus className="flex-1 bg-transparent px-2 py-3 text-sm outline-none" placeholder="Search users, signals, tickets…" value={cmdQ} onChange={async (e) => {
+                const q = e.target.value; setCmdQ(q)
+                if (q.length < 2) { setCmdResults([]); return }
+                setCmdLoading(true)
+                try { const r = await api.get<{ data: any }>(`/admin/search?q=${encodeURIComponent(q)}`); setCmdResults(r?.data?.results || []) } catch {} finally { setCmdLoading(false) }
+              }} />
+            </div>
+            <ScrollArea className="max-h-[60vh]">
+              {cmdLoading && <p className="p-4 text-sm text-muted-foreground">Searching…</p>}
+              {!cmdLoading && cmdResults.length === 0 && cmdQ.length >= 2 && <p className="p-4 text-sm text-muted-foreground">No results.</p>}
+              {cmdResults.map((group: any) => group.items?.length > 0 && (
+                <div key={group.kind} className="p-2">
+                  <p className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">{group.label}</p>
+                  {group.items.map((item: any) => (
+                    <button key={item.id} onClick={() => { setCmdOpen(false); setCmdQ(''); toast.info(`${group.label}: ${item.name || item.title || item.code || item.subject || item.asset || item.label || item.id}`) }}
+                      className="w-full text-left rounded px-2 py-1.5 text-sm hover:bg-muted/50 transition-colors">
+                      {item.name || item.title || item.code || item.subject || item.asset || item.label || item.id}
+                      {item.email && <span className="ml-2 text-xs text-muted-foreground">{item.email}</span>}
+                      {item.status && <Badge variant="secondary" className="ml-2 text-[9px]">{item.status}</Badge>}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Keyboard shortcut listener */}
+      <CmdKShortcut onOpen={() => { setCmdOpen(true); setTimeout(() => cmdInputRef.current?.focus(), 50) }} />
+
+      {/* Impersonation banner */}
+      {(user as any)?.impersonating && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Impersonating: {(user as any).impersonatingName || (user as any).impersonating}</p>
+            <p className="text-xs text-muted-foreground">All actions are logged under your admin account.</p>
+          </div>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
+            try { await runAdminAction('stop_impersonation', {}); window.location.reload() } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed') }
+          }}><LogOut className="h-3 w-3 mr-1" /> Stop</Button>
+        </div>
+      )}
+
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="flex flex-wrap gap-1 h-auto p-1">
           <TabsTrigger value="overview" className="gap-1.5 text-xs">Overview</TabsTrigger>
           <TabsTrigger value="users" className="gap-1.5 text-xs">Users</TabsTrigger>
           <TabsTrigger value="payments" className="gap-1.5 text-xs">Payments</TabsTrigger>
+          <TabsTrigger value="payouts" className="gap-1.5 text-xs">Payouts</TabsTrigger>
           <TabsTrigger value="signals" className="gap-1.5 text-xs">Signals</TabsTrigger>
           <TabsTrigger value="news" className="gap-1.5 text-xs">News</TabsTrigger>
           <TabsTrigger value="calendar" className="gap-1.5 text-xs">Calendar</TabsTrigger>
@@ -1229,6 +1411,8 @@ export default function AdminPage() {
           <TabsTrigger value="content" className="gap-1.5 text-xs">Coupons &amp; Tickets</TabsTrigger>
           <TabsTrigger value="audit" className="gap-1.5 text-xs">Activity</TabsTrigger>
           <TabsTrigger value="system" className="gap-1.5 text-xs">System</TabsTrigger>
+          <TabsTrigger value="ai" className="gap-1.5 text-xs">AI</TabsTrigger>
+          <TabsTrigger value="compliance" className="gap-1.5 text-xs">Compliance</TabsTrigger>
         </TabsList>
 
         {/* ─── Overview ─────────────────────────────────────────────── */}
@@ -1483,6 +1667,22 @@ export default function AdminPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {selectedUsers.size > 0 && (
+                <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-primary/5 border border-primary/20">
+                  <span className="text-xs font-medium">{selectedUsers.size} selected</span>
+                  <Select value={bulkAction} onValueChange={setBulkAction}>
+                    <SelectTrigger className="w-[160px] h-7"><SelectValue placeholder="Bulk action" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="suspend_user">Suspend (7 days)</SelectItem>
+                      <SelectItem value="delete_user">Delete accounts</SelectItem>
+                      <SelectItem value="force_logout">Force logout</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input className="w-[200px] h-7" placeholder="Reason (optional)" value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} />
+                  <Button size="sm" className="h-7 text-xs" disabled={!bulkAction} onClick={handleBulkAction}>Apply</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedUsers(new Set())}>Clear</Button>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {filteredUsers.length === 0 ? (
@@ -1492,6 +1692,12 @@ export default function AdminPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <input type="checkbox" className="h-3.5 w-3.5" checked={selectedUsers.size === filteredUsers.length && filteredUsers.length > 0} onChange={() => {
+                            if (selectedUsers.size === filteredUsers.length) setSelectedUsers(new Set())
+                            else setSelectedUsers(new Set(filteredUsers.map((u) => u.id)))
+                          }} />
+                        </TableHead>
                         <TableHead className="text-xs">Name</TableHead>
                         <TableHead className="text-xs">Email</TableHead>
                         <TableHead className="text-xs">Tier</TableHead>
@@ -1503,6 +1709,11 @@ export default function AdminPage() {
                     <TableBody>
                       {filteredUsers.map((u) => (
                         <TableRow key={u.id}>
+                          <TableCell className="w-10">
+                            <input type="checkbox" className="h-3.5 w-3.5" checked={selectedUsers.has(u.id)} onChange={() => {
+                              setSelectedUsers((prev) => { const next = new Set(prev); if (next.has(u.id)) next.delete(u.id); else next.add(u.id); return next })
+                            }} />
+                          </TableCell>
                           <TableCell className="text-sm font-medium whitespace-nowrap">{u.name}</TableCell>
                           <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{u.email}</TableCell>
                           <TableCell><TierBadge tier={u.tier} /></TableCell>
@@ -2117,13 +2328,45 @@ export default function AdminPage() {
                           </div>
                           <p className="text-sm mt-1">{ticket.subject}</p>
                           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{ticket.description}</p>
-                          <Button variant="ghost" size="sm" className="h-7 text-xs mt-2" onClick={() => dismissTicket(ticket)}>
-                            <XCircle className="h-3 w-3 mr-1" /> Close
-                          </Button>
+                          <div className="flex gap-1 mt-2">
+                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setTicketReplyTarget(ticket); setTicketReplyMsg(''); toast.info('Reply dialog opened') }}>
+                              <MessageSquare className="h-3 w-3 mr-1" /> Reply
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={ticketDraftLoading} onClick={async () => {
+                              setTicketDraftLoading(true)
+                              try {
+                                const res = await api.post<{ success: boolean; data: { draft: string } }>('/admin/ai', { action: 'draft_ticket', ticketId: ticket.id, subject: ticket.subject, description: ticket.description })
+                                setTicketReplyTarget(ticket); setTicketReplyMsg(res?.data?.draft || '')
+                                toast.success('AI draft generated')
+                              } catch (e) { toast.error(e instanceof Error ? e.message : 'Draft failed') } finally { setTicketDraftLoading(false) }
+                            }}>
+                              <Brain className="h-3 w-3 mr-1" /> AI Draft
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => dismissTicket(ticket)}>
+                              <XCircle className="h-3 w-3 mr-1" /> Close
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
                   </ScrollArea>
+                )}
+
+                {/* Inline ticket reply */}
+                {ticketReplyTarget && (
+                  <div className="mt-3 p-3 rounded-lg bg-muted/50 border space-y-2">
+                    <p className="text-xs font-medium">Reply to: {ticketReplyTarget.subject}</p>
+                    <textarea className="w-full min-h-[80px] rounded border bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-primary" value={ticketReplyMsg} onChange={(e) => setTicketReplyMsg(e.target.value)} placeholder="Type your reply…" />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-7 text-xs" disabled={!ticketReplyMsg.trim()} onClick={async () => {
+                        try {
+                          await runAdminAction('ticket_reply', { ticketId: ticketReplyTarget.id, message: ticketReplyMsg })
+                          toast.success('Reply sent'); setTicketReplyTarget(null); fetchAll()
+                        } catch (e) { toast.error(e instanceof Error ? e.message : 'Reply failed') }
+                      }}>Send</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setTicketReplyTarget(null)}>Cancel</Button>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -2132,6 +2375,26 @@ export default function AdminPage() {
 
         {/* ─── Activity / Audit ─────────────────────────────────────── */}
         <TabsContent value="audit" className="space-y-4 mt-4">
+          {/* Audit filter + export bar */}
+          <div className="flex items-center gap-2">
+            <Select value={auditFilter} onValueChange={setAuditFilter}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Filter actions" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All actions</SelectItem>
+                <SelectItem value="ban_user">Ban / Suspend</SelectItem>
+                <SelectItem value="delete_user">Delete</SelectItem>
+                <SelectItem value="approve_payout">Payouts</SelectItem>
+                <SelectItem value="refund_transaction">Refunds</SelectItem>
+                <SelectItem value="set_user_role">Role changes</SelectItem>
+                <SelectItem value="override_signal">Signal overrides</SelectItem>
+                <SelectItem value="delete_news">Content</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" onClick={() => { window.open('/api/admin/export?kind=audit', '_blank'); toast.success('Audit CSV downloading') }}>
+              <Download className="h-3.5 w-3.5 mr-1" /> Export
+            </Button>
+          </div>
+
           <Card>
             <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Activity className="h-5 w-5" /> Live Activity Feed</CardTitle><CardDescription>Most recent user activity (real)</CardDescription></CardHeader>
             <CardContent>
@@ -2164,7 +2427,7 @@ export default function AdminPage() {
               ) : (
                 <ScrollArea className="max-h-64">
                   <div className="space-y-2">
-                    {adminAudit.map((log) => (
+                    {(auditFilter === 'all' ? adminAudit : adminAudit.filter((l: any) => l.action === auditFilter)).map((log) => (
                       <div key={log.id} className="flex items-center justify-between p-3 rounded-lg border text-sm">
                         <div className="flex items-center gap-3">
                           <Clock className="h-4 w-4 text-muted-foreground" />
@@ -2183,6 +2446,28 @@ export default function AdminPage() {
 
         {/* ─── System ───────────────────────────────────────────────── */}
         <TabsContent value="system" className="space-y-4 mt-4">
+          {/* Job health grid */}
+          {jobs.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Cpu className="h-5 w-5" /> Background Jobs</CardTitle><CardDescription>Health of recurring scheduled tasks</CardDescription></CardHeader>
+              <CardContent>
+                <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                  {jobs.map((job: any) => (
+                    <div key={job.name} className="rounded-lg border p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium truncate">{job.name}</span>
+                        <Badge variant={job.running ? 'default' : job.lastError ? 'destructive' : 'secondary'} className="text-[9px]">{job.running ? 'Running' : job.lastError ? 'Error' : 'Idle'}</Badge>
+                      </div>
+                      {job.lastRun && <p className="text-[10px] text-muted-foreground">Last: {new Date(job.lastRun).toLocaleString()}</p>}
+                      {job.lastError && <p className="text-[10px] text-destructive truncate">{job.lastError}</p>}
+                      {job.nextRun && <p className="text-[10px] text-muted-foreground">Next: {new Date(job.nextRun).toLocaleString()}</p>}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Settings className="h-5 w-5" /> Feature Flags</CardTitle><CardDescription>Toggle features on and off</CardDescription></CardHeader>
@@ -2270,6 +2555,134 @@ export default function AdminPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ─── Payouts (top-1%: payout workflow queue) ──────────── */}
+        <TabsContent value="payouts" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2"><DollarSign className="h-5 w-5" /> Payout Queue</CardTitle>
+              <CardDescription>Review and act on pending payout requests. Approve → Processing → Paid.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2 mb-4">
+                <Button size="sm" variant="outline" onClick={() => { setExporting('payouts'); window.open('/api/admin/export?kind=payouts', '_blank'); setTimeout(() => setExporting(null), 2000) }}>
+                  <Download className="h-3.5 w-3.5 mr-1" /> Export
+                </Button>
+              </div>
+              {payouts.length === 0 ? (
+                <EmptyState icon={CheckCircle2} text="No pending payout requests." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader><TableRow>
+                      <TableHead>User</TableHead><TableHead>Amount</TableHead><TableHead>Method</TableHead><TableHead>Destination</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead>Actions</TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {payouts.map((p: any) => (
+                        <TableRow key={p.id}>
+                          <TableCell className="text-sm">{p.userId || '—'}</TableCell>
+                          <TableCell className="text-sm font-mono">${p.amount?.toFixed(2)}</TableCell>
+                          <TableCell><Badge variant="outline" className="text-[10px]">{p.method}</Badge></TableCell>
+                          <TableCell className="text-xs font-mono max-w-[120px] truncate">{p.destination}</TableCell>
+                          <TableCell><Badge variant={p.status === 'pending' ? 'secondary' : 'outline'} className="text-[10px]">{p.status}</Badge></TableCell>
+                          <TableCell className="text-xs">{new Date(p.createdAt).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              {p.status === 'pending' && (
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-green-600" onClick={async () => {
+                                  try { await runAdminAction('approve_payout', { payoutId: p.id }); toast.success('Approved'); fetchAll() } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed') }
+                                }}>Approve</Button>
+                              )}
+                              {p.status === 'processing' && (
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-emerald-600" onClick={async () => {
+                                  try { await runAdminAction('mark_payout_paid', { payoutId: p.id }); toast.success('Marked paid'); fetchAll() } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed') }
+                                }}>Paid</Button>
+                              )}
+                              {['pending', 'processing'].includes(p.status) && (
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={async () => {
+                                  const reason = prompt('Rejection reason:')
+                                  if (reason === null) return
+                                  try { await runAdminAction('reject_payout', { payoutId: p.id, reason }); toast.success('Rejected'); fetchAll() } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed') }
+                                }}>Reject</Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ─── AI (top-1%: ask the panel + anomaly cards) ──────── */}
+        <TabsContent value="ai" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2"><Brain className="h-5 w-5" /> Ask the Panel</CardTitle>
+              <CardDescription>Natural language query against live platform metrics. Claude answers from the real snapshot.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Input placeholder="e.g. What's the churn rate this week? How many users went premium?" value={aiAskQ} onChange={(e) => setAiAskQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && aiAskQ.trim()) handleAiAsk() }} />
+                <Button disabled={!aiAskQ.trim() || aiLoading} onClick={handleAiAsk}>{aiLoading ? 'Thinking…' : 'Ask'}</Button>
+              </div>
+              {aiAnswer && (
+                <div className="rounded-lg bg-muted/50 p-4 text-sm whitespace-pre-wrap">{aiAnswer}</div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-lg flex items-center gap-2"><AlertCircle className="h-5 w-5" /> Anomaly Cards</CardTitle></CardHeader>
+            <CardContent>
+              {aiAnomalies.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No anomalies detected. Platform metrics are within normal ranges.</p>
+              ) : (
+                <div className="space-y-2">
+                  {aiAnomalies.map((a: any, i: number) => (
+                    <div key={i} className={`rounded-lg border p-3 flex items-start gap-3 ${a.severity === 'high' ? 'border-red-500/40 bg-red-500/5' : a.severity === 'medium' ? 'border-amber-500/40 bg-amber-500/5' : 'border-blue-500/40 bg-blue-500/5'}`}>
+                      <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${a.severity === 'high' ? 'text-red-500' : a.severity === 'medium' ? 'text-amber-500' : 'text-blue-500'}`} />
+                      <div>
+                        <p className="text-sm font-medium">{a.title}</p>
+                        <p className="text-xs text-muted-foreground">{a.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ─── Compliance (top-1%: GDPR, consent, data deletion) ─ */}
+        <TabsContent value="compliance" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader><CardTitle className="text-lg flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> GDPR & Data Compliance</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+                <StatCard title="Pending Deletions" value={String((overview as any)?.ops?.moderation?.pendingDeletions ?? 0)} icon={Trash2} />
+                <StatCard title="Pending Reviews" value={String((overview as any)?.ops?.moderation?.pendingReviews ?? 0)} icon={MessageSquare} />
+                <StatCard title="Lifetime Refunds" value={String((overview as any)?.ops?.refunds?.count ?? 0)} icon={DollarSign} sub={`$${((overview as any)?.ops?.refunds?.total ?? 0).toFixed(2)}`} />
+                <StatCard title="Total Earnings" value={`$${((overview as any)?.ops?.totalEarnings ?? 0).toFixed(2)}`} icon={TrendingUp} />
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Admin Actions Audit Trail</h4>
+                <p className="text-xs text-muted-foreground">All admin actions are logged immutably. Use the Activity tab filters + Export CSV to review.</p>
+                <Button size="sm" variant="outline" onClick={() => { window.open('/api/admin/export?kind=audit', '_blank'); toast.success('Audit CSV downloading') }}>
+                  <Download className="h-3.5 w-3.5 mr-1" /> Export Full Audit Log
+                </Button>
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">RBAC Roles</h4>
+                <p className="text-xs text-muted-foreground">Current role: <Badge variant="secondary">{security?.myRole || user?.role}</Badge>. Permissions: {security?.permissions?.length ?? 0} granted.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
     </div>
   )

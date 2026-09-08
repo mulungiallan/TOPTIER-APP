@@ -20,6 +20,7 @@ const DEFAULT_APP_SETTINGS = {
   premiumPrice: '29.99',
   proPrice: '59.99',
   maintenanceMode: false,
+  adminRequire2fa: false,
 }
 
 const flagKey = (id: string) => `feature_flag.${id}`
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
     const appSettings: Record<string, string | boolean> = {}
     for (const [key, def] of Object.entries(DEFAULT_APP_SETTINGS)) {
       const stored = map[settingKey(key)]
-      appSettings[key] = stored !== undefined ? (key === 'maintenanceMode' ? stored === 'true' : stored) : def
+      appSettings[key] = stored !== undefined ? (key === 'maintenanceMode' || key === 'adminRequire2fa' ? stored === 'true' : stored) : def
     }
 
     return successResponse({ featureFlags, appSettings })
