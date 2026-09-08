@@ -42,7 +42,7 @@ async function main() {
         where: { id: existing.id },
         data: {
           password: hashPassword(process.env.ADMIN_PASSWORD),
-          role: 'admin',
+          role: 'super_admin',
           name: 'TOPTIER Admin',
           isEmailVerified: true,
           onboardingCompleted: true,
@@ -56,7 +56,7 @@ async function main() {
           email: adminEmail,
           password: hashPassword(process.env.ADMIN_PASSWORD),
           name: 'TOPTIER Admin',
-          role: 'admin',
+          role: 'super_admin',
           subscriptionTier: 'premium',
           onboardingCompleted: true,
           onboardingStep: 7,
