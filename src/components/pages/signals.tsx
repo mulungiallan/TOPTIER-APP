@@ -55,6 +55,7 @@ import { NativeAd } from '@/components/ads'
 
 type MarketType = 'All' | 'Forex' | 'Crypto' | 'Stocks' | 'Indices' | 'Commodities'
 type Strategy = 'Scalp' | 'Swing' | 'Both'
+type StyleFilter = 'All' | 'Scalp' | 'Intraday Swing' | 'Swing'
 type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | 'Daily' | 'Weekly'
 type SignalDirection = 'BUY' | 'SELL'
 type SignalStatus = 'Active' | 'Hit TP' | 'Hit SL' | 'Expired'
@@ -72,6 +73,7 @@ interface MockSignal {
   riskReward: string
   confidence: number
   strategy: 'Scalp' | 'Swing'
+  style: 'scalp' | 'intraday_swing' | 'swing'
   timeframe: Timeframe
   session: string
   expiresAt: number // ms timestamp
@@ -197,6 +199,39 @@ function PipDistance(entry: number, target: number, market: string): string {
     ? ((target - entry) * 100).toFixed(0)
     : ((target - entry) * 10000).toFixed(0)
   return `${pips} pips`
+}
+
+function StyleLabel({ style }: { style: string }) {
+  const labels: Record<string, string> = {
+    scalp: 'Scalp',
+    intraday_swing: 'Intraday',
+    swing: 'Swing',
+  }
+  const colors: Record<string, string> = {
+    scalp: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20',
+    intraday_swing: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20',
+    swing: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/20',
+  }
+  return (
+    <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px] font-semibold', colors[style] || '')}>
+      {labels[style] || style}
+    </Badge>
+  )
+}
+
+function ConfluenceBadge({ score }: { score: number }) {
+  const pct = Math.round(score * 100)
+  const color =
+    pct >= 70
+      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+      : pct >= 50
+      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20'
+      : 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20'
+  return (
+    <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px] font-mono font-semibold', color)}>
+      {pct}%
+    </Badge>
+  )
 }
 
 // ─── Customize Dialog ─────────────────────────────────────────────────────────────
@@ -512,6 +547,7 @@ function SignalCard({
 
         {/* Tags Row */}
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <StyleLabel style={signal.style} />
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px] gap-1">
             <Target className="size-2.5" />
             {signal.strategy}
@@ -519,9 +555,12 @@ function SignalCard({
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
             {signal.timeframe}
           </Badge>
-          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-            {signal.session}
-          </Badge>
+          <ConfluenceBadge score={signal.confidence / 100} />
+          {signal.session !== 'London' && (
+            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+              {signal.session}
+            </Badge>
+          )}
           <div className="ml-auto">
             <SignalExpiry expiresAt={signal.expiresAt} status={signal.status} />
           </div>
@@ -742,6 +781,7 @@ function mapApiSignal(s: any): MockSignal {
     riskReward: s.riskReward || `1:${(s.riskRewardRatio || 2).toFixed(1)}`,
     confidence: s.confidence || 0,
     strategy: String(s.strategy || 'Scalp').toLowerCase().startsWith('swing') ? 'Swing' : 'Scalp',
+    style: s.style || (String(s.strategy || 'scalp').toLowerCase() === 'swing' ? 'swing' : 'scalp'),
     timeframe: s.timeframe || '1h',
     session: s.session || s.tradingSession || 'London',
     expiresAt: expiryMs,
@@ -763,6 +803,7 @@ export function SignalsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [marketFilter, setMarketFilter] = useState<MarketType>('All')
   const [strategyFilter, setStrategyFilter] = useState<Strategy>('Both')
+  const [styleFilter, setStyleFilter] = useState<StyleFilter>('All')
   const [timeframeFilter, setTimeframeFilter] = useState<Timeframe | 'All'>('All')
   const [confidenceMin, setConfidenceMin] = useState(50)
   const [filterDialogOpen, setFilterDialogOpen] = useState(false)
@@ -780,6 +821,7 @@ export function SignalsPage() {
       const params = new URLSearchParams()
       if (marketFilter !== 'All') params.set('market', marketFilter)
       if (strategyFilter !== 'Both') params.set('strategy', strategyFilter)
+      if (styleFilter !== 'All') params.set('style', styleFilter === 'Intraday Swing' ? 'intraday_swing' : styleFilter.toLowerCase())
       if (timeframeFilter !== 'All') params.set('timeframe', timeframeFilter)
       params.set('confidenceMin', String(confidenceMin))
 
@@ -795,7 +837,7 @@ export function SignalsPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [marketFilter, strategyFilter, timeframeFilter, confidenceMin])
+  }, [marketFilter, strategyFilter, styleFilter, timeframeFilter, confidenceMin])
 
   // Fetch on mount
   useEffect(() => {
@@ -835,11 +877,12 @@ export function SignalsPage() {
       // These filters may have been applied server-side, but also filter client-side
       if (marketFilter !== 'All' && s.market !== marketFilter) return false
       if (strategyFilter !== 'Both' && s.strategy !== strategyFilter) return false
+      if (styleFilter !== 'All' && s.style !== (styleFilter === 'Intraday Swing' ? 'intraday_swing' : styleFilter.toLowerCase())) return false
       if (timeframeFilter !== 'All' && s.timeframe !== timeframeFilter) return false
       if (s.confidence < confidenceMin) return false
       return true
     })
-  }, [signals, marketFilter, strategyFilter, timeframeFilter, confidenceMin])
+  }, [signals, marketFilter, strategyFilter, styleFilter, timeframeFilter, confidenceMin])
 
   // Stats
   const activeCount = signals.filter((s) => s.status === 'Active' && !s.ignored).length
@@ -1004,6 +1047,19 @@ export function SignalsPage() {
                   </button>
                 ))}
               </div>
+
+              {/* Style Select */}
+              <Select value={styleFilter} onValueChange={(v) => setStyleFilter(v as StyleFilter)}>
+                <SelectTrigger size="sm" className="w-[130px] h-8 text-[11px]">
+                  <SelectValue placeholder="Style" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All" className="text-xs">All Styles</SelectItem>
+                  <SelectItem value="Scalp" className="text-xs">Scalp</SelectItem>
+                  <SelectItem value="Intraday Swing" className="text-xs">Intraday Swing</SelectItem>
+                  <SelectItem value="Swing" className="text-xs">Swing</SelectItem>
+                </SelectContent>
+              </Select>
 
               {/* Timeframe Select */}
               <Select value={timeframeFilter} onValueChange={(v) => setTimeframeFilter(v as Timeframe | 'All')}>

@@ -131,7 +131,8 @@ model Signal {
   trailingStop    Float?
   riskRewardRatio Float
   confidence      Int // 0-100
-  strategy        String // scalp, swing
+  strategy        String // scalp, swing (DB filter key)
+  style           String?  // scalp | intraday_swing | swing (confluence engine style)
   timeframe       String
   reason          String
   status          String    @default("active") // active, hit_tp, hit_sl, expired, ignored

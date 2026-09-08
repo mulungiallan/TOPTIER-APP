@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const market = searchParams.get('market')
     const strategy = searchParams.get('strategy')
+    const style = searchParams.get('style')
     const status = searchParams.get('status')
     const asset = searchParams.get('asset')
     const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '50')), 200)
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
     if (market) where.marketType = market.toLowerCase()
 
     if (strategy) where.strategy = strategy.toLowerCase()
+    if (style) where.style = style.toLowerCase()
     if (status) where.status = status.toLowerCase()
     if (asset) where.asset = { contains: asset }
 
@@ -92,6 +94,7 @@ export async function POST(request: NextRequest) {
       riskRewardRatio,
       confidence,
       strategy,
+      style,
       timeframe,
       reason,
       expiryDate,
@@ -131,6 +134,7 @@ export async function POST(request: NextRequest) {
         riskRewardRatio: riskRewardRatio ? parseFloat(riskRewardRatio) : 0,
         confidence: confidenceVal,
         strategy,
+        style: style || null,
         timeframe,
         reason: reason || '',
         expiryDate: expiryDate ? new Date(expiryDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
