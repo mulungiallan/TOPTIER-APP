@@ -1390,9 +1390,10 @@ export default function AdminPage() {
             <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Impersonating: {(user as any).impersonatingName || (user as any).impersonating}</p>
             <p className="text-xs text-muted-foreground">All actions are logged under your admin account.</p>
           </div>
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
-            try { await runAdminAction('stop_impersonation', {}); window.location.reload() } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed') }
-          }}><LogOut className="h-3 w-3 mr-1" /> Stop</Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+            try { localStorage.removeItem('appToken'); localStorage.removeItem('toptier_auth'); } catch {}
+            window.location.href = '/login'
+          }}><LogOut className="h-3 w-3 mr-1" /> End session</Button>
         </div>
       )}
 
@@ -2588,7 +2589,7 @@ export default function AdminPage() {
                     <TableBody>
                       {payouts.map((p: any) => (
                         <TableRow key={p.id}>
-                          <TableCell className="text-sm">{p.userId || '—'}</TableCell>
+                          <TableCell className="text-sm font-mono text-xs">{p.id?.slice(0, 10)}</TableCell>
                           <TableCell className="text-sm font-mono">${p.amount?.toFixed(2)}</TableCell>
                           <TableCell><Badge variant="outline" className="text-[10px]">{p.method}</Badge></TableCell>
                           <TableCell className="text-xs font-mono max-w-[120px] truncate">{p.destination}</TableCell>
