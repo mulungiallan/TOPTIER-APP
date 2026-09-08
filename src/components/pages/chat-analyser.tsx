@@ -14,6 +14,14 @@ import {
   Brain,
   Layers,
   Zap,
+  Archive,
+  Crosshair,
+  TrendingUp,
+  TrendingDown,
+  ArrowDownRight,
+  Minus,
+  HelpCircle,
+  HandCoins,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
@@ -43,6 +51,7 @@ interface ChatSource {
     key_facts?: string[]
     context_notes?: string
     requires_human_review?: boolean
+    market_phase?: string
   } | null
   gemini_error?: string
 }
@@ -55,9 +64,72 @@ interface ChatResult {
   model_agreement: 'agree' | 'partial' | 'disagree'
   reasoning: string
   recommended_action: string
+  amd: {
+    stage: AmdStage
+    confidence: number
+    market_relevant: boolean
+    signals: string[]
+    explanation: string
+    trading_style: 'scalp' | 'intraday' | 'swing' | 'unknown'
+    rr: string | null
+  }
   path: 'fast' | 'full'
   cached: boolean
   sources: ChatSource
+}
+
+type AmdStage =
+  | 'accumulation'
+  | 'manipulation'
+  | 'distribution'
+  | 'markup'
+  | 'markdown'
+  | 'not_applicable'
+  | 'unknown'
+
+const AMD_STAGE_META: Record<AmdStage, { label: string; tone: string; icon: React.ReactNode }> = {
+  accumulation: {
+    label: 'Accumulation',
+    tone: 'text-sky-600 border-sky-500/30 bg-sky-500/10',
+    icon: <Archive className="h-3 w-3" />,
+  },
+  manipulation: {
+    label: 'Manipulation',
+    tone: 'text-rose-600 border-rose-500/30 bg-rose-500/10',
+    icon: <Crosshair className="h-3 w-3" />,
+  },
+  distribution: {
+    label: 'Distribution',
+    tone: 'text-red-600 border-red-500/30 bg-red-500/10',
+    icon: <TrendingDown className="h-3 w-3" />,
+  },
+  markup: {
+    label: 'Markup',
+    tone: 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10',
+    icon: <TrendingUp className="h-3 w-3" />,
+  },
+  markdown: {
+    label: 'Markdown',
+    tone: 'text-orange-600 border-orange-500/30 bg-orange-500/10',
+    icon: <ArrowDownRight className="h-3 w-3" />,
+  },
+  not_applicable: {
+    label: 'Not market related',
+    tone: 'text-muted-foreground border-border bg-muted',
+    icon: <Minus className="h-3 w-3" />,
+  },
+  unknown: {
+    label: 'Market phase unclear',
+    tone: 'text-amber-600 border-amber-500/30 bg-amber-500/10',
+    icon: <HelpCircle className="h-3 w-3" />,
+  },
+}
+
+const AMD_STYLE_LABEL: Record<string, string> = {
+  scalp: 'Scalp',
+  intraday: 'Day trading',
+  swing: 'Swing',
+  unknown: 'Style unclear',
 }
 
 interface ProviderStatus {
@@ -327,6 +399,46 @@ export function ChatAnalyserPage() {
 
                 <p className="text-sm leading-relaxed text-muted-foreground">{result.reasoning}</p>
 
+                {/* AMD market-cycle read */}
+                <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-primary/5 to-transparent p-4">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      AMD · market cycle
+                    </span>
+                    <Badge variant="outline" className={cn('gap-1 border', AMD_STAGE_META[result.amd.stage].tone)}>
+                      {AMD_STAGE_META[result.amd.stage].icon}
+                      {AMD_STAGE_META[result.amd.stage].label}
+                    </Badge>
+                    <Badge variant="outline" className="gap-1 border-border bg-muted text-muted-foreground">
+                      <HandCoins className="h-3 w-3" />
+                      {AMD_STYLE_LABEL[result.amd.trading_style] ?? 'Style unclear'}
+                    </Badge>
+                    {result.amd.rr && (
+                      <Badge variant="outline" className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-600">
+                        RR {result.amd.rr}
+                      </Badge>
+                    )}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {fmtPct(result.amd.confidence)} sure
+                    </span>
+                  </div>
+
+                  {result.amd.signals.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {result.amd.signals.map((sig, i) => (
+                        <span
+                          key={i}
+                          className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs text-muted-foreground"
+                        >
+                          “{sig}”
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-sm leading-relaxed text-muted-foreground">{result.amd.explanation}</p>
+                </div>
+
                 {result.evidence_spans.length > 0 && (
                   <div className="space-y-1.5">
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -408,6 +520,7 @@ export function ChatAnalyserPage() {
                   <>
                     <KV label="Intent" value={result.sources.gemini.intent} />
                     <KV label="Topic" value={result.sources.gemini.topic} />
+                    <KV label="Market phase" value={result.sources.gemini.market_phase} />
                     <KV
                       label="Key facts"
                       value={
@@ -444,6 +557,8 @@ export function ChatAnalyserPage() {
                   value={result.model_agreement ?? (result.path === 'fast' ? 'agree' : null)}
                 />
                 <KV label="Severity" value={result.severity} />
+                <KV label="AMD stage" value={AMD_STAGE_META[result.amd.stage].label} />
+                <KV label="Risk:reward" value={result.amd.rr ?? null} />
                 <KV label="Confidence" value={fmtPct(result.confidence)} />
               </SourceCard>
             </div>

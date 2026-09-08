@@ -133,6 +133,10 @@ model Signal {
   confidence      Int // 0-100
   strategy        String // scalp, swing (DB filter key)
   style           String?  // scalp | intraday_swing | swing (confluence engine style)
+  strategyType    String?  @default("confluence") // confluence | amd_sniper (files-5 engine)
+  amdPhase        String? // accumulation | distribution | manipulation_only (AMD sniper signals only)
+  inMacroWindow   Boolean? // price-and-time filter (files-6): fired inside a session kill zone?
+  macroWindowName String? // london_macro_1 | london_macro_2 | ny_am_macro_1 | ny_am_macro_2
   timeframe       String
   reason          String
   status          String    @default("active") // active, hit_tp, hit_sl, expired, ignored

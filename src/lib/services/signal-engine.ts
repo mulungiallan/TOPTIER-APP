@@ -410,6 +410,299 @@ export function scoreSignal(
   return Math.round(score * Math.min(Math.max(raw.strength, 0), 1) * 1000) / 1000
 }
 
+// ─── AMD sniper detector (ported from files 5 / amd_detector.py) ───────────
+// Objective, rules-based Accumulation·Manipulation·Distribution price action:
+//   ACCUMULATION / DISTRIBUTION  -> volatility compresses into a tight range
+//                                   after a prior directional move.
+//   MANIPULATION (liquidity sweep)-> price wicks beyond the range high/low
+//                                   (where stops / breakout orders cluster) and
+//                                   closes back inside it — the stop hunt.
+//   SNIPER ENTRY                  -> confirmation candle after a sweep fires in
+//                                   the OPPOSITE direction of the fake breakout,
+//                                   with a stop placed just beyond the sweep's
+//                                   own wick (tighter than a generic ATR stop).
+// The most recent candles are excluded from the range boundaries on purpose —
+// a sweep can't poke "beyond" a range that already contains its own wick.
+
+export interface AmdRangeState {
+  isRange: boolean
+  rangeHigh: number
+  rangeLow: number
+  compressionRatio: number // current ATR vs ATR `lookback` bars ago; <1 = compressing
+  barsInRange: number
+  priorTrend: 'up' | 'down' | 'flat' // context before the range formed
+}
+
+export interface AmdSweepEvent {
+  occurred: boolean
+  direction: 'buy_side_sweep' | 'sell_side_sweep' | 'none'
+  sweepExtreme: number // the wick price that ran the liquidity
+  barIndex: number
+}
+
+export interface AmdSniperSignal {
+  direction: 'long' | 'short' | 'none'
+  entry: number
+  stop: number // just beyond the sweep wick, with a small ATR buffer
+  phase: 'accumulation' | 'distribution' | 'manipulation_only' | 'none'
+  reason: string
+  confidence: number // 0-1
+  inMacroWindow: boolean // price-and-time filter (files 6)
+  macroWindowName: string
+}
+
+export type AmdPhase = 'accumulation' | 'distribution' | 'manipulation_only'
+
+// ─── Macro windows (price-and-time filter, ported from files 6) ────────────
+// Theory: liquidity sweeps / reversals (the "manipulation" and "distribution"
+// legs of AMD) cluster inside recurring session-open windows — London opens and
+// the NY AM session — in New York local time, handling Daylight Saving via the
+// IANA tz database. Kept separate from the price-pattern detector on purpose:
+// "did price form the pattern" and "did it happen in a window that matters" are
+// two independent questions.
+
+export interface MacroWindowInfo {
+  name: string
+  session: 'london' | 'new_york'
+  startHour: number // NY local wall-clock
+  startMinute: number
+  endHour: number
+  endMinute: number
+}
+
+export const MACRO_WINDOWS: MacroWindowInfo[] = [
+  { name: 'london_macro_1', session: 'london', startHour: 4, startMinute: 45, endHour: 5, endMinute: 15 },
+  { name: 'london_macro_2', session: 'london', startHour: 5, startMinute: 45, endHour: 6, endMinute: 15 },
+  { name: 'ny_am_macro_1', session: 'new_york', startHour: 9, startMinute: 45, endHour: 10, endMinute: 15 },
+  { name: 'ny_am_macro_2', session: 'new_york', startHour: 10, startMinute: 15, endHour: 11, endMinute: 15 },
+]
+
+// Phases in this set are REJECTED outright when the sweep+reversal candle falls
+// outside a macro window. Add 'accumulation' here to time-gate both sides.
+export const REQUIRE_MACRO_WINDOW_FOR: AmdPhase[] = ['distribution']
+export const MACRO_TIME_CONFIDENCE_BONUS = 0.15 // bonus for ANY phase firing inside a window
+const NY_TZ = 'America/New_York'
+
+function nyWallClock(date: Date): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: NY_TZ,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(date)
+  const get = (t: string) => parseInt(parts.find((p) => p.type === t)?.value || '0', 10)
+  let hour = get('hour')
+  if (hour === 24) hour = 0 // hour12:false yields "24" at midnight
+  return { hour, minute: get('minute') }
+}
+
+function windowToMinutes(w: { startHour: number; startMinute: number; endHour: number; endMinute: number }) {
+  return { start: w.startHour * 60 + w.startMinute, end: w.endHour * 60 + w.endMinute }
+}
+
+export function activeMacro(date: Date): MacroWindowInfo | null {
+  const t = nyWallClock(date)
+  const now = t.hour * 60 + t.minute
+  for (const w of MACRO_WINDOWS) {
+    const { start, end } = windowToMinutes(w)
+    if (now >= start && now <= end) return w
+  }
+  return null
+}
+
+export function describeMacroStatus(date: Date): string {
+  const active = activeMacro(date)
+  if (active) {
+    const { start, end } = windowToMinutes(active)
+    return `Inside ${active.name} (${active.session} session, ${Math.floor(start / 60)}:${String(start % 60).padStart(2, '0')}-${Math.floor(end / 60)}:${String(end % 60).padStart(2, '0')} NY time)`
+  }
+
+  // Soonest upcoming window: scan forward minute-by-minute (DST-safe because
+  // every probe maps back through the same NY tz).
+  const found = nextMacroInfo(date)
+  return `Outside all macro windows. Next: ${found.name} in ${found.hours}h ${found.minutes}m`
+}
+
+export function nextMacroInfo(date: Date): { name: string; hours: number; minutes: number } {
+  const horizonMs = 48 * 60 * 60 * 1000
+  for (let ms = 60_000; ms <= horizonMs; ms += 60_000) {
+    const probe = new Date(date.getTime() + ms)
+    const w = activeMacro(probe)
+    if (w) {
+      const mins = Math.floor(ms / 60000)
+      return { name: w.name, hours: Math.floor(mins / 60), minutes: mins % 60 }
+    }
+  }
+  return { name: MACRO_WINDOWS[0].name, hours: 24, minutes: 0 }
+}
+
+export const AMD_RANGE_LOOKBACK = 20
+export const AMD_COMPRESSION_MAX = 0.75
+export const AMD_RANGE_EXCLUDE_RECENT = 3
+export const AMD_WICK_BUFFER_ATR = 0.1
+export const AMD_SNIPER_MIN_SCORE = 0.6
+
+export function detectAmdRange(
+  candles: CandleInput[],
+  lookback = AMD_RANGE_LOOKBACK,
+  compressionMax = AMD_COMPRESSION_MAX,
+  excludeRecent = AMD_RANGE_EXCLUDE_RECENT
+): AmdRangeState {
+  const minLen = lookback * 3 + excludeRecent
+  if (candles.length < minLen) {
+    return { isRange: false, rangeHigh: 0, rangeLow: 0, compressionRatio: 1, barsInRange: 0, priorTrend: 'flat' }
+  }
+
+  const atr = atrSeries(candles, 14)
+  const atrAt = (i: number): number => (Number.isFinite(atr[i]) ? atr[i] : atr[atr.length - 1] || 1)
+
+  const rangeWindow = candles.slice(candles.length - (lookback + excludeRecent), candles.length - excludeRecent)
+  const atrNow = atrAt(rangeWindow.length - 1)
+
+  const preWindowForAtr = candles.slice(
+    candles.length - (lookback * 2 + excludeRecent),
+    candles.length - (lookback + excludeRecent)
+  )
+  const atrThen = preWindowForAtr.length ? atrAt(preWindowForAtr.length - 1) : atrNow
+  const compressionRatio = atrThen ? atrNow / atrThen : 1
+
+  const rangeHigh = Math.max(...rangeWindow.map((c) => c.high))
+  const rangeLow = Math.min(...rangeWindow.map((c) => c.low))
+  const isRange = compressionRatio <= compressionMax
+
+  // What happened BEFORE the range (the leg into it).
+  const preWindow = candles.slice(
+    candles.length - (lookback * 3 + excludeRecent),
+    candles.length - (lookback + excludeRecent)
+  )
+  let priorTrend: 'up' | 'down' | 'flat' = 'flat'
+  if (preWindow.length) {
+    const preMove = preWindow[preWindow.length - 1].close - preWindow[0].close
+    const validAtr = preWindow.map((_, i) => atrAt(i)).filter(Number.isFinite)
+    const preAtr = validAtr.length ? validAtr.reduce((a, b) => a + b, 0) / validAtr.length : 1
+    if (preMove > preAtr) priorTrend = 'up'
+    else if (preMove < -preAtr) priorTrend = 'down'
+  }
+
+  return {
+    isRange,
+    rangeHigh,
+    rangeLow,
+    compressionRatio: Math.round(compressionRatio * 1000) / 1000,
+    barsInRange: lookback,
+    priorTrend,
+  }
+}
+
+export function detectAmdLiquiditySweep(
+  candles: CandleInput[],
+  range: AmdRangeState,
+  wickBufferAtr = AMD_WICK_BUFFER_ATR
+): AmdSweepEvent {
+  if (!range.isRange) return { occurred: false, direction: 'none', sweepExtreme: 0, barIndex: -1 }
+
+  const atr = atrSeries(candles, 14)
+  const atrLast = Number.isFinite(atr[atr.length - 1]) ? atr[atr.length - 1] : 1
+  const buffer = wickBufferAtr * atrLast
+
+  // Check the last 3 closed candles for a wick poking beyond the range boundary
+  // that closes back inside it — the manipulation / stop-hunt signature.
+  for (let i = 1; i <= 3; i++) {
+    const bar = candles[candles.length - i]
+    const sweptHigh = bar.high > range.rangeHigh + buffer && bar.close < range.rangeHigh
+    const sweptLow = bar.low < range.rangeLow - buffer && bar.close > range.rangeLow
+    if (sweptHigh) return { occurred: true, direction: 'buy_side_sweep', sweepExtreme: bar.high, barIndex: candles.length - i }
+    if (sweptLow) return { occurred: true, direction: 'sell_side_sweep', sweepExtreme: bar.low, barIndex: candles.length - i }
+  }
+
+  return { occurred: false, direction: 'none', sweepExtreme: 0, barIndex: -1 }
+}
+
+export function detectAmdSniperEntry(candles: CandleInput[], barTime?: Date): AmdSniperSignal {
+  const range = detectAmdRange(candles)
+  if (!range.isRange) {
+    return { direction: 'none', entry: 0, stop: 0, phase: 'none', reason: 'no accumulation/distribution range detected', confidence: 0, inMacroWindow: false, macroWindowName: '' }
+  }
+
+  const sweep = detectAmdLiquiditySweep(candles, range)
+  if (!sweep.occurred) {
+    return { direction: 'none', entry: 0, stop: 0, phase: 'none', reason: 'range present but no liquidity sweep yet', confidence: 0, inMacroWindow: false, macroWindowName: '' }
+  }
+
+  const last = candles[candles.length - 1]
+  const atr = atrSeries(candles, 14)
+  const atrValue = Number.isFinite(atr[atr.length - 1]) ? atr[atr.length - 1] : 1
+
+  let direction: 'long' | 'short' | 'none'
+  let stop = 0
+  let phase: AmdPhase
+  let reason: string
+
+  if (sweep.direction === 'buy_side_sweep') {
+    // Fake breakout up → confirmation is price trading back down through the range.
+    const confirmed = last.close < range.rangeHigh && last.close < last.open
+    phase = range.priorTrend === 'up' || range.priorTrend === 'flat' ? 'distribution' : 'manipulation_only'
+    direction = confirmed ? 'short' : 'none'
+    stop = sweep.sweepExtreme + 0.2 * atrValue
+    reason = 'Buy-side liquidity swept above range high, price rejected back inside — distribution short'
+  } else {
+    // Sell-side sweep (fake breakdown) → confirmation is price reclaiming the range.
+    const confirmed = last.close > range.rangeLow && last.close > last.open
+    phase = range.priorTrend === 'down' || range.priorTrend === 'flat' ? 'accumulation' : 'manipulation_only'
+    direction = confirmed ? 'long' : 'none'
+    stop = sweep.sweepExtreme - 0.2 * atrValue
+    reason = 'Sell-side liquidity swept below range low, price reclaimed the range — accumulation long'
+  }
+
+  if (direction === 'none') {
+    return { direction: 'none', entry: 0, stop: 0, phase: 'none', reason: 'sweep occurred, awaiting reversal confirmation candle', confidence: 0.2, inMacroWindow: false, macroWindowName: '' }
+  }
+
+  // Price-and-time filter (files 6): the sweep+reversal candle's timestamp gates
+  // whether the pattern is allowed to count. Phases in REQUIRE_MACRO_WINDOW_FOR
+  // are REJECTED outright outside a macro window (the pattern is treated as
+  // noise there); other phases just get a confidence bonus when in-window.
+  const macro = barTime ? activeMacro(barTime) : null
+  const inWindow = macro !== null
+
+  if (barTime && REQUIRE_MACRO_WINDOW_FOR.includes(phase) && !inWindow) {
+    return {
+      direction: 'none',
+      entry: 0,
+      stop: 0,
+      phase: 'none',
+      reason: `${phase} sweep+reversal detected, but outside a required macro time window — ${describeMacroStatus(barTime)}`,
+      confidence: 0.15,
+      inMacroWindow: false,
+      macroWindowName: '',
+    }
+  }
+
+  // Confidence: tighter compression + accumulation/distribution context = higher.
+  const compressionScore = Math.max(0, 1 - range.compressionRatio)
+  const trendContextScore = phase === 'accumulation' || phase === 'distribution' ? 1 : 0.5
+  let confidence = Math.min(1, 0.4 + 0.35 * compressionScore + 0.25 * trendContextScore)
+
+  let finalReason = reason
+  if (inWindow) {
+    confidence = Math.min(1, confidence + MACRO_TIME_CONFIDENCE_BONUS)
+    finalReason += ` | inside ${macro!.name} macro window`
+  } else if (barTime) {
+    finalReason += ` | outside any macro window (${describeMacroStatus(barTime)})`
+  }
+
+  return {
+    direction,
+    entry: last.close,
+    stop,
+    phase,
+    reason: finalReason,
+    confidence: Math.round(confidence * 100) / 100,
+    inMacroWindow: inWindow,
+    macroWindowName: macro?.name ?? '',
+  }
+}
+
 // ─── ATR-based trade plan ────────────────────────────────────────────────────
 
 export interface TradeLevels {

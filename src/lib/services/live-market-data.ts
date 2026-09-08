@@ -33,6 +33,7 @@ export interface LivePrice {
 
 export interface HistoricalCandle {
   date: string // ISO date string (YYYY-MM-DD)
+  time?: Date // full candle open time (where the provider exposes it) — used by the AMD macro-window / kill-zone filter
   open: number
   high: number
   low: number
@@ -366,6 +367,7 @@ export class LiveMarketData {
 
       return data.t.map((t: number, i: number) => ({
         date: new Date(t * 1000).toISOString().split('T')[0],
+        time: new Date(t * 1000),
         open: data.o[i],
         high: data.h[i],
         low: data.l[i],
@@ -424,6 +426,7 @@ export class LiveMarketData {
         .slice(-count)
         .map(d => ({
           date: new Date(d.date).toISOString().split('T')[0],
+          time: new Date(d.date),
           open: d.open,
           high: d.high,
           low: d.low,

@@ -24,6 +24,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Loader2,
+  Sparkles,
+  Bot,
 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
@@ -74,6 +76,10 @@ interface MockSignal {
   confidence: number
   strategy: 'Scalp' | 'Swing'
   style: 'scalp' | 'intraday_swing' | 'swing'
+  strategyType: 'confluence' | 'amd_sniper'
+  amdPhase?: 'accumulation' | 'distribution' | 'manipulation_only'
+  inMacroWindow?: boolean
+  macroWindowName?: string
   timeframe: Timeframe
   session: string
   expiresAt: number // ms timestamp
@@ -145,7 +151,7 @@ function computeRemaining(expiresAt: number): string {
   return `${s}s`
 }
 
-function SignalExpiry({ expiresAt, status }: { expiresAt: number; status: SignalStatus }) {
+function SignalExpiry({ expiresAt, status, onExpired }: { expiresAt: number; status: SignalStatus; onExpired?: () => void }) {
   const isDone = status === 'Expired' || status === 'Hit TP' || status === 'Hit SL'
   const [remaining, setRemaining] = useState(() =>
     isDone ? (status === 'Expired' ? 'Expired' : status) : computeRemaining(expiresAt)
@@ -155,10 +161,14 @@ function SignalExpiry({ expiresAt, status }: { expiresAt: number; status: Signal
     if (isDone) return
 
     const interval = setInterval(() => {
-      setRemaining(computeRemaining(expiresAt))
+      const rem = computeRemaining(expiresAt)
+      setRemaining(rem)
+      if (rem === 'Expired' && onExpired) {
+        onExpired()
+      }
     }, 1000)
     return () => clearInterval(interval)
-  }, [expiresAt, isDone])
+  }, [expiresAt, isDone, onExpired])
 
   return (
     <div className="flex items-center gap-1">
@@ -230,6 +240,49 @@ function ConfluenceBadge({ score }: { score: number }) {
   return (
     <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px] font-mono font-semibold', color)}>
       {pct}%
+    </Badge>
+  )
+}
+
+function AmdBadge({ phase }: { phase?: MockSignal['amdPhase'] }) {
+  const labels: Record<string, string> = {
+    accumulation: 'AMD · Accumulation',
+    distribution: 'AMD · Distribution',
+    manipulation_only: 'AMD · Manipulation only',
+  }
+  const colors: Record<string, string> = {
+    accumulation: 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/20',
+    distribution: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20',
+    manipulation_only: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/20',
+  }
+  return (
+    <Badge
+      variant="outline"
+      className={cn('px-1.5 py-0 text-[10px] font-semibold', colors[phase || ''] || 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/20')}
+    >
+      {labels[phase || ''] || 'AMD Sniper'}
+    </Badge>
+  )
+}
+
+// Price-and-time filter indicator (files 6): the setup fired inside a
+// London/NY session "kill zone" window, in NY local time.
+const MACRO_WINDOW_LABELS: Record<string, string> = {
+  london_macro_1: 'Kill zone · London open',
+  london_macro_2: 'Kill zone · London late',
+  ny_am_macro_1: 'Kill zone · NY AM',
+  ny_am_macro_2: 'Kill zone · NY late AM',
+}
+
+function MacroWindowBadge({ signal }: { signal: MockSignal }) {
+  if (!signal.inMacroWindow || !signal.macroWindowName) return null
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1 px-1.5 py-0 text-[10px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25"
+    >
+      <Clock className="size-2.5" />
+      {MACRO_WINDOW_LABELS[signal.macroWindowName] || signal.macroWindowName}
     </Badge>
   )
 }
@@ -392,6 +445,7 @@ function SignalCard({
   onThumbsUp,
   onThumbsDown,
   onCustomize,
+  onExpired,
   livePrice,
 }: {
   signal: MockSignal
@@ -400,11 +454,30 @@ function SignalCard({
   onThumbsUp: (id: string) => void
   onThumbsDown: (id: string) => void
   onCustomize: (id: string, custom: { entry: number; sl: number; tp1: number; tp2: number; tp3: number; trailingStop: boolean; trailingPips: number }) => void
+  onExpired?: (id: string) => void
   livePrice?: LivePriceItem
 }) {
   const [reasonOpen, setReasonOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiBreakdown, setAiBreakdown] = useState<string | null>(null)
   const isBuy = signal.direction === 'BUY'
   const isActive = signal.status === 'Active'
+
+  const fetchAiBreakdown = useCallback(async () => {
+    if (aiBreakdown) return
+    setAiLoading(true)
+    try {
+      const res = await api.get<{ success: boolean; data: { explanation: string } }>(
+        `/signals/${signal.id}/explain`
+      )
+      setAiBreakdown(res?.data?.explanation || 'No explanation returned.')
+    } catch (err) {
+      setAiBreakdown(`AI analysis unavailable: ${err instanceof Error ? err.message : 'unknown error'}`)
+    } finally {
+      setAiLoading(false)
+    }
+  }, [signal.id, aiBreakdown])
 
   // Live floating P/L vs entry, only meaningful if we have a live price and entry
   const livePips = livePrice && signal.entryPrice
@@ -555,6 +628,8 @@ function SignalCard({
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
             {signal.timeframe}
           </Badge>
+          {signal.strategyType === 'amd_sniper' && <AmdBadge phase={signal.amdPhase} />}
+          <MacroWindowBadge signal={signal} />
           <ConfluenceBadge score={signal.confidence / 100} />
           {signal.session !== 'London' && (
             <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
@@ -562,22 +637,40 @@ function SignalCard({
             </Badge>
           )}
           <div className="ml-auto">
-            <SignalExpiry expiresAt={signal.expiresAt} status={signal.status} />
+            <SignalExpiry expiresAt={signal.expiresAt} status={signal.status} onExpired={onExpired ? () => onExpired(signal.id) : undefined} />
           </div>
         </div>
 
         {/* Collapsible Reason */}
         <div className="mt-2">
-          <button
-            onClick={() => setReasonOpen(!reasonOpen)}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {reasonOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-            {reasonOpen ? 'Hide Analysis' : 'Show Analysis'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setReasonOpen(!reasonOpen)}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {reasonOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+              {reasonOpen ? 'Hide Analysis' : 'Show Analysis'}
+            </button>
+            <button
+              onClick={() => { if (!aiOpen) fetchAiBreakdown(); setAiOpen(!aiOpen) }}
+              className="flex items-center gap-1 text-[11px] text-primary hover:underline transition-colors"
+            >
+              {aiLoading ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                aiOpen ? <Bot className="size-3" /> : <Sparkles className="size-3" />
+              )}
+              {aiLoading ? 'Analysing…' : aiOpen ? 'Hide AI Breakdown' : 'AI Breakdown'}
+            </button>
+          </div>
           {reasonOpen && (
             <div className="mt-1.5 rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground leading-relaxed">
               {signal.reason}
+            </div>
+          )}
+          {aiOpen && (
+            <div className="mt-1.5 rounded-md border border-primary/20 bg-primary/5 p-2.5 text-xs leading-relaxed text-foreground">
+              {aiLoading ? 'Asking the analyst…' : aiBreakdown}
             </div>
           )}
         </div>
@@ -782,6 +875,10 @@ function mapApiSignal(s: any): MockSignal {
     confidence: s.confidence || 0,
     strategy: String(s.strategy || 'Scalp').toLowerCase().startsWith('swing') ? 'Swing' : 'Scalp',
     style: s.style || (String(s.strategy || 'scalp').toLowerCase() === 'swing' ? 'swing' : 'scalp'),
+    strategyType: s.strategyType === 'amd_sniper' ? 'amd_sniper' : 'confluence',
+    amdPhase: s.amdPhase || undefined,
+    inMacroWindow: s.inMacroWindow === true,
+    macroWindowName: s.macroWindowName || undefined,
     timeframe: s.timeframe || '1h',
     session: s.session || s.tradingSession || 'London',
     expiresAt: expiryMs,
@@ -874,6 +971,8 @@ export function SignalsPage() {
   const filteredSignals = useMemo(() => {
     return signals.filter((s) => {
       if (s.ignored) return false
+      // Hide expired signals automatically
+      if (s.status === 'Expired') return false
       // These filters may have been applied server-side, but also filter client-side
       if (marketFilter !== 'All' && s.market !== marketFilter) return false
       if (strategyFilter !== 'Both' && s.strategy !== strategyFilter) return false
@@ -915,6 +1014,11 @@ export function SignalsPage() {
     setSignals((prev) =>
       prev.map((s) => (s.id === id ? { ...s, ignored: true } : s))
     )
+  }
+
+  const handleExpire = (id: string) => {
+    // Remove expired signals from the feed immediately (countdown hit zero).
+    setSignals((prev) => prev.filter((s) => s.id !== id))
   }
 
   const handleThumbsUp = async (id: string) => {
@@ -1185,6 +1289,7 @@ export function SignalsPage() {
                 onThumbsUp={handleThumbsUp}
                 onThumbsDown={handleThumbsDown}
                 onCustomize={handleCustomize}
+                onExpired={handleExpire}
                 livePrice={livePriceMap.get(signal.asset)}
               />
               {/* Native sponsored card every 3 signals */}

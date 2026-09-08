@@ -23,6 +23,10 @@ import {
   analyzeSignal,
   deriveLevels,
   STYLE_CONFIG,
+  detectAmdSniperEntry,
+  AMD_SNIPER_MIN_SCORE,
+  AMD_RANGE_LOOKBACK,
+  AMD_RANGE_EXCLUDE_RECENT,
 } from '@/lib/services/signal-engine'
 
 // ─── Signal targets ─────────────────────────────────────────────────────────
@@ -221,6 +225,19 @@ export class SignalGenerator {
         )
       }
       await new Promise((r) => setTimeout(r, SignalGenerator.STAGGER_MS))
+
+      // Independent AMD sniper detector on the same entry timeframe — a symbol
+      // may trigger both engines, so it gets its own upsert key.
+      try {
+        const amdCreated = await this.generateAmdForSymbol(target)
+        if (amdCreated) stored++
+      } catch (err) {
+        console.warn(
+          `[signal-generator] skipped ${target.symbol} (amd_sniper):`,
+          err instanceof Error ? err.message : err
+        )
+      }
+      await new Promise((r) => setTimeout(r, SignalGenerator.STAGGER_MS))
     }
 
     return stored > 0
@@ -286,8 +303,87 @@ export class SignalGenerator {
         confidence,
         strategy: strategyKey,
         style: target.style,
+        strategyType: 'confluence',
         timeframe: cfg.entryLabel,
         reason: reasonWithStyle,
+        status: 'active',
+        expiryDate: expiry,
+        marketType: target.marketType,
+      },
+    })
+
+    return true
+  }
+
+  /**
+   * AMD sniper detector (files 5). Runs the objective Accumulation ·
+   * Manipulation · Distribution pipeline on the style's entry timeframe:
+   * volatility-compressed range → liquidity sweep of the range boundary →
+   * sniper entry in the OPPOSITE direction of the fake breakout, with a stop
+   * placed just beyond the sweep's wick (a tighter invalidation than a fixed
+   * ATR multiple). This is independent of the confluence engine — a symbol can
+   * produce both a confluence AND an AMD signal.
+   */
+  private async generateAmdForSymbol(target: SignalTarget): Promise<boolean> {
+    const { entry: entryRes } = resolutionsFor(target.style)
+
+    const entryRaw = await liveMarketData.getHistoricalData(target.symbol, entryRes, 120)
+    if (!entryRaw || entryRaw.length < AMD_RANGE_LOOKBACK * 3 + AMD_RANGE_EXCLUDE_RECENT) return false
+    const entryCandles = toCandleInput(entryRaw)
+
+    // The sweep + reversal candle's open time gates the macro window (kill zone)
+    // filter; on the live feed the last candle is the currently forming one.
+    const barTime = entryRaw[entryRaw.length - 1]?.time ?? new Date()
+    const sniper = detectAmdSniperEntry(entryCandles, barTime)
+    if (!sniper || sniper.direction === 'none') return false
+    if (sniper.confidence < AMD_SNIPER_MIN_SCORE) return false
+
+    const live = await liveMarketData.getPrice(target.symbol)
+    const currentPrice = live ? live.price : entryCandles[entryCandles.length - 1].close
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) return false
+
+    // Keep the sniper's own stop (beyond the sweep wick) as the invalidation
+    // point — more precise than a generic ATR-multiple stop.
+    const stopDist = Math.abs(currentPrice - sniper.stop)
+    if (stopDist <= 0) return false
+
+    const targetDist = 2.0 * stopDist // minimum 2:1 RR, same floor as confluence
+    const direction = sniper.direction === 'long' ? 'BUY' : 'SELL'
+    const cfg = STYLE_CONFIG[target.style]
+    const strategyKey = cfg.strategy
+    const expiry = new Date(Date.now() + cfg.expiryHours * 60 * 60 * 1000)
+
+    const amdLabel =
+      sniper.phase === 'accumulation'
+        ? 'Accumulation'
+        : sniper.phase === 'distribution'
+        ? 'Distribution'
+        : 'Manipulation-only'
+    const reason = `[AMD Sniper · ${amdLabel}] ${sniper.reason}`
+
+    const generatedKey = `${target.symbol}:${direction}:${target.style}:amd`
+
+    await db.signal.deleteMany({ where: { generatedKey } })
+    await db.signal.create({
+      data: {
+        generatedKey,
+        type: direction,
+        asset: target.symbol,
+        entryPrice: currentPrice,
+        stopLoss: sniper.stop,
+        takeProfit1: direction === 'BUY' ? currentPrice + targetDist : currentPrice - targetDist,
+        takeProfit2: direction === 'BUY' ? currentPrice + 2.8 * stopDist : currentPrice - 2.8 * stopDist,
+        takeProfit3: direction === 'BUY' ? currentPrice + 4.2 * stopDist : currentPrice - 4.2 * stopDist,
+        riskRewardRatio: 2.0,
+        confidence: Math.max(1, Math.min(99, Math.round(sniper.confidence * 100))),
+        strategy: strategyKey,
+        style: target.style,
+        strategyType: 'amd_sniper',
+        amdPhase: sniper.phase,
+        inMacroWindow: sniper.inMacroWindow,
+        macroWindowName: sniper.macroWindowName || null,
+        timeframe: cfg.entryLabel,
+        reason,
         status: 'active',
         expiryDate: expiry,
         marketType: target.marketType,

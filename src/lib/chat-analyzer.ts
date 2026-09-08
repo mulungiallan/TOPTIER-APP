@@ -52,7 +52,35 @@ export interface GeminiStructure {
   key_facts?: string[]
   context_notes?: string
   requires_human_review?: boolean
+  market_phase?: string
+  market_notes?: string
 }
+
+// Accumulation · Manipulation · Distribution (AMD) market-cycle theory.
+// Markets in a cycle: smart money accumulates quietly near lows → an
+// engineered move (manipulation, e.g. stop hunts / fakeouts / liquidity grabs)
+// shakes retail out → markup runs → smart money distributes into euphoria at
+// the top → markdown. Detected when the chat content is trading-related.
+export type AmdStage =
+  | 'accumulation'
+  | 'manipulation'
+  | 'distribution'
+  | 'markup'
+  | 'markdown'
+  | 'not_applicable'
+  | 'unknown'
+
+export interface AmdAssessment {
+  stage: AmdStage
+  confidence: number // 0-1
+  market_relevant: boolean
+  signals: string[] // matched phrases from the message
+  explanation: string // plain-English read of the stage
+  trading_style: AmdTradingStyle // normalised style implied by the message
+  rr: string | null // recommended risk:reward for the detected style
+}
+
+export type AmdTradingStyle = 'scalp' | 'intraday' | 'swing' | 'unknown'
 
 export interface ChatAnalysisResult {
   verdict: string
@@ -62,6 +90,7 @@ export interface ChatAnalysisResult {
   model_agreement: 'agree' | 'partial' | 'disagree'
   reasoning: string
   recommended_action: string
+  amd: AmdAssessment
   path: 'fast' | 'full'
   cached: boolean
   sources: {
@@ -105,6 +134,191 @@ const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
+// ─── AMD (Accumulation · Manipulation · Distribution) rule engine ───────────
+// Deterministic phrase detection so AMD classification always works — even on
+// the HF fast path or when no LLM is configured. The LLM layers (Gemini /
+// Claude) see the same stage and can refine it in their own explanation.
+
+const AMD_KEYWORDS: Record<Exclude<AmdStage, 'not_applicable' | 'unknown'>, string[]> = {
+  accumulation: [
+    'accumulat', 'accumulation', 'loading up', 'loading', 'scooping', 'buying the dip',
+    'buy the dip', 'smart money buying', 'whales accumulating', 'whale accumulation',
+    'stealth buying', 'building a position', 'positioning', 'getting ready',
+    'range', 'sideways', 'bottoming', 'basing', 'buy low', 'undervalued',
+    'underpriced', 'discount', 'stage 1', 'stage one',
+  ],
+  manipulation: [
+    'manipulat', 'stop hunt', 'stop-hunt', 'stop loss hunt', 'running stops',
+    'liquidity grab', 'liquidity sweep', 'liquidity hunt', 'fakeout', 'fake out',
+    'fake breakout', 'shakeout', 'shaking out', 'pump and dump', 'pump & dump',
+    'exit liquidity', 'engineered', 'artificial', 'rigged', 'chart manipulation',
+    'spoofing', 'wash trading', 'wash trade', 'bear trap', 'bull trap', 'trap',
+  ],
+  distribution: [
+    'distribut', 'selling into strength', 'smart money selling', 'topping', 'topping out',
+    'blow off', 'parabolic', 'euphoria', 'take profit', 'take profits', 'profit taking',
+    'profit-taking', 'taking profit', 'big players selling', 'top signal', 'overbought',
+    'exhaustion', 'dump', 'dumping', 'exit now', 'sell the rip', 'sell the rally',
+  ],
+  markup: [
+    'markup', 'uptrend', 'bullish trend', 'trending up', 'pumping', 'squeeze',
+    'breakout', 'break out', 'new high', 'all time high', 'ath',
+  ],
+  markdown: [
+    'markdown', 'downtrend', 'bearish trend', 'crash', 'lower lows', 'death cross',
+    'new low', 'all time low', 'cascade',
+  ],
+}
+
+// Gating terms — a message only gets a real AMD stage if it also talks about
+// markets/trading. Support-chat messages about orders etc. → not_applicable.
+const AMD_MARKET_TERMS = [
+  'buy', 'sell', 'long ', ' short', 'entry', 'stop loss', 'take profit', 'price',
+  'market', 'chart', 'candle', 'signal', 'forex', 'crypto', 'btc', 'eth', 'usd',
+  'stock', 'shares', 'trade', 'trading', 'position', 'breakout', 'dip', 'rally',
+  'bull', 'bullish', 'bear', 'bearish', 'pump', 'dump', 'gain', 'loss', 'profit',
+  'pips', 'lot', 'broker', 'coin', 'wallet', 'pair', 'liquidity', 'stop loss',
+  'support', 'resistance',
+]
+
+const AMD_STAGE_PRIORITY: Array<Exclude<AmdStage, 'not_applicable' | 'unknown'>> = [
+  'manipulation',
+  'distribution',
+  'accumulation',
+  'markup',
+  'markdown',
+]
+
+// Style detection + risk:reward policy for the chat analysis. When a message
+// implies a trading style, we surface the house risk:reward for that style.
+const AMD_STYLE_KEYWORDS: Record<Exclude<AmdTradingStyle, 'unknown'>, string[]> = {
+  scalp: [
+    'scalp', 'scalping', 'scalper', 'm1', 'm5', '1m ', '5m', '15m', 'small targets',
+    'quick profit', 'quick profits', 'fast trade', 'in and out', 'grabbing pips',
+    'quick scalps', 'short timeframe', 'small time frame',
+  ],
+  intraday: [
+    'intraday', 'day trade', 'day trading', 'daytrader', 'this session',
+    'end of day', 'm15', '30m ', '1h ', 'one hour', 'hourly', 'same day',
+  ],
+  swing: [
+    'swing', 'swinging', 'h4', '4h', 'daily chart', 'holding days',
+    'hold for days', 'days holding', 'multi-day', 'multi day', 'big move',
+    'long term', 'weekly',
+  ],
+}
+
+const AMD_RR_RECOMMENDATION: Record<Exclude<AmdTradingStyle, 'unknown'>, string> = {
+  scalp: '1:3',
+  intraday: '2:6–8',
+  swing: '1:5',
+}
+
+function detectTradingStyle(text: string): AmdTradingStyle {
+  const lower = text.toLowerCase()
+  const scores: Array<{ style: AmdTradingStyle; hits: number }> = []
+  ;(Object.keys(AMD_STYLE_KEYWORDS) as Array<Exclude<AmdTradingStyle, 'unknown'>>).forEach((style) => {
+    const hits = AMD_STYLE_KEYWORDS[style].filter((kw) => lower.includes(kw)).length
+    if (hits > 0) scores.push({ style, hits })
+  })
+  if (scores.length === 0) return 'unknown'
+  scores.sort((a, b) => b.hits - a.hits)
+  return scores[0].style
+}
+
+const AMD_EXPLANATIONS: Record<AmdStage, string> = {
+  accumulation:
+    'This talk describes smart money quietly building positions while price sits in a range or near lows — the "Accumulation" phase of the cycle. Expect the next leg to be a manipulated shakeout before the real move.',
+  manipulation:
+    'This talk flags engineered price action — stop hunts, liquidity grabs or fakeouts designed to shake retail traders out — the "Manipulation" phase. These messages usually precede a violent move against the crowd.',
+  distribution:
+    'This talk shows large holders selling into strength near cycle highs — the "Distribution" phase. Retail is typically euphoric here and a markdown leg usually follows.',
+  markup:
+    'This talk refers to price trending higher — the "Markup" phase, where the accumulated position gets run up. Distribution usually starts once retail FOMO peaks.',
+  markdown:
+    'This talk refers to price falling after the top — the "Markdown" phase. Smart money sold during distribution; longs are at risk until the next accumulation base forms.',
+  not_applicable:
+    'The message is not about markets or trading, so no accumulation/manipulation/distribution stage applies.',
+  unknown:
+    'The message has market context but no clear AMD phrase was detected; treat as undetermined.',
+}
+
+function isAmdStage(v: unknown): v is AmdStage {
+  return (
+    v === 'accumulation' ||
+    v === 'manipulation' ||
+    v === 'distribution' ||
+    v === 'markup' ||
+    v === 'markdown' ||
+    v === 'not_applicable' ||
+    v === 'unknown'
+  )
+}
+
+export function detectAmdStage(text: string): AmdAssessment {
+  const lower = text.toLowerCase()
+  const hits: Record<Exclude<AmdStage, 'not_applicable' | 'unknown'>, string[]> = {
+    accumulation: [],
+    manipulation: [],
+    distribution: [],
+    markup: [],
+    markdown: [],
+  }
+
+  ;(Object.keys(AMD_KEYWORDS) as Array<Exclude<AmdStage, 'not_applicable' | 'unknown'>>).forEach(
+    (stage) => {
+      for (const kw of AMD_KEYWORDS[stage]) {
+        if (lower.includes(kw)) hits[stage].push(kw)
+      }
+    }
+  )
+
+  const marketHits = AMD_MARKET_TERMS.filter((t) => lower.includes(t))
+  const anyStageHits = AMD_STAGE_PRIORITY.filter((s) => hits[s].length > 0)
+  const marketRelevant = marketHits.length > 0
+  const tradingStyle: AmdTradingStyle = marketRelevant ? detectTradingStyle(text) : 'unknown'
+
+  const withRr = (explanation: string): string => {
+    const rr = AMD_RR_RECOMMENDATION[tradingStyle as Exclude<AmdTradingStyle, 'unknown'>]
+    if (!rr) return explanation
+    return `${explanation} Fits the ${tradingStyle} style — house risk:reward is ${rr}.`
+  }
+
+  if (!marketRelevant || anyStageHits.length === 0) {
+    const stage: AmdStage = marketRelevant ? 'unknown' : 'not_applicable'
+    return {
+      stage,
+      confidence: 1,
+      market_relevant: marketRelevant,
+      signals: anyStageHits.flatMap((s) => hits[s]).slice(0, 5),
+      explanation: withRr(AMD_EXPLANATIONS[stage]),
+      trading_style: tradingStyle,
+      rr: AMD_RR_RECOMMENDATION[tradingStyle as Exclude<AmdTradingStyle, 'unknown'>] ?? null,
+    }
+  }
+
+  const scored = anyStageHits
+    .map((s) => ({ stage: s, count: hits[s].length }))
+    .sort((a, b) =>
+      b.count - a.count ||
+      AMD_STAGE_PRIORITY.indexOf(a.stage) - AMD_STAGE_PRIORITY.indexOf(b.stage)
+    )
+
+  const best = scored[0]
+  const totalHits = scored.reduce((sum, s) => sum + s.count, 0)
+  const confidence = Math.min(0.95, 0.5 + 0.09 * totalHits + (best.count === totalHits ? 0.05 : 0))
+
+  return {
+    stage: best.stage,
+    confidence: confidence,
+    market_relevant: true,
+    signals: best.count > 0 ? hits[best.stage].slice(0, 5) : [],
+    explanation: withRr(AMD_EXPLANATIONS[best.stage]),
+    trading_style: tradingStyle,
+    rr: AMD_RR_RECOMMENDATION[tradingStyle as Exclude<AmdTradingStyle, 'unknown'>] ?? null,
+  }
+}
+
 // ─── In-memory cache ────────────────────────────────────────────────────────
 
 const cache = new Map<string, CacheEntry>()
@@ -118,7 +332,9 @@ Return ONLY valid JSON, no markdown fences, matching exactly this shape:
   "topic": string,             // short noun phrase, e.g. "shipping_delay", "billing", "product_defect"
   "key_facts": string[],       // short factual claims extracted from the message, max 5
   "context_notes": string,     // 1 sentence noting anything in the thread history relevant to interpreting this message; empty string if none
-  "requires_human_review": boolean // true if this message involves legal threats, self-harm, or content ambiguous enough that automated scoring alone is unsafe
+  "requires_human_review": boolean, // true if this message involves legal threats, self-harm, or content ambiguous enough that automated scoring alone is unsafe
+  "market_phase": "accumulation"|"manipulation"|"distribution"|"markup"|"markdown"|"not_applicable"|null // Accumulation·Manipulation·Distribution stage the message implies about the referenced market; null if not trading related
+  "market_notes": string       // 1 sentence on the AMD read, e.g. "Stop-hunt language suggests a shakeout before the real move"; empty if not trading related
 }`
 
 const CLAUDE_RESPONSE_CONTRACT = `Return ONLY valid JSON (no markdown fences) matching exactly this shape:
@@ -129,12 +345,24 @@ const CLAUDE_RESPONSE_CONTRACT = `Return ONLY valid JSON (no markdown fences) ma
   "evidence_spans": string[],      // exact short quotes from the message that most drove the verdict, max 4
   "model_agreement": "agree"|"partial"|"disagree", // do the Hugging Face and Gemini signals line up with each other and with your read?
   "reasoning": string,             // 2-4 plain-English sentences: what you concluded, which signals you trusted and which you discounted, and why
-  "recommended_action": string     // one short, concrete next step for whoever owns this conversation
+  "recommended_action": string,    // one short, concrete next step for whoever owns this conversation
+  "amd": {
+    "stage": "accumulation"|"manipulation"|"distribution"|"markup"|"markdown"|"not_applicable"|"unknown", // which phase of the Accumulation·Manipulation·Distribution market cycle this message relates to
+    "confidence": number,          // 0 to 1, how sure you are of the stage
+    "trading_style": "scalp"|"intraday"|"swing"|"unknown", // style implied by the message (timeframes, hold durations, pacing)
+    "explanation": string          // 1-2 sentences in plain English: what the message implies about the market cycle stage and what that means for traders; empty string if not trading related
+  }
 }`
+
+// TODO the AMD theory: accumulation (smart money buying quietly near lows),
+// manipulation (engineered shakeouts/stop hunts/liquidity grabs before the real
+// move), distribution (smart money selling into euphoria at the top). When the
+// message is about markets, assess which stage it implies and say why in
+// "amd.explanation".
 
 // ─── Fast path builder ──────────────────────────────────────────────────────
 
-function fastPathResult(hf: HfResult): Omit<ChatAnalysisResult, 'cached' | 'sources'> {
+function fastPathResult(hf: HfResult, amd: AmdAssessment): Omit<ChatAnalysisResult, 'cached' | 'sources'> {
   const sentimentLabel = hf.sentiment?.label ?? 'unknown'
   const isToxic = (hf.toxicity?.score ?? 0) > 0.5
   const verdict = isToxic ? 'flagged_toxic' : `clear_${sentimentLabel}`
@@ -146,6 +374,7 @@ function fastPathResult(hf: HfResult): Omit<ChatAnalysisResult, 'cached' | 'sour
     severity: isToxic ? 'medium' : 'none',
     evidence_spans: [],
     model_agreement: 'agree' as const,
+    amd,
     reasoning: `Hugging Face's specialist models produced a high-confidence, unambiguous signal (${(confidence * 100).toFixed(0)}%), so the fast path skipped Gemini and Claude. Sentiment: ${sentimentLabel}${
       hf.emotion ? `, dominant emotion: ${hf.emotion.label}` : ''
     }. Toxicity score: ${(hf.toxicity?.score ?? 0).toFixed(2)}.`,
@@ -348,12 +577,13 @@ async function reasonWithClaude(args: {
   text: string
   hf: HfResult
   gemini: GeminiStructure | { note: string; error?: string }
+  amdBase: AmdAssessment
 }): Promise<Omit<ChatAnalysisResult, 'cached' | 'sources' | 'path'>> {
   if (!ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY is not set')
   }
 
-  const { text, hf, gemini } = args
+  const { text, hf, gemini, amdBase } = args
 
   const prompt = `You are the final arbiter in a chat-analysis pipeline. Two other systems have already scored this message. Your job is to weigh their signals, resolve any disagreement, and explain your reasoning in plain English so a human reviewer can trust the result without re-reading the raw scores.
 
@@ -367,6 +597,11 @@ ${JSON.stringify(hf, null, 2)}
 
 Gemini structured extraction:
 ${JSON.stringify(gemini, null, 2)}
+
+Accumulation·Manipulation·Distribution (AMD) rule engine read:
+${JSON.stringify(amdBase, null, 2)}
+
+AMD theory: markets cycle through accumulation (smart money buys quietly near lows), manipulation (engineered shakeouts/stop hunts/liquidity grabs before the real move), markup, distribution (smart money sells into euphoria at the top), then markdown. If the message is trading-related, set "amd.stage" to the phase it implies and explain it. You may override the rule engine's stage if your reasoning is better, but keep the house risk:reward policy: scalp → 1:3, intraday → 2:6–8, swing → 1:5.
 
 Weigh Hugging Face's toxicity/sentiment scores as reliable for surface-level tone, but treat sarcasm, understatement, or context-dependent meaning as things only you can catch. If Hugging Face and Gemini disagree, say so explicitly in "reasoning" and explain which one you trusted more and why.`
 
@@ -411,6 +646,12 @@ Weigh Hugging Face's toxicity/sentiment scores as reliable for surface-level ton
       model_agreement?: string
       reasoning?: string
       recommended_action?: string
+      amd?: {
+        stage?: string
+        confidence?: number
+        trading_style?: string
+        explanation?: string
+      }
     }
 
     return {
@@ -419,6 +660,7 @@ Weigh Hugging Face's toxicity/sentiment scores as reliable for surface-level ton
       severity: sanitizeSeverity(parsed.severity),
       evidence_spans: sanitizeStrings(parsed.evidence_spans).slice(0, 4),
       model_agreement: sanitizeAgreement(parsed.model_agreement),
+      amd: mergeAmd(amdBase, parsed.amd),
       reasoning:
         parsed.reasoning ||
         'Claude did not return an explicit reasoning string; the raw signals are shown below.',
@@ -430,6 +672,36 @@ Weigh Hugging Face's toxicity/sentiment scores as reliable for surface-level ton
 }
 
 // ─── Sanitizers ─────────────────────────────────────────────────────────────
+
+function mergeAmd(base: AmdAssessment, claudeAmd?: { stage?: string; confidence?: number; trading_style?: string; explanation?: string }): AmdAssessment {
+  const claudeStage = String(claudeAmd?.stage || '').toLowerCase()
+  const stage: AmdStage = isAmdStage(claudeStage) && claudeStage !== 'not_applicable'
+    ? claudeStage
+    : base.stage
+
+  const claudeStyle = String(claudeAmd?.trading_style || '').toLowerCase()
+  const tradingStyle: AmdTradingStyle =
+    claudeStyle === 'scalp' || claudeStyle === 'intraday' || claudeStyle === 'swing'
+      ? claudeStyle
+      : base.trading_style
+
+  const claudeExpl = typeof claudeAmd?.explanation === 'string' && claudeAmd.explanation.trim()
+    ? claudeAmd.explanation.trim()
+    : base.explanation
+  const explanation = tradingStyle === base.trading_style && base.rr && !claudeExpl.includes(base.rr)
+    ? `${claudeExpl} Fits the ${tradingStyle} style — house risk:reward is ${base.rr}.`
+    : claudeExpl
+
+  return {
+    stage,
+    confidence: sanitizeConfidence(claudeAmd?.confidence ?? base.confidence),
+    market_relevant: base.market_relevant,
+    signals: base.signals,
+    explanation: explanation,
+    trading_style: tradingStyle,
+    rr: AMD_RR_RECOMMENDATION[tradingStyle as Exclude<AmdTradingStyle, 'unknown'>] ?? null,
+  }
+}
 
 function sanitizeConfidence(value: unknown): number {
   const n = Number(value)
@@ -479,6 +751,10 @@ export class ChatAnalyzer {
       return { ...cached.data, cached: true }
     }
 
+    // AMD (Accumulation · Manipulation · Distribution) cycle read — always
+    // computed deterministically so every result carries a market-cycle stage.
+    const amdBase = detectAmdStage(trimmed)
+
     // 1. Hugging Face parallel specialists (degrades gracefully if token missing/invalid).
     let hf: HfResult
     try {
@@ -505,7 +781,7 @@ export class ChatAnalyzer {
     if (!hfAmbiguous) {
       // Fast path — HF signal is unambiguous.
       result = {
-        ...fastPathResult(hf),
+        ...fastPathResult(hf, amdBase),
         cached: false,
         sources: { huggingface: hf, gemini: null },
       }
@@ -532,13 +808,14 @@ export class ChatAnalyzer {
             text: trimmed,
             hf,
             gemini: geminiResult ?? { note: 'Gemini unavailable', error: geminiError },
+            amdBase,
           })
         } else {
-          claudePart = fallbackFusionResult(hf, geminiResult, geminiError)
+          claudePart = fallbackFusionResult(hf, geminiResult, geminiError, amdBase)
         }
       } catch (err) {
         console.warn('[chat-analyzer] Claude failed, using built-in fusion:', (err as Error).message)
-        claudePart = fallbackFusionResult(hf, geminiResult, geminiError)
+        claudePart = fallbackFusionResult(hf, geminiResult, geminiError, amdBase)
       }
 
       result = {
@@ -589,7 +866,8 @@ export class ChatAnalyzer {
 function fallbackFusionResult(
   hf: HfResult,
   gemini: GeminiStructure | null,
-  geminiError?: string
+  geminiError: string | undefined,
+  amd: AmdAssessment
 ): Omit<ChatAnalysisResult, 'cached' | 'sources' | 'path'> {
   const isToxic = (hf.toxicity?.score ?? 0) > 0.5
   const sentimentLabel = hf.sentiment?.label ?? 'unknown'
@@ -625,6 +903,7 @@ function fallbackFusionResult(
     severity,
     evidence_spans: [],
     model_agreement: gemini ? 'agree' : 'partial',
+    amd,
     reasoning: reasoningBits.join(' '),
     recommended_action: isToxic
       ? 'Route to moderation queue'

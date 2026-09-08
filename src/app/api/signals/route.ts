@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     const market = searchParams.get('market')
     const strategy = searchParams.get('strategy')
     const style = searchParams.get('style')
+    const strategyType = searchParams.get('strategyType')
     const status = searchParams.get('status')
     const asset = searchParams.get('asset')
     const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '50')), 200)
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
 
     if (strategy) where.strategy = strategy.toLowerCase()
     if (style) where.style = style.toLowerCase()
+    if (strategyType) where.strategyType = strategyType.toLowerCase()
     if (status) where.status = status.toLowerCase()
     if (asset) where.asset = { contains: asset }
 
@@ -95,6 +97,10 @@ export async function POST(request: NextRequest) {
       confidence,
       strategy,
       style,
+      strategyType,
+      amdPhase,
+      inMacroWindow,
+      macroWindowName,
       timeframe,
       reason,
       expiryDate,
@@ -135,6 +141,10 @@ export async function POST(request: NextRequest) {
         confidence: confidenceVal,
         strategy,
         style: style || null,
+        strategyType: strategyType || 'confluence',
+        amdPhase: amdPhase || null,
+        inMacroWindow: inMacroWindow !== undefined && inMacroWindow !== null ? inMacroWindow === true || inMacroWindow === 'true' : null,
+        macroWindowName: macroWindowName || null,
         timeframe,
         reason: reason || '',
         expiryDate: expiryDate ? new Date(expiryDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
