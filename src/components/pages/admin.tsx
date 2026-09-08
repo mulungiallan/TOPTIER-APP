@@ -1322,19 +1322,20 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent className="flex gap-2 items-end">
             {security.setupPayload && (
-              <div className="text-xs bg-muted p-2 rounded font-mono break-all">{security.setupPayload.secret}</div>
+              <div className="text-xs bg-muted p-2 rounded font-mono break-all max-w-[240px]">{security.setupPayload.secret}</div>
             )}
             <Input className="max-w-[200px]" placeholder="6-digit code" value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} maxLength={6} />
             <Button size="sm" disabled={twoFactorCode.length < 6} onClick={async () => {
               try {
+                await api.post('/admin/security', { action: 'setup' })
                 await api.post('/admin/security', { action: 'verify', code: twoFactorCode })
-                toast.success('2FA verified')
+                toast.success('2FA set up and verified')
                 setSecurity((s) => s ? { ...s, enabled: true } : s)
                 setSecurityError('')
-              } catch (e) { setSecurityError(e instanceof Error ? e.message : 'Invalid code') }
-            }}>Verify</Button>
+              } catch (e) { setSecurityError(e instanceof Error ? e.message : 'Setup failed — code must match the current step') }
+            }}>Enable 2FA</Button>
           </CardContent>
-          {securityError && <p className="text-xs text-destructive px-6 pb-3">{securityError}</p>}
+          <p className="text-xs text-muted-foreground px-6 pb-2">Add the secret above to your authenticator app, then generate a code. Clicking <b>Enable 2FA</b> activates your account and verifies it.</p>
         </Card>
       )}
 
@@ -2335,7 +2336,7 @@ export default function AdminPage() {
                             <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={ticketDraftLoading} onClick={async () => {
                               setTicketDraftLoading(true)
                               try {
-                                const res = await api.post<{ success: boolean; data: { draft: string } }>('/admin/ai', { action: 'draft_ticket', ticketId: ticket.id, subject: ticket.subject, description: ticket.description })
+                                const res = await api.post<{ success: boolean; data: { draft: string } }>('/admin/ai', { draftFor: 'ticket', ticketId: ticket.id })
                                 setTicketReplyTarget(ticket); setTicketReplyMsg(res?.data?.draft || '')
                                 toast.success('AI draft generated')
                               } catch (e) { toast.error(e instanceof Error ? e.message : 'Draft failed') } finally { setTicketDraftLoading(false) }
@@ -2512,6 +2513,13 @@ export default function AdminPage() {
                       <p className="text-xs text-muted-foreground">Show maintenance page to users</p>
                     </div>
                     <Switch checked={appSettings.maintenanceMode} onCheckedChange={(checked) => setAppSettings((s) => ({ ...s, maintenanceMode: checked }))} />
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg border">
+                    <div>
+                      <p className="text-sm font-medium">Require Admin 2FA</p>
+                      <p className="text-xs text-muted-foreground">Force all admins to enable two-factor authentication</p>
+                    </div>
+                    <Switch checked={appSettings.adminRequire2fa} onCheckedChange={(checked) => setAppSettings((s) => ({ ...s, adminRequire2fa: checked }))} />
                   </div>
                 </div>
                 <Button className="w-full" disabled={savingSettings} onClick={saveAppSettings}>
