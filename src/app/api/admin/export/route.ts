@@ -68,6 +68,13 @@ async function collect(kind: string, search: string) {
         rows: rows.map((r) => [r.id, r.userId, r.subject, r.category, r.priority, r.status, r.createdAt.toISOString()]),
       }
     }
+    case 'payouts': {
+      const rows = await db.payoutRequest.findMany({ orderBy: { createdAt: 'desc' }, take: 5000, select: { id: true, method: true, destination: true, amount: true, currency: true, status: true, failureReason: true, paidAt: true, createdAt: true } })
+      return {
+        headers: ['id', 'method', 'destination', 'amount', 'currency', 'status', 'failureReason', 'paidAt', 'createdAt'],
+        rows: rows.map((r) => [r.id, r.method, r.destination, r.amount, r.currency, r.status, r.failureReason || '', r.paidAt?.toISOString() ?? '', r.createdAt.toISOString()]),
+      }
+    }
     default:
       return null
   }

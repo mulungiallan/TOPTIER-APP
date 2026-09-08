@@ -1675,9 +1675,10 @@ export default function AdminPage() {
                   <Select value={bulkAction} onValueChange={setBulkAction}>
                     <SelectTrigger className="w-[160px] h-7"><SelectValue placeholder="Bulk action" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="suspend_user">Suspend (7 days)</SelectItem>
-                      <SelectItem value="delete_user">Delete accounts</SelectItem>
-                      <SelectItem value="force_logout">Force logout</SelectItem>
+                      <SelectItem value="ban">Ban</SelectItem>
+                      <SelectItem value="suspend">Suspend (7 days)</SelectItem>
+                      <SelectItem value="unban">Unban</SelectItem>
+                      <SelectItem value="warn">Send warning</SelectItem>
                     </SelectContent>
                   </Select>
                   <Input className="w-[200px] h-7" placeholder="Reason (optional)" value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} />
