@@ -193,6 +193,10 @@ function StatusBadge({ status }: { status: SignalStatus }) {
   )
 }
 
+function formatTwoDec(price: number): string {
+  return price.toFixed(2)
+}
+
 function PipDistance(entry: number, target: number, market: string): string {
   if (market === 'Crypto') {
     return `${((target - entry) / entry * 100).toFixed(2)}%`
@@ -536,7 +540,7 @@ function SignalCard({
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Entry</span>
-            <span className="font-mono font-medium">{signal.entryPrice}</span>
+            <span className="font-mono font-medium">{formatTwoDec(signal.entryPrice)}</span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground flex items-center gap-1">
@@ -559,7 +563,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Stop Loss</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-red-500">{signal.stopLoss}</span>
+              <span className="font-mono font-medium text-red-500">{formatTwoDec(signal.stopLoss)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.stopLoss, signal.market)})
               </span>
@@ -588,7 +592,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">TP1</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-emerald-500">{signal.takeProfit1}</span>
+              <span className="font-mono font-medium text-emerald-500">{formatTwoDec(signal.takeProfit1)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.takeProfit1, signal.market)})
               </span>
@@ -597,7 +601,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">TP2</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-emerald-500">{signal.takeProfit2}</span>
+              <span className="font-mono font-medium text-emerald-500">{formatTwoDec(signal.takeProfit2)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.takeProfit2, signal.market)})
               </span>
@@ -606,7 +610,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">TP3</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-emerald-500">{signal.takeProfit3}</span>
+              <span className="font-mono font-medium text-emerald-500">{formatTwoDec(signal.takeProfit3)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.takeProfit3, signal.market)})
               </span>

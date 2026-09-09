@@ -28,8 +28,8 @@ const jetbrainsMono = JetBrains_Mono({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5,
-  userScalable: true,
+  maximumScale: 1, // prevents pinch-zoom breaking your layout
+  userScalable: false, // set true if you want accessibility zoom allowed
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },

@@ -6,12 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       track:
-        description: 'Play track to release to'
+        description: 'Play track to release to (closed-testing = alpha in the Play API)'
         required: true
-        default: 'production'
+        default: 'alpha'
         type: choice
         options:
           - internal
+          - closed-testing
+          - open-testing
           - alpha
           - beta
           - production
@@ -59,8 +61,16 @@ jobs:
         id: track
         shell: bash
         run: |
+          # The Play Developer API only knows internal/alpha/beta/production.
+          # "closed-testing" in the modern Play Console UI maps to the alpha
+          # API track; "open-testing" maps to beta.
+          case "${{ inputs.track }}" in
+            closed-testing) TRACK="alpha" ;;
+            open-testing)   TRACK="beta" ;;
+            *)              TRACK="${{ inputs.track }}" ;;
+          esac
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "track=${{ inputs.track }}" >> "$GITHUB_OUTPUT"
+            echo "track=$TRACK" >> "$GITHUB_OUTPUT"
           else
             echo "track=production" >> "$GITHUB_OUTPUT"
           fi

@@ -44,6 +44,9 @@
   --radius-xl: calc(var(--radius) + 4px);
   --color-profit: var(--profit);
   --color-loss: var(--loss);
+  --spacing-screen-dvh: 100dvh;
+  --spacing-screen-svh: 100svh; /* smallest possible viewport (bar visible) */
+  --spacing-screen-lvh: 100lvh; /* largest possible viewport (bar hidden) */
 }
 
 :root {
@@ -119,6 +122,10 @@
   --loss: #e07b7b;
 }
 
+:root {
+  color-scheme: light dark;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -187,6 +194,13 @@ html {
 .safe-x {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+}
+
+/* Utility: a full-screen container that ACTUALLY fits every phone. Prefer this
+   over h-screen, which uses the stale 100vh browser default. */
+.full-screen {
+  min-height: 100svh; /* never taller than the smallest visible viewport */
+  min-height: 100dvh; /* progressive enhancement where supported */
 }
 
 /* The app shell: let the page area scroll under the notch/home bar cleanly. */
