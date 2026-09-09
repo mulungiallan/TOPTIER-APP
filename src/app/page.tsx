@@ -14,6 +14,8 @@ import {
   Crown,
   ChevronRight,
   X,
+  Bot,
+  Copy,
 } from 'lucide-react'
 import { useStore, type Page } from '@/lib/store'
 import { useBackButton } from '@/hooks/use-back-button'
@@ -230,6 +232,16 @@ function LandingPage() {
       icon: Shield,
       title: 'Risk Management',
       description: 'Built-in position sizing and risk tools keep you disciplined through every market move.',
+    },
+    {
+      icon: Bot,
+      title: 'Auto-Trading Bot',
+      description: 'Link your MetaTrader 5/4 account and let the AI bot trade it 24/7 with strict risk limits. You keep 100% of the account.',
+    },
+    {
+      icon: Copy,
+      title: 'Copy Trading',
+      description: 'Follow proven traders and mirror their trades automatically — or become a MASTER and earn profit share on your success.',
     },
   ]
 
@@ -461,6 +473,57 @@ function LandingPage() {
                 </Card>
               </motion.div>
             ))}
+          </div>
+        </section>
+
+        {/* ─── Bot & Copy Trading ────────────────────────────────────── */}
+        <section className="mx-auto max-w-7xl px-5 sm:px-6 pb-20">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="rounded-2xl border border-[#1b4f9c]/25 bg-gradient-to-br from-[#e8eff9]/80 to-transparent dark:from-[#1b4f9c]/15 p-6 sm:p-8"
+            >
+              <div className="flex size-12 items-center justify-center rounded-lg bg-[#1b4f9c] text-white mb-4">
+                <Bot className="size-6" />
+              </div>
+              <h2 className="font-display text-2xl font-bold tracking-tight">Trading Bot</h2>
+              <p className="mt-2 text-muted-foreground text-sm leading-relaxed">
+                Link your MetaTrader 5/4 account and the AI bot trades it 24/7 — entry, stop-loss and take-profit handled automatically under strict risk caps.
+              </p>
+              <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-start gap-2"><span className="mt-0.5 text-[#1b4f9c]">✓</span>You keep 100% of your account — TOPTIER earns a share only on winning trades</li>
+                <li className="flex items-start gap-2"><span className="mt-0.5 text-[#1b4f9c]">✓</span>Lives in-app: status, live trades, logs and profit share right in the dashboard</li>
+                <li className="flex items-start gap-2"><span className="mt-0.5 text-[#1b4f9c]">✓</span>How to start: sign up → Trading Bot → Link MT5/MT4 → Start</li>
+              </ul>
+              <Button className="mt-6 w-full sm:w-auto bg-[#1b4f9c] hover:bg-[#16385e] text-white" onClick={() => setAuthMode('register')}>
+                Start Your Bot <ArrowRight className="size-4" />
+              </Button>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="rounded-2xl border border-[#1b4f9c]/25 bg-gradient-to-br from-[#e8eff9]/80 to-transparent dark:from-[#1b4f9c]/15 p-6 sm:p-8"
+            >
+              <div className="flex size-12 items-center justify-center rounded-lg bg-[#1b4f9c] text-white mb-4">
+                <Copy className="size-6" />
+              </div>
+              <h2 className="font-display text-2xl font-bold tracking-tight">Copy Trading</h2>
+              <p className="mt-2 text-muted-foreground text-sm leading-relaxed">
+                Mirror proven traders automatically — or become a MASTER, let others copy you, and earn profit share on every winning trade.
+              </p>
+              <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-start gap-2"><span className="mt-0.5 text-[#1b4f9c]">✓</span>Automatic mirror, pause and stop-loss controls on every copied trade</li>
+                <li className="flex items-start gap-2"><span className="mt-0.5 text-[#1b4f9c]">✓</span>Transparent performance — no hidden or deleted losers</li>
+                <li className="flex items-start gap-2"><span className="mt-0.5 text-[#1b4f9c]">✓</span>How to start: sign up → Copy Trading → follow a trader or link as MASTER</li>
+              </ul>
+              <Button className="mt-6 w-full sm:w-auto bg-[#1b4f9c] hover:bg-[#16385e] text-white" onClick={() => setAuthMode('register')}>
+                Explore Copy Trading <ArrowRight className="size-4" />
+              </Button>
+            </motion.div>
           </div>
         </section>
 
