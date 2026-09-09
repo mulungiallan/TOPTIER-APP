@@ -88,7 +88,7 @@ jobs:
           mkdir -p android/keystore
           printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/keystore/toptier-release.jks
           cat > android/keystore.properties <<EOF
-          storeFile=keystore/toptier-release.jks
+          storeFile=../keystore/toptier-release.jks
           storePassword=${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEYSTORE_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
