@@ -106,5 +106,5 @@ jobs:
           packageName: com.toptier.app
           releaseFiles: android/app/build/outputs/bundle/release/*.aab
           track: ${{ steps.track.outputs.track }}
-          releaseStatus: completed
+          status: completed
           whatsNewDirectory: playstore-release-notes/
