@@ -178,7 +178,7 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
   const toggleSidebarCollapsed = useStore((s) => s.toggleSidebarCollapsed)
   const locale = useStore((s) => s.locale)
   const { theme, setTheme } = useTheme()
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
 
   const handleNavigate = (page: Page) => {
     setPage(page)

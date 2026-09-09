@@ -1190,7 +1190,7 @@ export default function AdminPage() {
     if (!aiAskQ.trim()) return
     setAiLoading(true); setAiAnswer('')
     try {
-      const res = await api.post<{ success: boolean; data: { answer: string } }>('/admin/ai', { action: 'ask', question: aiAskQ })
+      const res = await api.post<{ success: boolean; data: { answer: string } }>('/admin/ai', { action: 'ask', q: aiAskQ })
       setAiAnswer(res?.data?.answer || 'No answer returned.')
     } catch (e) { setAiAnswer('Error: ' + (e instanceof Error ? e.message : 'Request failed')) } finally { setAiLoading(false) }
   }
@@ -2430,7 +2430,7 @@ export default function AdminPage() {
               ) : (
                 <ScrollArea className="max-h-64">
                   <div className="space-y-2">
-                    {(auditFilter === 'all' ? adminAudit : adminAudit.filter((l: any) => l.action === auditFilter)).map((log) => (
+                    {(auditFilter === 'all' ? adminAudit : adminAudit.filter((l: any) => String(l.action || '').toLowerCase() === auditFilter)).map((log) => (
                       <div key={log.id} className="flex items-center justify-between p-3 rounded-lg border text-sm">
                         <div className="flex items-center gap-3">
                           <Clock className="h-4 w-4 text-muted-foreground" />
