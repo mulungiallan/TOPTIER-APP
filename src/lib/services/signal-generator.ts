@@ -15,6 +15,7 @@
  */
 
 import { db } from '@/lib/db'
+import { notifyUsers } from '@/lib/services/notifications'
 import { liveMarketData, type HistoricalCandle } from '@/lib/services/live-market-data'
 import {
   type CandleInput,
@@ -206,6 +207,59 @@ export class SignalGenerator {
     setInterval(loop, SignalGenerator.REFRESH_MS)
   }
 
+  /**
+   * Fire-and-forget instant notification whenever a new signal drops (i.e. is
+   * auto-generated). Honors each user's notification preferences (in-app +
+   * web push via notifyUsers). Loads the user list once per batch so we don't
+   * re-query for every symbol.
+   */
+  private signalNotifyQueue: {
+    type: string
+    asset: string
+    entryPrice: number
+    confidence: number
+    reason: string
+  }[] = []
+
+  private scheduleSignalNotification(signal: {
+    type: string
+    asset: string
+    entryPrice: number
+    confidence: number
+    reason: string
+  }): void {
+    this.signalNotifyQueue.push(signal)
+    // Flush shortly after the batch so notifications are batched, not spamming
+    // one push per symbol the moment the batch starts.
+    if (this.signalNotifyQueue.length === 1) {
+      setTimeout(() => void this.flushSignalNotifications(), 1500)
+    }
+  }
+
+  private async flushSignalNotifications(): Promise<void> {
+    const queue = this.signalNotifyQueue
+    this.signalNotifyQueue = []
+    if (queue.length === 0) return
+
+    try {
+      const users = await db.user.findMany({
+        where: { isBanned: false },
+        select: { id: true, email: true, notificationPrefs: true },
+        take: 1000,
+      })
+      for (const sig of queue) {
+        await notifyUsers(users, {
+          type: 'signal',
+          title: `New ${sig.type} Signal: ${sig.asset}`,
+          message: `${sig.type} ${sig.asset} @ ${sig.entryPrice.toFixed(2)} (confidence: ${sig.confidence}%)`,
+          actionUrl: '/signals',
+        }).catch((e) => console.error('[signal-generator] notification failed:', e))
+      }
+    } catch (err) {
+      console.error('[signal-generator] failed to load users for signal notification:', err)
+    }
+  }
+
   private async generateBatch(): Promise<boolean> {
     await db.signal.updateMany({
       where: { status: 'active', expiryDate: { lte: new Date() } },
@@ -312,6 +366,14 @@ export class SignalGenerator {
       },
     })
 
+    this.scheduleSignalNotification({
+      type: result.direction,
+      asset: target.symbol,
+      entryPrice: levels.entry,
+      confidence,
+      reason: reasonWithStyle,
+    })
+
     return true
   }
 
@@ -388,6 +450,14 @@ export class SignalGenerator {
         expiryDate: expiry,
         marketType: target.marketType,
       },
+    })
+
+    this.scheduleSignalNotification({
+      type: direction,
+      asset: target.symbol,
+      entryPrice: currentPrice,
+      confidence: Math.max(1, Math.min(99, Math.round(sniper.confidence * 100))),
+      reason,
     })
 
     return true
