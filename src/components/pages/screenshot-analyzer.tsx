@@ -71,6 +71,163 @@ interface AnalysisResult {
 
 const FREE_ANALYSIS_LIMIT = 2
 
+// ─── Trade Setups (Scalp / Day / Swing) ────────────────────────────────────────
+
+type TradeStyle = 'scalp' | 'intraday' | 'swing'
+
+interface TradeSetup {
+  style: TradeStyle
+  label: string
+  timeframe: string
+  note: string
+  signalType: 'BUY' | 'SELL'
+  entryPrice: number
+  stopLoss: number
+  takeProfit1: number
+  takeProfit2: number | null
+  takeProfit3: number | null
+}
+
+const TRADE_STYLE_META: Record<TradeStyle, { label: string; timeframe: string; note: string; chip: string }> = {
+  scalp: {
+    label: 'Scalp',
+    timeframe: '1m – 15m',
+    note: 'Quick in-and-out. Grab the 1st target fast and trail the 2nd. Only if you can watch the chart.',
+    chip: 'text-sky-500',
+  },
+  intraday: {
+    label: 'Day Trade',
+    timeframe: '15m – 4H',
+    note: 'Intraday hold. Close any open position before the day ends — never carry it overnight.',
+    chip: 'text-amber-500',
+  },
+  swing: {
+    label: 'Swing',
+    timeframe: '4H – Daily',
+    note: 'Multi-day to multi-week hold. Wider stop, letting the bigger move play out with overnight risk.',
+    chip: 'text-violet-500',
+  },
+}
+
+// Rounds a derived price to the same precision as the reference price.
+function roundLike(value: number, ref: number): number {
+  const s = String(ref)
+  const decimals = s.includes('.') ? s.split('.')[1].length : 1
+  const f = 10 ** Math.min(decimals, 5)
+  return Math.round(value * f) / f
+}
+
+// Derives three clearly-labelled trade setups from the single AI analysis.
+// All levels are consistent with the detected entry, stop, and R multiple
+// (R = entry-to-stop distance), so traders can pick a style that fits them.
+function buildTradeSetups(result: AnalysisResult): TradeSetup[] {
+  if (result.signalType === 'NEUTRAL') return []
+  const signalType = result.signalType
+  const entry = result.entryPrice
+  const stop = result.stopLoss
+  if (entry == null || stop == null || entry === stop) return []
+
+  const R = Math.abs(entry - stop)
+  const dir = signalType === 'BUY' ? 1 : -1
+  const target = (r: number) => entry + dir * r * R
+  const stopAt = (r: number) => entry - dir * r * R
+  const fmt = (v: number) => roundLike(v, entry)
+
+  return [
+    {
+      ...TRADE_STYLE_META.scalp,
+      style: 'scalp',
+      signalType,
+      entryPrice: fmt(entry),
+      stopLoss: fmt(stopAt(0.5)),
+      takeProfit1: fmt(target(0.75)),
+      takeProfit2: fmt(target(1.5)),
+      takeProfit3: null,
+    },
+    {
+      ...TRADE_STYLE_META.intraday,
+      style: 'intraday',
+      signalType,
+      entryPrice: fmt(entry),
+      stopLoss: fmt(stopAt(0.8)),
+      takeProfit1: fmt(target(1)),
+      takeProfit2: fmt(target(2)),
+      takeProfit3: null,
+    },
+    {
+      ...TRADE_STYLE_META.swing,
+      style: 'swing',
+      signalType,
+      entryPrice: fmt(entry),
+      stopLoss: fmt(stopAt(1)),
+      takeProfit1: fmt(target(2)),
+      takeProfit2: fmt(target(3)),
+      takeProfit3: null,
+    },
+  ]
+}
+
+// ─── Trade Setups Section ──────────────────────────────────────────────────────
+
+function TradeSetups({ result }: { result: AnalysisResult }) {
+  const setups = buildTradeSetups(result)
+
+  if (setups.length === 0) {
+    return (
+      <div className="rounded-lg border border-border p-4 text-center text-sm text-muted-foreground">
+        No trade setups — the market looks balanced (NEUTRAL). Wait for a clearer signal before trading.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold">Trade Setups — pick your style</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Three ways to trade the same setup, so you can match it to your schedule and risk.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {setups.map((s) => (
+          <div key={s.style} className="rounded-lg border border-border bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className={`font-display text-sm font-bold ${TRADE_STYLE_META[s.style].chip}`}>{s.label}</span>
+              <Badge variant="secondary" className="text-[10px] gap-1">
+                <Clock className="size-3" />
+                {s.timeframe}
+              </Badge>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <SignalBadge type={s.signalType} size="sm" />
+              <span className="text-[10px] text-muted-foreground">{result.confidence}% confidence</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-1.5 text-xs">
+              <div className="rounded-md bg-background/70 p-1.5">
+                <span className="block text-[10px] text-muted-foreground">Entry</span>
+                <span className="font-semibold">{s.entryPrice}</span>
+              </div>
+              <div className="rounded-md bg-red-500/10 p-1.5">
+                <span className="block text-[10px] text-red-500">Stop Loss</span>
+                <span className="font-semibold text-red-500">{s.stopLoss}</span>
+              </div>
+              <div className="rounded-md bg-emerald-500/10 p-1.5">
+                <span className="block text-[10px] text-emerald-500">Take Profit 1</span>
+                <span className="font-semibold text-emerald-500">{s.takeProfit1}</span>
+              </div>
+              <div className="rounded-md bg-emerald-500/10 p-1.5">
+                <span className="block text-[10px] text-emerald-500">Take Profit 2</span>
+                <span className="font-semibold text-emerald-500">{s.takeProfit2 ?? '—'}</span>
+              </div>
+            </div>
+            <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">{s.note}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Signal Badge Component ────────────────────────────────────────────────────
 
 function SignalBadge({ type, size = 'md' }: { type: 'BUY' | 'SELL' | 'NEUTRAL'; size?: 'sm' | 'md' | 'lg' }) {
@@ -242,6 +399,9 @@ function AnalysisResultCard({
               )}
           </div>
 
+          {/* Trade Setups — Scalp / Day / Swing */}
+          <TradeSetups result={result} />
+
           {/* Detected Info */}
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline" className="gap-1">
@@ -350,6 +510,15 @@ function HistoryItem({
           <span>{item.timeframe}</span>
           <span>{item.pattern}</span>
         </div>
+        {buildTradeSetups(item).length > 0 && (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            {buildTradeSetups(item).map((s) => (
+              <Badge key={s.style} variant="outline" className={`text-[9px] px-1.5 ${TRADE_STYLE_META[s.style].chip}`}>
+                {s.label}
+              </Badge>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-1 mt-1.5">
           <Clock className="size-3 text-muted-foreground" />
           <span className="text-xs text-muted-foreground">Reopen available for 1 hour</span>
