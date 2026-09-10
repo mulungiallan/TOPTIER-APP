@@ -25,6 +25,8 @@ import {
   Sparkles,
   Users,
   Globe,
+  Bot,
+  Copy,
 } from 'lucide-react'
 import {
   Tooltip as RechartsTooltip,
@@ -505,6 +507,8 @@ function QuickActions() {
     { label: 'View All Signals', icon: TrendingUp, page: 'signals' as const, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
     { label: 'Economic Calendar', icon: Calendar, page: 'calendar' as const, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
     { label: 'Set Price Alert', icon: Bell, page: 'alerts' as const, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    { label: 'Trading Bot', icon: Bot, page: 'trading-bot' as const, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
+    { label: 'Copy Trading', icon: Copy, page: 'copy-trading' as const, color: 'text-violet-500', bg: 'bg-violet-500/10' },
   ]
 
   return (

@@ -5,15 +5,15 @@ import { db } from '@/lib/db'
 // `referredBy` referrer id). Admins are always exempt so the owner can test
 // and operate the platform even without a referral chain.
 //
-// Environment overrides:
-//   REFERRAL_LOCK_ENABLED=false  -> disable the gate entirely (default: on)
-//   REFERRAL_LOCK_CODE=<code>    -> only users referred by THIS code unlock
-//   REFERRAL_LOCK_URL=<url>      -> referral link shown on the lock screen
+// The gate is FREE / OPEN by default. Enable invite-only mode explicitly:
+//   REFERRAL_LOCK_ENABLED=true  -> turn the invite-only gate ON
+//   REFERRAL_LOCK_CODE=<code>   -> only users referred by THIS code unlock
+//   REFERRAL_LOCK_URL=<url>     -> referral link shown on the lock screen
 export const REFERRAL_LOCK_MESSAGE =
   'Invite-only access — bot trading and copy trading unlock when you sign up through an active referral link.'
 
 export function referralLockEnabled(): boolean {
-  return process.env.REFERRAL_LOCK_ENABLED !== 'false'
+  return process.env.REFERRAL_LOCK_ENABLED === 'true'
 }
 
 export function getReferralLockCode(): string | null {
