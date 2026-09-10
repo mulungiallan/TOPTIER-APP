@@ -497,7 +497,7 @@ export function ChatAnalyserPage() {
                   <p className="text-sm leading-relaxed text-muted-foreground">{result.amd.explanation}</p>
                 </div>
 
-                {result.strategy_suite.length > 0 && (
+                {result.strategy_suite.length > 0 ? (
                   <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-emerald-500/5 to-transparent p-4">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -533,6 +533,15 @@ export function ChatAnalyserPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2 rounded-xl border border-dashed border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span>
+                      Mention a market symbol (<span className="font-mono">EURUSD</span>,{' '}
+                      <span className="font-mono">BTC</span>, <span className="font-mono">XAUUSD</span>, …) to get the live{' '}
+                      <span className="font-medium text-foreground">8-strategy read</span> on that market.
+                    </span>
                   </div>
                 )}
 
