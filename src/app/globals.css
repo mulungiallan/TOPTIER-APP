@@ -234,6 +234,35 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
+/*
+  ─── Android WebView text-rendering workarounds ─────────────────────────────
+  On Android System WebView / Capacitor, `backdrop-filter` and
+  `background-clip: text` are known to corrupt text rasterisation: glyphs get
+  composited twice at a small offset, looking like "text sliced / overlapping
+  on top of itself" across the whole app. We scope the fix to Android only so
+  iOS keeps its translucency effects.
+*/
+html[data-platform='android'] {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-platform='android'] *,
+html[data-platform='android'] *::before,
+html[data-platform='android'] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-platform='android'] [class*='bg-clip-text'],
+html[data-platform='android'] [style*='background-clip: text'] {
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+  color: inherit !important;
+}
+
 /* Safe-area helpers for notch / home-indicator devices (standalone PWA). */
 .safe-top {
   padding-top: env(safe-area-inset-top);

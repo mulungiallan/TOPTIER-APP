@@ -95,6 +95,12 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning nonce={cspNonce}>
       <head>
+        <script
+          nonce={cspNonce || undefined}
+          dangerouslySetInnerHTML={{
+            __html: `try{var __p=(window.Capacitor&&window.Capacitor.getPlatform)?window.Capacitor.getPlatform():'';document.documentElement.dataset.platform=__p||(/android/i.test(navigator.userAgent)?'android':'web')}catch(e){document.documentElement.dataset.platform='web'}`,
+          }}
+        />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
         {/* iOS launch screens (apple-touch-startup-image) for the main device sizes */}

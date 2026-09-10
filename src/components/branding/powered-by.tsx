@@ -24,7 +24,7 @@ export function PoweredBy({ className, variant = 'default' }: PoweredByProps) {
       >
         <span className="size-1.5 rounded-full bg-gradient-to-r from-primary to-primary/60" />
         Powered by{' '}
-        <span className="font-bold tracking-wide bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+        <span className="font-bold tracking-wide text-primary">
           BAGMUL
         </span>
       </span>
@@ -35,7 +35,7 @@ export function PoweredBy({ className, variant = 'default' }: PoweredByProps) {
     return (
       <span className={cn('inline-flex items-center gap-1 text-xs text-muted-foreground', className)}>
         Powered by{' '}
-        <span className="font-bold tracking-wide bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+        <span className="font-bold tracking-wide text-primary">
           BAGMUL
         </span>
       </span>
@@ -51,7 +51,7 @@ export function PoweredBy({ className, variant = 'default' }: PoweredByProps) {
     >
       <span className="size-1.5 rounded-full bg-gradient-to-r from-primary to-primary/60 animate-pulse" />
       <span>Powered by</span>
-      <span className="font-bold tracking-wider bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+      <span className="font-bold tracking-wider text-primary">
         BAGMUL
       </span>
     </div>
