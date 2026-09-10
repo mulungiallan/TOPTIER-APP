@@ -268,7 +268,7 @@ export class LiveMarketData {
 
     // Fallback: Yahoo Finance historical data
     if (candles.length === 0) {
-      candles = await this.fetchCandlesFromYahoo(symbol, count)
+      candles = await this.fetchCandlesFromYahoo(symbol, resolution, count)
     }
 
     if (candles.length > 0) {
@@ -414,25 +414,72 @@ export class LiveMarketData {
 
   private async fetchCandlesFromYahoo(
     symbol: string,
+    resolution: CandleResolution,
     count: number
   ): Promise<HistoricalCandle[]> {
     try {
-      // Pick a Yahoo period that covers `count` trading days
-      const period =
-        count <= 5 ? '5d' : count <= 30 ? '1mo' : count <= 90 ? '3mo' : '6mo'
+      const yahooSymbol = this.resolveYahooSymbol(symbol)
+      if (!yahooSymbol) return []
 
-      const yData = await marketDataService.getHistoricalData(symbol, period as any)
-      return yData
-        .slice(-count)
-        .map(d => ({
-          date: new Date(d.date).toISOString().split('T')[0],
-          time: new Date(d.date),
-          open: d.open,
-          high: d.high,
-          low: d.low,
-          close: d.close,
-          volume: d.volume ?? 0,
-        }))
+      // Map TOPTIER resolution to Yahoo v8 interval
+      const yahooInterval = this.resolutionToYahooInterval(resolution)
+
+      // Yahoo v8 chart API: range-based for short intervals, period-based for daily+
+      const useRange = ['1', '5', '15', '30', '60'].includes(resolution)
+      let url: string
+
+      if (useRange) {
+        // For intraday: use range parameter (e.g. 5d for 15m candles gives enough data)
+        const range = count <= 5 ? '1d' : count <= 30 ? '5d' : count <= 90 ? '1mo' : '3mo'
+        url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+          yahooSymbol
+        )}?range=${range}&interval=${yahooInterval}`
+      } else {
+        // For daily/weekly: use period1/period2
+        const to = Math.floor(Date.now() / 1000)
+        const days = count * (resolution === 'W' ? 7 : resolution === 'M' ? 30 : 1)
+        const from = to - days * 24 * 60 * 60
+        url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+          yahooSymbol
+        )}?period1=${from}&period2=${to}&interval=${yahooInterval}`
+      }
+
+      const USER_AGENT =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT },
+      })
+      if (!res.ok) return []
+
+      const json = await res.json()
+      const chart = json?.chart?.result?.[0]
+      if (!chart) return []
+
+      const ts: number[] = chart.timestamp ?? []
+      const q = chart.indicators?.quote?.[0] ?? {}
+      const candles: HistoricalCandle[] = []
+
+      for (let i = 0; i < ts.length; i++) {
+        const close = q.close?.[i]
+        // Skip incomplete candles (null close = market still open for this bar)
+        if (close == null || close === 0) continue
+        const open = q.open?.[i]
+        const high = q.high?.[i]
+        const low = q.low?.[i]
+        if (open == null || high == null || low == null) continue
+
+        candles.push({
+          date: new Date(ts[i] * 1000).toISOString().split('T')[0],
+          time: new Date(ts[i] * 1000),
+          open,
+          high,
+          low,
+          close,
+          volume: q.volume?.[i] ?? 0,
+        })
+      }
+
+      return candles.slice(-count)
     } catch (error) {
       console.error(
         `[live-market-data] Yahoo candles fallback failed for ${symbol}:`,
@@ -440,6 +487,93 @@ export class LiveMarketData {
       )
       return []
     }
+  }
+
+  private resolutionToYahooInterval(resolution: CandleResolution): string {
+    switch (resolution) {
+      case '1': return '1m'
+      case '5': return '5m'
+      case '15': return '15m'
+      case '30': return '30m'
+      case '60': return '60m'
+      case 'D': return '1d'
+      case 'W': return '1wk'
+      case 'M': return '1mo'
+      default: return '1d'
+    }
+  }
+
+  private resolveYahooSymbol(symbol: string): string | null {
+    const map: Record<string, string> = {
+      'EUR/USD': 'EURUSD=X',
+      'GBP/USD': 'GBPUSD=X',
+      'USD/JPY': 'USDJPY=X',
+      'USD/CHF': 'USDCHF=X',
+      'AUD/USD': 'AUDUSD=X',
+      'USD/CAD': 'USDCAD=X',
+      'NZD/USD': 'NZDUSD=X',
+      'EUR/GBP': 'EURGBP=X',
+      'EUR/JPY': 'EURJPY=X',
+      'GBP/JPY': 'GBPJPY=X',
+      'AUD/JPY': 'AUDJPY=X',
+      'CAD/JPY': 'CADJPY=X',
+      'CHF/JPY': 'CHFJPY=X',
+      'EUR/CHF': 'EURCHF=X',
+      'EUR/AUD': 'EURAUD=X',
+      'EUR/CAD': 'EURCAD=X',
+      'GBP/CHF': 'GBPCHF=X',
+      'GBP/AUD': 'GBPAUD=X',
+      'GBP/CAD': 'GBPCAD=X',
+      'AUD/CAD': 'AUDCAD=X',
+      'AUD/CHF': 'AUDCHF=X',
+      'AUD/NZD': 'AUDNZD=X',
+      'NZD/JPY': 'NZDJPY=X',
+      'NZD/CAD': 'NZDCAD=X',
+      'NZD/CHF': 'NZDCHF=X',
+      'USD/ZAR': 'USDZAR=X',
+      'USD/TRY': 'USDTRY=X',
+      'USD/MXN': 'USDMXN=X',
+      'USD/SGD': 'USDSGD=X',
+      'USD/NOK': 'USDNOK=X',
+      'USD/SEK': 'USDSEK=X',
+      'USD/PLN': 'USDPLN=X',
+      'USD/HUF': 'USDHUF=X',
+      'USD/CZK': 'USDCZK=X',
+      'USD/THB': 'USDTHB=X',
+      'USD/KRW': 'USDKRW=X',
+      'USD/INR': 'USDINR=X',
+      'USD/BRL': 'USDBRL=X',
+      'BTC/USD': 'BTC-USD',
+      'ETH/USD': 'ETH-USD',
+      'SOL/USD': 'SOL-USD',
+      'XRP/USD': 'XRP-USD',
+      'LTC/USD': 'LTC-USD',
+      'ADA/USD': 'ADA-USD',
+      'BNB/USD': 'BNB-USD',
+      'DOGE/USD': 'DOGE-USD',
+      'AVAX/USD': 'AVAX-USD',
+      'LINK/USD': 'LINK-USD',
+      'DOT/USD': 'DOT-USD',
+      'POL/USD': 'POL-USD',
+      'UNI/USD': 'UNI-USD',
+      'TON/USD': 'TON-USD',
+      'GOLD': 'GC=F',
+      'SILVER': 'SI=F',
+      'OIL': 'CL=F',
+      'BRENT': 'BZ=F',
+      'COPPER': 'HG=F',
+      'NATGAS': 'NG=F',
+      'PLATINUM': 'PL=F',
+      'PALLADIUM': 'PA=F',
+      'SPX500': '^GSPC',
+      'NASDAQ': '^IXIC',
+      'DOW': '^DJI',
+      'DAX': '^GDAXI',
+      'FTSE': '^FTSE',
+      'NIKKEI': '^N225',
+    }
+    const upper = symbol.toUpperCase()
+    return map[upper] ?? null
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────────

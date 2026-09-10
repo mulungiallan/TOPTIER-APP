@@ -367,21 +367,35 @@ export class MarketDataService {
           break
       }
 
-      const result = (await yahooFinance.historical(yahooSymbol, {
-        period1: startDate,
-        period2: endDate,
-        interval: '1d',
-      })) as any[]
+      let result: any[]
+      try {
+        result = (await yahooFinance.historical(yahooSymbol, {
+          period1: startDate,
+          period2: endDate,
+          interval: '1d',
+        })) as any[]
+      } catch (histErr: any) {
+        // yahoo-finance2 throws when the latest candle has partial nulls
+        // (incomplete trading day). Fall back to the raw v8 chart API which
+        // returns the same data without library-level validation.
+        console.warn(
+          `[market-data] yahoo-finance2 historical threw for ${symbol}, using v8 fallback:`,
+          histErr?.message ?? histErr
+        )
+        result = await this.fetchYahooChartRaw(yahooSymbol, startDate, endDate)
+      }
 
-      const historical: HistoricalData[] = result.map(item => ({
-        date: item.date,
-        open: item.open,
-        high: item.high,
-        low: item.low,
-        close: item.close,
-        adjClose: item.adjClose,
-        volume: item.volume,
-      }))
+      const historical: HistoricalData[] = result
+        .filter((item: any) => item.close != null && item.open != null)
+        .map(item => ({
+          date: item.date,
+          open: item.open,
+          high: item.high,
+          low: item.low,
+          close: item.close,
+          adjClose: item.adjClose,
+          volume: item.volume,
+        }))
 
       this.historicalCache.set(cacheKey, {
         data: historical,
@@ -428,6 +442,49 @@ export class MarketDataService {
     return majorSymbols
       .map(s => pricesMap.get(s))
       .filter((p): p is MarketPrice => p !== null && p !== undefined)
+  }
+
+  /**
+   * Direct Yahoo Finance v8 chart API call — bypasses yahoo-finance2's strict
+   * null-value validation that throws when the latest candle is incomplete.
+   * Returns raw OHLCV rows matching the HistoricalData shape.
+   */
+  private async fetchYahooChartRaw(
+    yahooSymbol: string,
+    period1: Date,
+    period2: Date
+  ): Promise<any[]> {
+    try {
+      const p1 = Math.floor(period1.getTime() / 1000)
+      const p2 = Math.floor(period2.getTime() / 1000)
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+        yahooSymbol
+      )}?period1=${p1}&period2=${p2}&interval=1d`
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT },
+      })
+      if (!res.ok) return []
+      const json = await res.json()
+      const chart = json?.chart?.result?.[0]
+      if (!chart) return []
+      const ts = chart.timestamp ?? []
+      const q = chart.indicators?.quote?.[0] ?? {}
+      const rows: any[] = []
+      for (let i = 0; i < ts.length; i++) {
+        rows.push({
+          date: new Date(ts[i] * 1000),
+          open: q.open?.[i],
+          high: q.high?.[i],
+          low: q.low?.[i],
+          close: q.close?.[i],
+          adjClose: q.adjclose?.[i],
+          volume: q.volume?.[i] ?? 0,
+        })
+      }
+      return rows
+    } catch {
+      return []
+    }
   }
 
   clearCache(): void {
