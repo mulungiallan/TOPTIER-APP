@@ -22,6 +22,7 @@
  */
 
 import { createHash } from 'crypto'
+import { detectSymbols, runStrategySuite, type StrategySuiteRead } from '@/lib/services/strategy-suite'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ export interface ChatAnalysisResult {
   reasoning: string
   recommended_action: string
   amd: AmdAssessment
+  strategy_suite: StrategySuiteRead[]
   path: 'fast' | 'full'
   cached: boolean
   sources: {
@@ -379,6 +381,7 @@ function fastPathResult(hf: HfResult, amd: AmdAssessment): Omit<ChatAnalysisResu
       hf.emotion ? `, dominant emotion: ${hf.emotion.label}` : ''
     }. Toxicity score: ${(hf.toxicity?.score ?? 0).toFixed(2)}.`,
     recommended_action: isToxic ? 'Route to moderation queue' : 'No action needed',
+    strategy_suite: [],
     path: 'fast' as const,
   }
 }
@@ -661,6 +664,7 @@ Weigh Hugging Face's toxicity/sentiment scores as reliable for surface-level ton
       evidence_spans: sanitizeStrings(parsed.evidence_spans).slice(0, 4),
       model_agreement: sanitizeAgreement(parsed.model_agreement),
       amd: mergeAmd(amdBase, parsed.amd),
+      strategy_suite: [],
       reasoning:
         parsed.reasoning ||
         'Claude did not return an explicit reasoning string; the raw signals are shown below.',
@@ -830,6 +834,11 @@ export class ChatAnalyzer {
       }
     }
 
+    // File-9 strategy suite: when the message mentions a symbol, compute the
+    // deterministic 8-strategy read so the result carries live market context.
+    const strategy_suite = await buildStrategySuite(trimmed)
+    result = { ...result, strategy_suite }
+
     cache.set(cacheKey, { data: result, timestamp: Date.now() })
 
     // Evict oldest entries if cache exceeds max size.
@@ -859,6 +868,27 @@ export class ChatAnalyzer {
   clearCache() {
     cache.clear()
   }
+}
+
+// ─── Strategy suite (file 9) ────────────────────────────────────────────────
+// Deterministic, LLM-free market read attached to every analysis that mentions
+// a known symbol. Best-effort: any failure just yields an empty array.
+
+const STRATEGY_SUITE_TIMEOUT_MS = 8000
+const STRATEGY_SUITE_MAX_SYMBOLS = 2
+
+async function buildStrategySuite(text: string): Promise<StrategySuiteRead[]> {
+  const targets = detectSymbols(text, STRATEGY_SUITE_MAX_SYMBOLS)
+  if (targets.length === 0) return []
+
+  const withTimeout = (p: Promise<StrategySuiteRead | null>) =>
+    Promise.race([
+      p,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), STRATEGY_SUITE_TIMEOUT_MS)),
+    ])
+
+  const reads = await Promise.all(targets.map((t) => withTimeout(runStrategySuite(t.token))))
+  return reads.filter((r): r is StrategySuiteRead => r !== null)
 }
 
 // ─── Built-in fusion fallback (no Claude key) ───────────────────────────────
@@ -904,6 +934,7 @@ function fallbackFusionResult(
     evidence_spans: [],
     model_agreement: gemini ? 'agree' : 'partial',
     amd,
+    strategy_suite: [],
     reasoning: reasoningBits.join(' '),
     recommended_action: isToxic
       ? 'Route to moderation queue'

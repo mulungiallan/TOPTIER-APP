@@ -227,7 +227,7 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
           <Button
             variant="ghost"
             size="icon"
-            className="ml-auto hidden lg:flex size-7"
+            className="ml-auto hidden md:flex size-7"
             onClick={toggleSidebarCollapsed}
           >
             <ChevronLeft className="size-4" />
@@ -236,7 +236,7 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-3">
+      <ScrollArea type="always" className="custom-scrollbar flex-1 px-3 py-3">
         <div className="space-y-1">
           {/* Core */}
           {!collapsed && (
@@ -482,7 +482,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           initial={false}
           animate={{ width: collapsed ? 72 : 280 }}
           transition={{ duration: 0.2, ease: 'easeInOut' }}
-          className="hidden lg:flex flex-col border-r border-border bg-card shrink-0 overflow-hidden"
+          className="hidden md:flex flex-col border-r border-border bg-card shrink-0 overflow-hidden"
         >
           <SidebarContent collapsed={collapsed} />
         </motion.aside>
@@ -504,24 +504,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Bar */}
         <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-card px-4 lg:px-6">
-          {/* Mobile menu toggle */}
-          {isMobile && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Menu className="size-5" />
-            </Button>
-          )}
+          {/* Mobile/tablet menu toggle (visible below md — CSS-driven so it also
+              covers tablets that were previously stranded without any menu) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="size-5" />
+          </Button>
 
           {/* Expand sidebar on desktop when collapsed */}
           {!isMobile && collapsed && (
             <Button
               variant="ghost"
               size="icon"
-              className="hidden lg:flex"
+              className="hidden md:flex"
               onClick={toggleSidebarCollapsed}
             >
               <Menu className="size-5" />
@@ -643,7 +642,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <TickerTape />
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="custom-scrollbar flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentPage}

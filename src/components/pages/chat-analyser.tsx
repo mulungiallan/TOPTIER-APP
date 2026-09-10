@@ -25,12 +25,69 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import type { StrategySuiteRead, StrategyRead } from '@/lib/services/strategy-suite'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+
+const STRATEGY_LABELS: Record<string, string> = {
+  trend_following: 'Trend',
+  mean_reversion: 'Mean reversion',
+  momentum: 'Momentum',
+  swing_trading: 'Swing',
+  scalping: 'Scalping',
+  stat_arbitrage: 'Stat arb',
+  market_making_bias: 'MM bias',
+  breakout: 'Breakout',
+}
+
+const READ_STYLE: Record<StrategyRead, string> = {
+  long: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+  short: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30',
+  flat: 'bg-muted text-muted-foreground border-border/60',
+}
+
+const READ_ICON: Record<StrategyRead, React.ReactNode> = {
+  long: <TrendingUp className="h-3 w-3" />,
+  short: <TrendingDown className="h-3 w-3" />,
+  flat: <Minus className="h-3 w-3" />,
+}
+
+function StrategyReadBadge({ read }: { read: StrategyRead }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold capitalize',
+        READ_STYLE[read]
+      )}
+    >
+      {READ_ICON[read]}
+      {read}
+    </span>
+  )
+}
+
+function ConsensusBadge({ read, composite }: { read: StrategyRead; composite: number }) {
+  if (read === 'flat')
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+        <Minus className="h-3 w-3" /> Split {composite}/8
+      </span>
+    )
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold capitalize',
+        READ_STYLE[read]
+      )}
+    >
+      {READ_ICON[read]} {read} {composite}/8
+    </span>
+  )
+}
 
 interface HfSignal {
   label: string
@@ -73,6 +130,7 @@ interface ChatResult {
     trading_style: 'scalp' | 'intraday' | 'swing' | 'unknown'
     rr: string | null
   }
+  strategy_suite: StrategySuiteRead[]
   path: 'fast' | 'full'
   cached: boolean
   sources: ChatSource
@@ -439,23 +497,64 @@ export function ChatAnalyserPage() {
                   <p className="text-sm leading-relaxed text-muted-foreground">{result.amd.explanation}</p>
                 </div>
 
-                {result.evidence_spans.length > 0 && (
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Evidence
+                {result.strategy_suite.length > 0 && (
+                  <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-emerald-500/5 to-transparent p-4">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Strategy suite · live market read
+                      </span>
+                      <Badge variant="outline" className="gap-1 border-border bg-muted text-muted-foreground">
+                        <Layers className="h-3 w-3" /> 8 strategies
+                      </Badge>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {result.evidence_spans.map((span, i) => (
-                        <span
-                          key={i}
-                          className="rounded-lg border border-primary/20 bg-primary/5 px-2 py-1 text-xs"
-                        >
-                          “{span}”
-                        </span>
+                    <div className="space-y-4">
+                      {result.strategy_suite.map((suite) => (
+                        <div key={suite.liveSymbol} className="rounded-lg border border-border/60 bg-card/60 p-3">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold">{suite.symbol}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">{suite.liveSymbol}</span>
+                            {suite.price != null && (
+                              <span className="text-xs font-mono text-muted-foreground">
+                                {suite.price.toFixed(suite.price < 10 ? 4 : 2)}
+                              </span>
+                            )}
+                            <div className="ml-auto">
+                              <ConsensusBadge read={suite.consensus} composite={suite.composite} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-4">
+                            {Object.entries(suite.reads).map(([name, read]) => (
+                              <div key={name} className="flex items-center justify-between gap-1 text-xs">
+                                <span className="text-muted-foreground">{STRATEGY_LABELS[name] ?? name}</span>
+                                <StrategyReadBadge read={read} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
+
+                <div className="space-y-1.5">
+                  {result.evidence_spans.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Evidence
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.evidence_spans.map((span, i) => (
+                          <span
+                            key={i}
+                            className="rounded-lg border border-primary/20 bg-primary/5 px-2 py-1 text-xs"
+                          >
+                            “{span}”
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2.5">
                   <Wand2 className="h-4 w-4 shrink-0 text-primary" />

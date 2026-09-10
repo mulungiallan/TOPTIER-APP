@@ -242,6 +242,16 @@ export interface IndicatorSnapshot {
   prevDonLower: number
   volZ: number
   lastClose: number
+  prevClose: number
+  // File-9 strategy inputs: momentum (ROC), stat-arbitrage (rolling z-score),
+  // market-making (deviation vs EMA fair value). Each carries prev* so the
+  // voters only fire on a fresh cross, not on every bar beyond the trigger.
+  roc20: number
+  prevRoc20: number
+  zscore20: number
+  prevZ: number
+  fairDev: number
+  prevFairDev: number
 }
 
 export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | null {
@@ -284,6 +294,25 @@ export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | n
   const volSd = rollingStd(volumes.slice(-20), 20)
   const volZ = volSd > 0 ? (volumes[n - 1] - volMean) / volSd : NaN
 
+  // File-9 inputs at the last two bars (i / i-1):
+  const roc20At = (idx: number): number => {
+    const j = idx - 20
+    if (j < 0 || closes[j] === 0) return NaN
+    return (closes[idx] - closes[j]) / closes[j]
+  }
+  const zAt = (idx: number): number => {
+    const c = closes.slice(Math.max(0, idx - 19), idx + 1)
+    if (c.length < 20) return NaN
+    const m = rollingMean(c, c.length)
+    const sd = rollingStd(c, c.length)
+    if (!sd) return NaN
+    return (closes[idx] - m) / sd
+  }
+  const zNow = zAt(n - 1)
+  const zPrev = zAt(n - 2)
+  const devNow = ema20[i] ? (closes[n - 1] - ema20[i]) / ema20[i] : NaN
+  const devPrev = ema20[prev] ? (closes[n - 2] - ema20[prev]) / ema20[prev] : NaN
+
   const atrTail = atr14.filter(Number.isFinite)
   const atrTailMean = rollingMean(atrTail.slice(-20), Math.min(20, atrTail.length))
 
@@ -304,12 +333,25 @@ export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | n
     prevDonLower,
     volZ: Number.isFinite(volZ) ? volZ : 0,
     lastClose: closes[n - 1],
+    prevClose: closes[n - 2],
+    roc20: Number.isFinite(roc20At(n - 1)) ? roc20At(n - 1) : 0,
+    prevRoc20: Number.isFinite(roc20At(n - 2)) ? roc20At(n - 2) : 0,
+    zscore20: Number.isFinite(zNow) ? zNow : 0,
+    prevZ: Number.isFinite(zPrev) ? zPrev : 0,
+    fairDev: Number.isFinite(devNow) ? devNow : 0,
+    prevFairDev: Number.isFinite(devPrev) ? devPrev : 0,
   }
 }
 
 // ─── Three independent strategies ────────────────────────────────────────────
 
-export type StrategyId = 'trend' | 'mean_reversion' | 'breakout'
+export type StrategyId =
+  | 'trend'
+  | 'mean_reversion'
+  | 'breakout'
+  | 'momentum'
+  | 'stat_arbitrage'
+  | 'market_making'
 
 export interface RawSignal {
   direction: 'long' | 'short' | null
@@ -371,6 +413,64 @@ export function bestRawSignal(s: IndicatorSnapshot): RawSignal {
       strategy: 'breakout',
       strength: Math.min(s.volZ / 3, 1),
       label: `Donchian breakdown (volume ${s.volZ.toFixed(1)}σ)`,
+    })
+
+  // ─── File-9 voters (ported from trading_signals/strategies.py) ──────────
+  // Only fire on a FRESH cross (prev writes-through are flattened), so a
+  // stretched-but-not-crossing condition can't re-trip every bar.
+
+  // 3. Momentum — 20-bar rate of change flipping sign, with a trend context.
+  const momentumUp = s.prevRoc20 <= 0 && s.roc20 > 0 && s.adx14 > 15
+  const momentumDown = s.prevRoc20 >= 0 && s.roc20 < 0 && s.adx14 > 15
+  if (momentumUp)
+    candidates.push({
+      direction: 'long',
+      strategy: 'momentum',
+      strength: Math.min(Math.abs(s.roc20) / 0.005, 1),
+      label: `Momentum turn — 20-bar ROC ${(s.roc20 * 100).toFixed(2)}% (ADX ${s.adx14.toFixed(0)})`,
+    })
+  if (momentumDown)
+    candidates.push({
+      direction: 'short',
+      strategy: 'momentum',
+      strength: Math.min(Math.abs(s.roc20) / 0.005, 1),
+      label: `Momentum turn — 20-bar ROC ${(s.roc20 * 100).toFixed(2)}% (ADX ${s.adx14.toFixed(0)})`,
+    })
+
+  // 6. Stat-arbitrage proxy — price z-score vs its own 20-bar mean breaks ±2σ.
+  const zBrokeLow = s.prevZ >= -2 && s.zscore20 < -2
+  const zBrokeHigh = s.prevZ <= 2 && s.zscore20 > 2
+  if (zBrokeLow)
+    candidates.push({
+      direction: 'long',
+      strategy: 'stat_arbitrage',
+      strength: Math.min((Math.abs(s.zscore20) - 2) / 2 + 0.5, 1),
+      label: `Price ${s.zscore20.toFixed(1)}σ below its 20-bar mean — reversion long`,
+    })
+  if (zBrokeHigh)
+    candidates.push({
+      direction: 'short',
+      strategy: 'stat_arbitrage',
+      strength: Math.min((Math.abs(s.zscore20) - 2) / 2 + 0.5, 1),
+      label: `Price ${s.zscore20.toFixed(1)}σ above its 20-bar mean — reversion short`,
+    })
+
+  // 7. Market-making bias — price deviation vs EMA20 fair value crosses ±0.2%.
+  const devBrokeLow = s.prevFairDev >= -0.002 && s.fairDev < -0.002
+  const devBrokeHigh = s.prevFairDev <= 0.002 && s.fairDev > 0.002
+  if (devBrokeLow)
+    candidates.push({
+      direction: 'long',
+      strategy: 'market_making',
+      strength: Math.min(Math.abs(s.fairDev) / 0.006, 1),
+      label: `Price ${(s.fairDev * 100).toFixed(2)}% below EMA20 fair value — lean long`,
+    })
+  if (devBrokeHigh)
+    candidates.push({
+      direction: 'short',
+      strategy: 'market_making',
+      strength: Math.min(Math.abs(s.fairDev) / 0.006, 1),
+      label: `Price ${(s.fairDev * 100).toFixed(2)}% above EMA20 fair value — lean short`,
     })
 
   if (candidates.length === 0) return { direction: null, strategy: 'trend', strength: 0, label: '' }

@@ -21,7 +21,16 @@ import pandas as pd
 import config
 import indicators as ind
 import mt5_connector as mt5c
-from strategies import trend_following, momentum, mean_reversion, swing_trading, scalping
+from strategies import (
+    trend_following,
+    momentum,
+    mean_reversion,
+    swing_trading,
+    scalping,
+    stat_arbitrage,
+    market_making_bias,
+    breakout,
+)
 
 logger = logging.getLogger("backtest_filter")
 
@@ -31,6 +40,9 @@ STRATEGY_FUNCS = {
     "mean_reversion": mean_reversion.signal,
     "swing_trading": swing_trading.signal,
     "scalping": scalping.signal,
+    "stat_arbitrage": stat_arbitrage.signal,
+    "market_making_bias": market_making_bias.signal,
+    "breakout": breakout.signal,
 }
 
 # Each strategy can use its own stop-distance multiplier and reward:risk ratio.
@@ -42,6 +54,9 @@ STRATEGY_RISK_PARAMS = {
     "mean_reversion": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
     "swing_trading": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
     "scalping": (config.ATR_SL_MULTIPLIER_SCALPING, config.REWARD_RISK_RATIO_SCALPING),
+    "stat_arbitrage": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
+    "market_making_bias": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
+    "breakout": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
 }
 
 

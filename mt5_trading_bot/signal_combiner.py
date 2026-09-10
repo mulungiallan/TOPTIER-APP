@@ -19,7 +19,16 @@ import pandas as pd
 import logging
 
 import config
-from strategies import trend_following, momentum, mean_reversion, swing_trading, scalping
+from strategies import (
+    trend_following,
+    momentum,
+    mean_reversion,
+    swing_trading,
+    scalping,
+    stat_arbitrage,
+    market_making_bias,
+    breakout,
+)
 import ai_strategy
 
 logger = logging.getLogger("signal_combiner")
@@ -30,6 +39,9 @@ STRATEGY_REGISTRY = [
     ("mean_reversion", mean_reversion.signal, config.USE_MEAN_REVERSION),
     ("swing_trading", swing_trading.signal, config.USE_SWING),
     ("scalping", scalping.signal, config.USE_SCALPING),
+    ("stat_arbitrage", stat_arbitrage.signal, config.USE_STAT_ARBITRAGE),
+    ("market_making_bias", market_making_bias.signal, config.USE_MARKET_MAKING_BIAS),
+    ("breakout", breakout.signal, config.USE_BREAKOUT),
     ("ai_strategy", ai_strategy.signal, config.USE_AI_STRATEGY),
 ]
 

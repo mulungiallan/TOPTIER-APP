@@ -163,6 +163,56 @@
   background: rgba(91, 141, 214, 0.55);
 }
 
+/*
+  Always-visible custom scrollbar (referenced by <main>, the desktop sidebar
+  and the mobile sheet). Guarantees the "AI advanced features" content below
+  the fold reads as reachable — a visible thumb invites the user to drag/flick
+  instead of assuming the page simply ends.
+*/
+.custom-scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(128, 148, 180, 0.55) transparent;
+  -webkit-overflow-scrolling: touch; /* momentum flick on iOS */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(128, 148, 180, 0.45);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 148, 180, 0.7);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: rgba(91, 141, 214, 0.5) transparent;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(91, 141, 214, 0.4);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(91, 141, 214, 0.6);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
 /* ─── Mobile / PWA polish ─────────────────────────────────────────────────── */
 
 /* Use dynamic viewport height so the URL bar / tab bar don't cause jumps. */
