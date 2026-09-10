@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { NotebookPen, TrendingUp, TrendingDown, Loader2, DollarSign, Target, Bitcoin, Plug, ShieldCheck, Zap } from 'lucide-react'
+import { NotebookPen, TrendingUp, TrendingDown, Loader2, DollarSign, Target, Bitcoin, Plug, ShieldCheck, Zap, Landmark } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -276,6 +276,8 @@ function BinanceLiveTab() {
   const [checking, setChecking] = useState(true)
   const [apiKey, setApiKey] = useState('')
   const [apiSecret, setApiSecret] = useState('')
+  const [brokerId, setBrokerId] = useState<'binance' | 'exness' | 'custom'>('binance')
+  const [customBroker, setCustomBroker] = useState('')
   const [form, setForm] = useState({
     symbol: 'BTC/USD',
     direction: 'BUY',
@@ -289,14 +291,15 @@ function BinanceLiveTab() {
   const [lastOrder, setLastOrder] = useState<LiveOrderResult | null>(null)
 
   // Auto-connect using server-side keys (.env) on first load, if present.
-  const tryConnect = useCallback(async (key?: string, secret?: string) => {
+  const tryConnect = useCallback(async (key?: string, secret?: string, id: string = 'binance', name?: string) => {
     setConnecting(true)
     try {
       const res = await api.post<{ success: boolean; data: { account: BrokerAccount } }>(
         '/trading/live',
         {
           action: 'connect',
-          brokerId: 'binance',
+          brokerId: id,
+          brokerName: name,
           apiKey: key || undefined,
           apiSecret: secret || undefined,
         }
@@ -304,7 +307,7 @@ function BinanceLiveTab() {
       const acc = res?.data?.account
       if (acc?.connected) {
         setAccount(acc)
-        toast.success(`Connected to Binance — ${acc.balance.toFixed(2)} USDT available`)
+        toast.success(`Connected to ${acc.broker} — ${acc.balance.toFixed(2)} ${acc.currency} available`)
       }
       return acc
     } catch (err: any) {
@@ -324,11 +327,21 @@ function BinanceLiveTab() {
   }, [tryConnect])
 
   const handleConnect = () => {
-    if (!apiKey || !apiSecret) {
-      toast.error('Enter your Binance API key and secret')
-      return
+    if (brokerId === 'binance') {
+      if (!apiKey || !apiSecret) {
+        toast.error('Enter your Binance API key and secret')
+        return
+      }
+      tryConnect(apiKey.trim(), apiSecret.trim(), 'binance')
+    } else if (brokerId === 'custom') {
+      if (!customBroker.trim()) {
+        toast.error('Enter your broker name')
+        return
+      }
+      tryConnect(undefined, undefined, 'custom', customBroker.trim())
+    } else {
+      tryConnect(undefined, undefined, 'exness', 'Exness')
     }
-    tryConnect(apiKey.trim(), apiSecret.trim())
   }
 
   const handlePlaceOrder = async () => {
@@ -371,8 +384,13 @@ function BinanceLiveTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Bitcoin className="size-5 text-[#f0b90b]" />
-            Binance Exchange Connection
+            {brokerId === 'binance' ? (
+              <><Bitcoin className="size-5 text-[#f0b90b]" /> Binance Exchange Connection</>
+            ) : brokerId === 'exness' ? (
+              <><Landmark className="size-5 text-[#0094cd]" /> Exness MetaTrader Connection</>
+            ) : (
+              <><Plug className="size-5 text-muted-foreground" /> Custom Broker Connection</>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -407,27 +425,71 @@ function BinanceLiveTab() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 text-xs text-muted-foreground">
-                No Binance connection yet. Create an API key in Binance (Settings → API Management) with
-                “Enable Spot &amp; Spot Margin Trading” and read permissions, then enter it here or set
-                <code className="mx-1 rounded bg-muted px-1.5 py-0.5">BINANCE_API_KEY</code> /
-                <code className="mx-1 rounded bg-muted px-1.5 py-0.5">BINANCE_API_SECRET</code> in your server .env.
-                Keys entered here are validated live and are never stored by the app.
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
                 <div className="space-y-1.5">
-                  <Label>API Key</Label>
-                  <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="your Binance API key" />
+                  <Label>Broker</Label>
+                  <Select value={brokerId} onValueChange={(v) => setBrokerId(v as 'binance' | 'exness' | 'custom')}>
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="exness">Exness</SelectItem>
+                      <SelectItem value="binance">Binance</SelectItem>
+                      <SelectItem value="custom">Custom Broker…</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>API Secret</Label>
-                  <Input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="your Binance API secret" />
-                </div>
+                {brokerId === 'custom' && (
+                  <div className="space-y-1.5">
+                    <Label>Broker name</Label>
+                    <Input
+                      value={customBroker}
+                      onChange={(e) => setCustomBroker(e.target.value)}
+                      placeholder="e.g. Exness, IC Markets, OANDA"
+                      className="sm:min-w-[220px]"
+                    />
+                  </div>
+                )}
               </div>
-              <Button onClick={handleConnect} disabled={connecting || !apiKey || !apiSecret} className="gap-1.5">
-                <Plug className="size-4" />
-                {connecting ? <Loader2 className="size-4 animate-spin" /> : 'Connect Binance'}
-              </Button>
+              {brokerId === 'binance' ? (
+                <>
+                  <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 text-xs text-muted-foreground">
+                    No Binance connection yet. Create an API key in Binance (Settings → API Management) with
+                    “Enable Spot &amp; Spot Margin Trading” and read permissions, then enter it here or set
+                    <code className="mx-1 rounded bg-muted px-1.5 py-0.5">BINANCE_API_KEY</code> /
+                    <code className="mx-1 rounded bg-muted px-1.5 py-0.5">BINANCE_API_SECRET</code> in your server .env.
+                    Keys entered here are validated live and are never stored by the app.
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label>API Key</Label>
+                      <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="your Binance API key" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>API Secret</Label>
+                      <Input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="your Binance API secret" />
+                    </div>
+                  </div>
+                  <Button onClick={handleConnect} disabled={connecting || !apiKey || !apiSecret} className="gap-1.5">
+                    <Plug className="size-4" />
+                    {connecting ? <Loader2 className="size-4 animate-spin" /> : 'Connect Binance'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3 text-xs text-muted-foreground">
+                    {brokerId === 'exness' ? (
+                      <>No API key needed to link <b>Exness</b>. Orders run on a paper-linked account here — for real execution
+                      on your Exness MetaTrader 5 account, connect it on the <b>Trading Bot</b> or <b>Copy Trading</b> page.</>
+                    ) : (
+                      <>No API key needed for a custom broker. Link <b>{customBroker.trim() || 'your broker'}</b> on a
+                      paper-linked account — for real execution on your MetaTrader 5 account, connect it on the <b>Trading Bot</b> or <b>Copy Trading</b> page.</>
+                    )}
+                  </div>
+                  <Button onClick={handleConnect} disabled={connecting || (brokerId === 'custom' && !customBroker.trim())} className="gap-1.5">
+                    <Landmark className="size-4" />
+                    {connecting ? <Loader2 className="size-4 animate-spin" /> : `Connect ${brokerId === 'custom' ? (customBroker.trim() || 'Broker') : 'Exness'}`}
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </CardContent>
@@ -438,8 +500,8 @@ function BinanceLiveTab() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Zap className="size-4 text-[#f0b90b]" />
-              Place Live Order
+              <Zap className="size-4 text-muted-foreground" />
+              Place Order
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

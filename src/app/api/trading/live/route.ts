@@ -25,11 +25,11 @@ export async function POST(request: NextRequest) {
     if (!userId) return errorResponse('Unauthorized', 401)
 
     const body = await request.json()
-    const { action, brokerId, apiKey, apiSecret, accountId, order } = body
+    const { action, brokerId, brokerName, apiKey, apiSecret, accountId, order } = body
 
     if (action === 'connect') {
       if (!brokerId) return errorResponse('brokerId is required', 400)
-      const account = await LiveTradingService.connect(brokerId, apiKey, apiSecret)
+      const account = await LiveTradingService.connect(brokerId, apiKey, apiSecret, brokerName)
       return successResponse({ account }, 201)
     }
     if (action === 'order') {
