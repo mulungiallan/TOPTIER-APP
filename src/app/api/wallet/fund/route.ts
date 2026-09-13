@@ -35,6 +35,11 @@ export async function POST(request: NextRequest) {
 
     // Pesapal bills in KES. USD and UGX are converted at the checkout rate;
     // KES passes through unchanged. Volume caps keep the charge amount sane.
+    // The live PesaPal merchant account is contractually capped around 2,300
+    // KES per order (orders above it are rejected with
+    // `amount_exceeds_default_limit`), so reject over-limit charges up front
+    // instead of letting the provider fail mid-checkout.
+    const PESAPAL_ORDER_LIMIT_KES = 2300
     let chargedAmount = amount
     if (asset === 'USD') {
       chargedAmount = Number((amount * (await getExchangeRate('USD', 'KES', 153))).toFixed(2))
@@ -43,6 +48,12 @@ export async function POST(request: NextRequest) {
     }
     if (!Number.isFinite(chargedAmount) || chargedAmount <= 0 || chargedAmount > 1_000_000) {
       return errorResponse('Invalid top-up amount', 400)
+    }
+    if (chargedAmount > PESAPAL_ORDER_LIMIT_KES) {
+      return errorResponse(
+        `This top-up comes to ${chargedAmount.toFixed(2)} KES, which exceeds the current PesaPal per-order limit of ${PESAPAL_ORDER_LIMIT_KES} KES. Please enter a smaller amount.`,
+        400
+      )
     }
 
     const user = await db.user.findUnique({
@@ -100,7 +111,11 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Wallet fund POST error:', error)
-    // Do NOT leak internal error messages to the client.
-    return errorResponse('Failed to start wallet top-up. Please try again.', 500)
+    // Surface provider-side rejections (PesaPal account limits, invalid IPN,
+    // etc.) so the user sees the real reason; keep internal errors generic.
+    const message = error instanceof Error && error.message.startsWith('PesaPal:')
+      ? error.message.slice('PesaPal: '.length)
+      : 'Failed to start wallet top-up. Please try again.'
+    return errorResponse(message, 500)
   }
 }

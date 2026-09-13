@@ -186,7 +186,13 @@ export const pesapalGateway: PaymentGateway = {
 
     const data = await response.json()
     if (!data.redirect_url) {
-      throw new Error(data.message || data.error_message || 'PesaPal did not return a redirect URL')
+      const providerError =
+        data.error?.message ||
+        data.error?.error_type ||
+        data.message ||
+        data.error_message ||
+        'PesaPal did not return a redirect URL'
+      throw new Error(`PesaPal: ${providerError}`)
     }
 
     return {
