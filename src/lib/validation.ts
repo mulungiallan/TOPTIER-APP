@@ -68,10 +68,10 @@ export const paymentInitSchema = z.object({
 });
 
 // Wallet top-up flow. Pesapal bills in KES, so the charge currency is always
-// KES; USD is converted at the checkout rate. EUR/GBP top-ups are not offered
-// in v1 (their charge conversion is ambiguous).
+// KES; USD and UGX are converted at the checkout rate. EUR/GBP top-ups are not
+// offered (their charge conversion is ambiguous).
 export const walletFundSchema = z.object({
-  asset: z.enum(["USD", "KES"]),
+  asset: z.enum(["USD", "KES", "UGX"]),
   amount: z.coerce.number().finite().positive().max(1_000_000),
   provider: z.enum(["pesapal"]).optional(),
 });

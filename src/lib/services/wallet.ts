@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'crypto'
 import { db } from '@/lib/db'
 
 // ─── Coin / asset catalogue (mirrors trading_signals cash_wallet & crypto_wallet) ──
-export const CASH_ASSETS = ['USD', 'EUR', 'KES', 'GBP'] as const
+export const CASH_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP'] as const
 export const CRYPTO_ASSETS = ['BTC', 'ETH', 'USDT', 'SOL'] as const
-export const TRADABLE_ASSETS = ['USD', 'EUR', 'KES', 'GBP', 'BTC', 'ETH', 'USDT', 'SOL']
+export const TRADABLE_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP', 'BTC', 'ETH', 'USDT', 'SOL']
 
 export type Asset = string
 

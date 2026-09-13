@@ -33,11 +33,13 @@ export async function POST(request: NextRequest) {
     const { asset, amount } = parsed.data
     const provider = parsed.data.provider || 'pesapal'
 
-    // Pesapal bills in KES. USD is converted at the checkout rate; KES passes
-    // through unchanged. Volume caps keep the charge amount sane.
+    // Pesapal bills in KES. USD and UGX are converted at the checkout rate;
+    // KES passes through unchanged. Volume caps keep the charge amount sane.
     let chargedAmount = amount
     if (asset === 'USD') {
       chargedAmount = Number((amount * (await getExchangeRate('USD', 'KES', 153))).toFixed(2))
+    } else if (asset === 'UGX') {
+      chargedAmount = Number((amount * (await getExchangeRate('UGX', 'KES', 0.035))).toFixed(2))
     }
     if (!Number.isFinite(chargedAmount) || chargedAmount <= 0 || chargedAmount > 1_000_000) {
       return errorResponse('Invalid top-up amount', 400)

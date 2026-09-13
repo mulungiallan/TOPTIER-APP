@@ -52,7 +52,7 @@ interface WalletData {
   transactions: WalletTx[]
 }
 
-const CASH_ASSETS = ['USD', 'EUR', 'KES', 'GBP']
+const CASH_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP']
 const CRYPTO_ASSETS = ['BTC', 'ETH', 'USDT', 'SOL']
 
 const TX_LABELS: Record<string, string> = {
@@ -74,6 +74,7 @@ function assetSymbol(asset: string): string {
   if (asset === 'EUR') return '€'
   if (asset === 'GBP') return '£'
   if (asset === 'KES') return 'KSh '
+  if (asset === 'UGX') return 'USh '
   return { BTC: '₿', ETH: 'Ξ', USDT: '₮', SOL: '◎' }[asset] || `${asset} `
 }
 
@@ -278,6 +279,7 @@ export function WalletPage() {
                       onChange={(e) => setDeposit({ ...deposit, asset: e.target.value })}
                     >
                       <option value="KES">KES</option>
+                      <option value="UGX">UGX</option>
                       <option value="USD">USD</option>
                     </select>
                   </div>
@@ -293,8 +295,8 @@ export function WalletPage() {
                     />
                   </div>
                 </div>
-                {deposit.asset === 'USD' && (
-                  <p className="text-xs text-muted-foreground">You will be charged the USD → KES equivalent at checkout.</p>
+                {deposit.asset !== 'KES' && (
+                  <p className="text-xs text-muted-foreground">You will be charged the {deposit.asset} → KES equivalent at checkout.</p>
                 )}
                 <Button
                   className="w-full gap-1.5"

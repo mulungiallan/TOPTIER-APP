@@ -8,7 +8,7 @@ import { useLiveMarket } from '@/hooks/use-live-market'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const CASH_ASSETS = ['USD', 'EUR', 'KES', 'GBP']
+const CASH_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP']
 const CRYPTO_SYMBOLS = ['BTCUSD', 'ETHUSD', 'USDTUSD', 'SOLUSD']
 const CRYPTO_TO_ASSET: Record<string, string> = {
   BTCUSD: 'BTC', ETHUSD: 'ETH', USDTUSD: 'USDT', SOLUSD: 'SOL',

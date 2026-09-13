@@ -34,6 +34,12 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = 
   
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Request failed' }))
+    // A revoked/expired session can never be repaired by retrying — clear the
+    // persisted session so the app lands back on the login screen and the user
+    // re-authenticates with a fresh tokenVersion, instead of erroring forever.
+    if (res.status === 401 && error.error?.toLowerCase().includes('revoked')) {
+      useStore.getState().logout()
+    }
     throw new Error(error.error || `API error: ${res.status}`)
   }
   

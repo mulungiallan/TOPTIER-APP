@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { verifyToken, generateToken, successResponse, errorResponse } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 // POST /api/auth/refresh — issues a fresh access token if the current one is
 // still valid (or within 1 day of expiry). The client calls this periodically
@@ -16,6 +17,23 @@ export async function POST(request: NextRequest) {
 
     if (!decoded?.userId) {
       return errorResponse('Invalid or expired token', 401)
+    }
+
+    // The DB is the source of truth for session validity. A token that
+    // references an outdated tokenVersion (force logout, ban, password change)
+    // is dead on arrival — turn it into a 401 so the client re-authenticates.
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: { tokenVersion: true, isBanned: true, deletedAt: true },
+    })
+    if (!user || user.deletedAt) {
+      return errorResponse('Session has been revoked — please log in again', 401)
+    }
+    if (user.isBanned) {
+      return errorResponse('Account is banned', 403)
+    }
+    if (user.tokenVersion !== decoded.tokenVersion) {
+      return errorResponse('Session has been revoked — please log in again', 401)
     }
 
     // If token expires within 1 day, issue a fresh one. If it's already
