@@ -33,27 +33,17 @@ export async function POST(request: NextRequest) {
     const { asset, amount } = parsed.data
     const provider = parsed.data.provider || 'pesapal'
 
-    // Pesapal bills in KES. USD and UGX are converted at the checkout rate;
-    // KES passes through unchanged. Volume caps keep the charge amount sane.
-    // The live PesaPal merchant account is contractually capped around 2,300
-    // KES per order (orders above it are rejected with
-    // `amount_exceeds_default_limit`), so reject over-limit charges up front
-    // instead of letting the provider fail mid-checkout.
-    const PESAPAL_ORDER_LIMIT_KES = 2300
+    // PesaPal bills in KES. USD and UGX are converted at the checkout rate;
+    // KES passes through unchanged. No app-side limits are imposed — the
+    // provider is the source of truth for any per-order caps.
     let chargedAmount = amount
     if (asset === 'USD') {
       chargedAmount = Number((amount * (await getExchangeRate('USD', 'KES', 153))).toFixed(2))
     } else if (asset === 'UGX') {
       chargedAmount = Number((amount * (await getExchangeRate('UGX', 'KES', 0.035))).toFixed(2))
     }
-    if (!Number.isFinite(chargedAmount) || chargedAmount <= 0 || chargedAmount > 1_000_000) {
+    if (!Number.isFinite(chargedAmount) || chargedAmount <= 0) {
       return errorResponse('Invalid top-up amount', 400)
-    }
-    if (chargedAmount > PESAPAL_ORDER_LIMIT_KES) {
-      return errorResponse(
-        `This top-up comes to ${chargedAmount.toFixed(2)} KES, which exceeds the current PesaPal per-order limit of ${PESAPAL_ORDER_LIMIT_KES} KES. Please enter a smaller amount.`,
-        400
-      )
     }
 
     const user = await db.user.findUnique({

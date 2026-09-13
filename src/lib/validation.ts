@@ -72,7 +72,7 @@ export const paymentInitSchema = z.object({
 // offered (their charge conversion is ambiguous).
 export const walletFundSchema = z.object({
   asset: z.enum(["USD", "KES", "UGX"]),
-  amount: z.coerce.number().finite().positive().max(1_000_000),
+  amount: z.coerce.number().finite().positive(),
   provider: z.enum(["pesapal"]).optional(),
 });
 
