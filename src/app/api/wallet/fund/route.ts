@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { authenticateRequest, successResponse, errorResponse } from '@/lib/auth'
 import { initializePayment } from '@/lib/payments/registry'
 import { getExchangeRate } from '@/lib/payments/exchange-rates'
+import { countryNameToCode } from '@/lib/countries'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
 import { validateBody, walletFundSchema } from '@/lib/validation'
 
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         transactionId: transaction.id,
         phone: user.phone || '',
-        country: user.country || 'KE',
+        country: countryNameToCode(user.country),
         description: `TOPTIER wallet top-up (${amount} ${asset})`,
       },
     })

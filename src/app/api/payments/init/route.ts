@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { getUserIdFromRequest, authenticateRequest, successResponse, errorResponse } from '@/lib/auth'
 import { initializePayment, type PaymentProvider, type PlanType } from '@/lib/payments/registry'
 import { getExchangeRate } from '@/lib/payments/exchange-rates'
+import { countryNameToCode } from '@/lib/countries'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
 import { validateBody, paymentInitSchema } from '@/lib/validation'
 
@@ -114,16 +115,17 @@ export async function POST(request: NextRequest) {
     // Fetch live exchange rates from a free API; fall back to approximate
     // rates if the API is unavailable (never silently overcharge).
     let currency = plan.currency
-    if (user.country === 'KE' && (provider === 'mpesa' || provider === 'flutterwave' || provider === 'pesapal')) {
+    const userCountryCode = countryNameToCode(user.country)
+    if (userCountryCode === 'KE' && (provider === 'mpesa' || provider === 'flutterwave' || provider === 'pesapal')) {
       currency = 'KES'
       finalAmount = Math.round(finalAmount * await getExchangeRate('USD', 'KES', 153))
-    } else if (user.country === 'NG' && (provider === 'paystack' || provider === 'flutterwave')) {
+    } else if (userCountryCode === 'NG' && (provider === 'paystack' || provider === 'flutterwave')) {
       currency = 'NGN'
       finalAmount = Math.round(finalAmount * await getExchangeRate('USD', 'NGN', 1550))
-    } else if (user.country === 'GH' && (provider === 'paystack' || provider === 'flutterwave')) {
+    } else if (userCountryCode === 'GH' && (provider === 'paystack' || provider === 'flutterwave')) {
       currency = 'GHS'
       finalAmount = Math.round(finalAmount * await getExchangeRate('USD', 'GHS', 15))
-    } else if (user.country === 'ZA' && (provider === 'paystack' || provider === 'flutterwave')) {
+    } else if (userCountryCode === 'ZA' && (provider === 'paystack' || provider === 'flutterwave')) {
       currency = 'ZAR'
       finalAmount = Math.round(finalAmount * await getExchangeRate('USD', 'ZAR', 18))
     }
@@ -153,7 +155,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         transactionId: transaction.id,
         phone: user.phone || '',
-        country: user.country || '',
+        country: userCountryCode,
         ...metadata,
       },
     })
