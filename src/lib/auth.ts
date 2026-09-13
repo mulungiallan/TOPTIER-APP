@@ -185,9 +185,10 @@ export async function authenticateRequest(
     return { user: null, error: 'Invalid or expired token' }
   }
 
+  const required = { tokenVersion: true, isBanned: true } as const
   const user = await db.user.findUnique({
     where: { id: decoded.userId },
-    select: select ?? { id: true, email: true, name: true, role: true, tokenVersion: true, isBanned: true },
+    select: select ? { ...select, ...required } : { id: true, email: true, name: true, role: true, tokenVersion: true, isBanned: true },
   })
   if (!user) return { user: null, error: 'Account not found' }
   if (user.isBanned) return { user: null, error: 'Account has been banned' }
