@@ -90,6 +90,8 @@ interface ForumPost {
 
 const FORUM_CATEGORIES = ['Forex', 'Crypto', 'Stocks', 'Strategies', 'Help']
 
+const formatPrice = (n: number) => n.toFixed(4)
+
 // --- Sub-Components ---
 
 function SignalCard({ signal }: { signal: { asset: string; type: string; entry: string; tp: string; sl: string } }) {
@@ -604,9 +606,9 @@ export default function CommunityPage() {
                 signal: {
                   asset: signal.asset,
                   type: signal.type,
-                  entry: String(signal.entryPrice),
-                  tp: String(signal.takeProfit1),
-                  sl: String(signal.stopLoss),
+                  entry: signal.entryPrice != null ? formatPrice(signal.entryPrice) : '',
+                  tp: signal.takeProfit1 != null ? formatPrice(signal.takeProfit1) : '',
+                  sl: signal.stopLoss != null ? formatPrice(signal.stopLoss) : '',
                 },
                 title: `${signal.type} Signal: ${signal.asset}`,
                 comments: comments.length,
