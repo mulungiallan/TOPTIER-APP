@@ -28,6 +28,11 @@ export function useTokenRefresh() {
           if (data?.token) {
             useStore.setState({ authToken: data.token })
           }
+        } else if (res.status === 401) {
+          // Token can't be refreshed (revoked session, banned account, or
+          // expired). Clear the persisted session so the app returns to the
+          // login screen instead of serving stale data / locked API calls.
+          useStore.getState().logout()
         }
       } catch {
         // Silently fail — will retry on next interval
@@ -36,6 +41,12 @@ export function useTokenRefresh() {
 
     // Check every 15 minutes
     timerRef.current = setInterval(refresh, 15 * 60 * 1000)
+    // Also validate immediately on mount: a persisted token from a torn-down
+    // session (bumped tokenVersion, ban, password change) should be cleared at
+    // once so the app returns to login instead of firing a flood of revoked-401s
+    // and bouncing after login. Using the current store token avoids relying on
+    // stale request responses.
+    refresh()
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
