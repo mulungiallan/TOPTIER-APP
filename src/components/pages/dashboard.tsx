@@ -40,6 +40,7 @@ import {
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { useLiveMarket, type LivePriceItem } from '@/hooks/use-live-market'
+import { WalletBalanceCard } from '@/components/layout/wallet-balance-card'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -1239,6 +1240,9 @@ export function DashboardPage() {
 
   return (
     <div className="p-3 lg:p-4 space-y-4 lg:space-y-5">
+      {/* Wallet Balance (top of app) */}
+      <WalletBalanceCard />
+
       {/* Subscription Banner */}
       <SubscriptionBanner />
 
