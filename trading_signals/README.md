@@ -84,6 +84,125 @@ GET /chart?market=forex&symbol=EURUSD&strategy=consensus
 Your app can poll this endpoint, or call the Python functions directly if
 it's also Python-based (see `main.py` for the pattern).
 
+## App backend modules (portfolio, orders, alerts, risk, watchlists, news)
+
+Six modules extend the signal engine into a full trading-app backend. Each
+is a plain Python module you can call directly, and each is also wired into
+the FastAPI layer in `api.py`. All state (orders, trades, alerts,
+watchlists, risk settings) persists in a local SQLite file
+(`trading_app.db`, path configurable via the `TRADING_APP_DB` env var) so
+data survives restarts. Swap `db.get_connection()` for Postgres/MySQL later
+without touching the other modules — they only call `db.execute()` /
+`db.query_all()` / `db.query_one()`.
+
+### Orders (`orders.py`) — paper trading engine
+Supports market, limit, stop, stop-limit, trailing-stop, and OCO (one-cancels-other)
+orders. **This simulates fills against fetched market data — it does not
+place real broker orders.** To go live, replace `_execute_fill()`'s internals
+with a call to your broker/exchange API; every other function (order
+creation, OCO linking, trailing-stop tracking) is unchanged.
+```
+POST   /orders                     create an order
+GET    /orders                     list orders (filter by status)
+POST   /orders/{id}/cancel         cancel an open order
+POST   /orders/check-pending       evaluate open limit/stop/trailing orders — call this on a schedule
+```
+
+### Portfolio & P&L (`portfolio.py`)
+Builds positions and realized P&L directly from filled trades using FIFO
+lot matching (the default method most brokers use). Unrealized P&L is
+computed by marking open positions to the latest fetched price.
+```
+GET /portfolio/summary        positions + unrealized/realized/total P&L
+GET /portfolio/positions      just open positions with avg cost
+GET /portfolio/realized-pnl   closed-lot history with per-lot P&L
+GET /portfolio/trades         raw trade/fill history
+```
+
+### Alerts (`alerts.py`)
+Price alerts (`price_above`/`price_below`) or indicator alerts (any column
+from `indicators.add_all_indicators`, e.g. `field=rsi_14, comparator=<,
+threshold=30`). Alerts fire once then move to `triggered` status.
+```
+POST /alerts             create an alert
+GET  /alerts             list alerts (filter by status)
+POST /alerts/{id}/cancel cancel an alert
+POST /alerts/check       evaluate all active alerts — call this on a schedule (1-5 min)
+```
+
+### Risk management (`risk.py`)
+Percent-risk position sizing, portfolio concentration/exposure, and a daily
+loss circuit breaker that halts new trades once a configurable daily loss
+% is breached (resets the next UTC day).
+```
+GET  /risk/settings          current per-user risk settings
+PUT  /risk/settings          update settings (equity, max daily loss %, etc.)
+POST /risk/position-size     {entry_price, stop_price} -> suggested quantity
+GET  /risk/exposure          concentration by symbol/market
+GET  /risk/circuit-breaker   check before allowing a new order; halted=True blocks trading
+```
+
+### Watchlists (`watchlist.py`)
+```
+POST   /watchlists                    create a watchlist
+GET    /watchlists                    list all watchlists
+GET    /watchlists/{id}               get one with its items
+POST   /watchlists/{id}/items         add a symbol (with optional tags)
+DELETE /watchlists/{id}/items         remove a symbol
+DELETE /watchlists/{id}               delete a watchlist
+```
+
+### News & calendars (`news.py`)
+Stock/forex news via `yfinance` (no key needed); crypto news via
+CryptoCompare's public API (no key needed). Economic and earnings
+calendars use Finnhub's free tier — set `FINNHUB_API_KEY` to enable them;
+without it, these endpoints return a clear note instead of failing.
+```
+GET /news                       ?market=stock&symbol=AAPL
+GET /calendar/economic          ?days_ahead=7
+GET /calendar/earnings          ?symbol=AAPL (or omit for broad calendar, needs API key)
+```
+
+### Multi-user note
+Every function takes a `user_id` (default `"default"`). If your app has
+multiple users, pass their real user id through from your auth layer —
+all data (orders, alerts, watchlists, risk settings) is already scoped by it.
+
+### Wallets (`ledger.py`, `cash_wallet.py`, `crypto_wallet.py`, `payment_provider.py`, `custody_provider.py`)
+
+Both wallets sit on top of a shared **double-entry ledger** (`ledger.py`) —
+the same accounting pattern banks and exchanges use, where every movement
+is two entries (a debit and a credit) that must sum to zero. This makes it
+structurally impossible for a bug to silently create or destroy money;
+`post_transaction()` refuses anything that doesn't balance, and
+`verify_books_balance()` is a sanity check you can run on a schedule.
+
+**Neither wallet moves real value on its own.** Actual settlement is
+delegated to a provider:
+- `payment_provider.py` — fiat movement via a licensed processor (Stripe, Plaid + bank partner, Dwolla). Ships with `MockPaymentProvider` for development.
+- `custody_provider.py` — crypto movement via a specialized custodian (Fireblocks, BitGo, Coinbase Custody, Anchorage). Ships with `MockCustodyProvider`. **This app's code never generates or stores a private key** — that boundary is intentional; see the module's docstring for why.
+
+```
+GET  /wallet/cash/balance             ?user_id=...&currency=USD
+POST /wallet/cash/deposit             pulls funds via payment provider, credits ledger
+POST /wallet/cash/withdraw            debits ledger, pushes payout via payment provider
+GET  /wallet/cash/transactions        ledger history for a user's cash account
+
+GET  /wallet/crypto/balance           ?user_id=...&asset=BTC
+POST /wallet/crypto/deposit-address   get/create a deposit address for a user+asset
+POST /wallet/crypto/withdraw          debits ledger, asks custody provider to send on-chain
+GET  /wallet/crypto/transactions      ledger history for a user's crypto account
+
+GET  /wallet/ledger/verify            books-balance sanity check — run on a schedule
+```
+
+**Before this ever touches real money:**
+1. Talk to a fintech/regulatory lawyer about money transmitter licensing and KYC/AML obligations for your jurisdiction(s) — this is very likely required for a custodial wallet, and the answer depends heavily on where your users are.
+2. Replace `MockPaymentProvider` with a real processor integration, tested in their sandbox first.
+3. Replace `MockCustodyProvider` with a real custody provider integration. Do not attempt to build your own private-key storage.
+4. `credit_confirmed_deposit()` must only be called from a verified webhook handler (with signature verification) — never from user-facing code — and only after the provider considers the deposit final (enough confirmations).
+5. Add a withdrawal review policy (limits, delays, manual review above a threshold) before going live — on-chain and most fiat rails are irreversible once sent.
+
 ## Data sources
 
 - **Stocks**: `yfinance` (free, delayed data — fine for signals, not for
@@ -93,6 +212,20 @@ it's also Python-based (see `main.py` for the pattern).
   others it supports)
 
 ## Important caveats — read before connecting real money
+
+**On the order engine specifically:** `orders.py` is a paper-trading
+simulator. It fills orders against prices it fetches (not a live order
+book), which means no partial fills, no slippage beyond the flat fee
+assumption, and no guarantee a real exchange would have filled at that
+price. Treat every fill from this module as a simulation until you've
+wired `_execute_fill()` to a real broker/exchange API and tested it in
+that broker's sandbox environment first.
+
+**On the circuit breaker:** `check_circuit_breaker()` only *reports* a halt
+state — your app's order-placement code must actually check it and block
+the request. It doesn't intercept calls to `orders.place_order()` on its
+own.
+
 
 - **This is a signal/backtesting toolkit, not a guarantee of profit.**
   Every strategy here is a simplified, well-known template; real edge comes
