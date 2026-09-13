@@ -70,6 +70,7 @@ const UgcPolicyPage = dynamic(() => import('@/components/pages/legal').then(m =>
 const ProfilePage = dynamic(() => import('@/components/pages/profile').then(m => m.ProfilePage), { ssr: false })
 const StatsPage = dynamic(() => import('@/components/pages/stats').then(m => m.StatsPage), { ssr: false })
 const MonetizationPage = dynamic(() => import('@/components/pages/monetization').then(m => m.MonetizationPage), { ssr: false })
+const WalletPage = dynamic(() => import('@/components/pages/wallet').then(m => m.WalletPage), { ssr: false })
 
 const pageComponents: Record<Page, React.ReactNode> = {
   dashboard: <DashboardPage />,
@@ -111,6 +112,7 @@ const pageComponents: Record<Page, React.ReactNode> = {
   terms: <TermsOfServicePage />,
   ugc: <UgcPolicyPage />,
   profile: <ProfilePage />,
+  wallet: <WalletPage />,
 }
 
 // ─── Landing Page ──────────────────────────────────────────────────────────────

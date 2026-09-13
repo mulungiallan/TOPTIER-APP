@@ -8,6 +8,7 @@ import { mpesaGateway } from './mpesa'
 import { paystackGateway } from './paystack'
 import { paypalGateway } from './paypal'
 import { revenuecatGateway } from './revenuecat'
+import { pesapalGateway } from './pesapal'
 
 // All registered gateways
 const gateways: Record<PaymentProvider, PaymentGateway> = {
@@ -17,6 +18,7 @@ const gateways: Record<PaymentProvider, PaymentGateway> = {
   paystack: paystackGateway,
   paypal: paypalGateway,
   revenuecat: revenuecatGateway,
+  pesapal: pesapalGateway,
 }
 
 // Check if a provider's environment variables are configured
@@ -28,6 +30,7 @@ function isProviderConfigured(provider: PaymentProvider): boolean {
     paystack: ['PAYSTACK_SECRET_KEY', 'NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY'],
     paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'NEXT_PUBLIC_PAYPAL_CLIENT_ID'],
     revenuecat: ['REVENUECAT_SECRET_KEY', 'NEXT_PUBLIC_REVENUECAT_PUBLIC_KEY'],
+    pesapal: ['PESAPAL_CONSUMER_KEY', 'PESAPAL_CONSUMER_SECRET'],
   }
 
   const required = envChecks[provider] || []

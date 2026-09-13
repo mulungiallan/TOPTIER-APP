@@ -52,6 +52,7 @@ import { PoweredBy } from '@/components/branding/powered-by'
 import { BrandLogo } from '@/components/branding/brand-logo'
 import { AdManager } from '@/components/ads'
 import { TickerTape } from '@/components/layout/ticker-tape'
+import { WalletBalanceChip } from '@/components/layout/wallet-balance-chip'
 import {
   Sheet,
   SheetContent,
@@ -107,6 +108,7 @@ const navItems: NavItem[] = [
   { id: 'support', labelKey: 'nav.support', icon: LifeBuoy },
   { id: 'subscriptions', labelKey: 'nav.subscriptions', icon: CreditCard },
   { id: 'profile', labelKey: 'nav.profile', icon: UserCircle },
+  { id: 'wallet', labelKey: 'nav.wallet', icon: Wallet },
   { id: 'settings', labelKey: 'nav.settings', icon: Settings },
 ]
 
@@ -582,6 +584,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       backtest: 'backtesting',
                       predict: 'ai-predictions',
                       strategy: 'strategy-builder',
+                      wallet: 'wallet',
+                      balance: 'wallet',
+                      funds: 'wallet',
                     }
                     for (const [keyword, page] of Object.entries(searchPages)) {
                       if (q.includes(keyword)) {
@@ -608,6 +613,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Camera className="size-4" />
               {t('common.analyzeScreenshot', locale)}
             </Button>
+
+            {/* Wallet Balance (top of app) */}
+            <WalletBalanceChip />
 
             {/* Notification Bell */}
             <Button

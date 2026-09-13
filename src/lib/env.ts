@@ -47,6 +47,12 @@ export const env = {
   get mpesaConsumerSecret(): string | undefined {
     return process.env.MPESA_CONSUMER_SECRET
   },
+  get pesapalConsumerKey(): string | undefined {
+    return process.env.PESAPAL_CONSUMER_KEY
+  },
+  get pesapalConsumerSecret(): string | undefined {
+    return process.env.PESAPAL_CONSUMER_SECRET
+  },
   get hfToken(): string | undefined {
     return process.env.HF_TOKEN
   },

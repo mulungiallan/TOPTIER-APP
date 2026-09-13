@@ -116,6 +116,10 @@ model User {
 
   copyTraderProfile CopyTrader?
   copySettlements   CopySettlement[]
+
+  // ─── Wallet (cash + crypto + double-entry ledger) ──────────────────────
+  walletAccounts           WalletAccount[]
+  cryptoDepositAddresses   CryptoDepositAddress[]
 }
 
 model Signal {
@@ -1401,4 +1405,57 @@ model CopySettlement {
   @@index([traderId, status])
   @@index([followerId])
   @@index([connectionId])
+}
+
+// ─── Wallet: cash accounts + double-entry ledger ─────────────────────────────
+model WalletAccount {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset       String   // USD, BTC, ETH, USDT …
+  accountType String   @default("user") // user | house (clearing)
+  createdAt   DateTime @default(now())
+
+  entries WalletEntry[]
+
+  @@unique([userId, asset, accountType])
+  @@index([userId])
+}
+
+model WalletTransaction {
+  id        String          @id @default(cuid())
+  txType    String          // deposit | withdrawal | transfer | trade_settlement | fee
+  reference String?         // external provider ref
+  status    String          @default("posted") // pending | posted | failed | reversed
+  memo      String?
+  postedAt  DateTime?
+  createdAt DateTime        @default(now())
+
+  entries WalletEntry[]
+}
+
+model WalletEntry {
+  id            String            @id @default(cuid())
+  transactionId String
+  transaction   WalletTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       WalletAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount        Float             // +ve credit / -ve debit
+  createdAt     DateTime          @default(now())
+
+  @@index([transactionId])
+  @@index([accountId])
+}
+
+model CryptoDepositAddress {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset       String
+  address     String   @unique
+  providerRef String?
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, asset])
+  @@index([address])
 }

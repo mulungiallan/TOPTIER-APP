@@ -61,10 +61,19 @@ export const resetPasswordSchema = z.object({
 // The payment-init route uses `planType` (trial | premium_monthly |
 // premium_annual | lifetime). Keep this in sync with the route's local schema.
 export const paymentInitSchema = z.object({
-  provider: z.enum(["stripe", "paypal", "paystack", "flutterwave", "mpesa", "revenuecat"]),
+  provider: z.enum(["stripe", "paypal", "paystack", "flutterwave", "mpesa", "revenuecat", "pesapal"]),
   planType: z.enum(["trial", "premium_monthly", "premium_annual", "lifetime"]),
   couponCode: z.string().trim().max(64).optional(),
   metadata: z.record(z.string(), z.string()).optional(),
+});
+
+// Wallet top-up flow. Pesapal bills in KES, so the charge currency is always
+// KES; USD is converted at the checkout rate. EUR/GBP top-ups are not offered
+// in v1 (their charge conversion is ambiguous).
+export const walletFundSchema = z.object({
+  asset: z.enum(["USD", "KES"]),
+  amount: z.coerce.number().finite().positive().max(1_000_000),
+  provider: z.enum(["pesapal"]).optional(),
 });
 
 // ─── Admin actions ──────────────────────────────────────────────────────────

@@ -78,6 +78,7 @@ const page: Dict = {
   'page.profile': 'Profile',
   'page.stats': 'My Activity',
   'page.monetization': 'Monetization',
+  'page.wallet': 'Wallet',
 }
 
 const en: Dict = {
@@ -114,10 +115,12 @@ const en: Dict = {
   'nav.education': 'Education',
   'nav.admin': 'Admin Panel',
   'nav.monetization': 'Monetization',
+  'nav.wallet': 'Wallet',
   'section.trading': 'Trading',
   'section.social': 'Social',
   'section.ai': 'AI & Advanced',
   'section.account': 'Account',
+  'section.wallet': 'Wallet',
   'section.admin': 'Admin',
   'common.theme': 'Theme',
   'common.privacy': 'Privacy',

@@ -107,3 +107,12 @@ play-store-translations.csv
 
 # Bun lockfile — project uses npm
 bun.lock
+
+# Python bytecode — never commit
+__pycache__/
+*.pyc
+
+# PesaPal integration reference files — credentials + downloaded docs, not part of the app
+payment api.txt
+Integration - Overview - Pesapal Developer Community.html
+Integration - Overview - Pesapal Developer Community_files/

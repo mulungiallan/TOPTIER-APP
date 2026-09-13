@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserIdFromRequest, authenticateRequest, successResponse, errorResponse } from '@/lib/auth'
 import { initializePayment, type PaymentProvider, type PlanType } from '@/lib/payments/registry'
+import { getExchangeRate } from '@/lib/payments/exchange-rates'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
 import { validateBody, paymentInitSchema } from '@/lib/validation'
 
@@ -13,31 +14,6 @@ const PLANS: Record<string, { price: number; currency: string }> = {
   premium_monthly: { price: 29.99, currency: 'USD' },
   premium_annual: { price: 249.99, currency: 'USD' },
   lifetime: { price: 499.99, currency: 'USD' },
-}
-
-// Live exchange rate cache (refreshes every 5 minutes)
-let rateCache: { rates: Record<string, number>; fetchedAt: number } | null = null
-const RATE_CACHE_TTL = 5 * 60 * 1000
-
-async function getExchangeRate(from: string, to: string, fallback: number): Promise<number> {
-  try {
-    const now = Date.now()
-    if (!rateCache || now - rateCache.fetchedAt > RATE_CACHE_TTL) {
-      const res = await fetch(
-        `https://api.exchangerate-api.com/v4/latest/${from}`,
-        { signal: AbortSignal.timeout(5000) }
-      )
-      if (res.ok) {
-        const data = await res.json()
-        rateCache = { rates: data.rates || {}, fetchedAt: now }
-      }
-    }
-    const rate = rateCache?.rates[to]
-    if (rate && rate > 0) return rate
-  } catch {
-    // API unavailable — use fallback
-  }
-  return fallback
 }
 
 export async function POST(request: NextRequest) {
@@ -138,7 +114,7 @@ export async function POST(request: NextRequest) {
     // Fetch live exchange rates from a free API; fall back to approximate
     // rates if the API is unavailable (never silently overcharge).
     let currency = plan.currency
-    if (user.country === 'KE' && (provider === 'mpesa' || provider === 'flutterwave')) {
+    if (user.country === 'KE' && (provider === 'mpesa' || provider === 'flutterwave' || provider === 'pesapal')) {
       currency = 'KES'
       finalAmount = Math.round(finalAmount * await getExchangeRate('USD', 'KES', 153))
     } else if (user.country === 'NG' && (provider === 'paystack' || provider === 'flutterwave')) {

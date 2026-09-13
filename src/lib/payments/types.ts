@@ -1,7 +1,7 @@
 // Unified Payment Gateway Types for TOPTIER
 // All payment providers implement this interface
 
-export type PaymentProvider = 'stripe' | 'flutterwave' | 'mpesa' | 'paystack' | 'paypal' | 'revenuecat'
+export type PaymentProvider = 'stripe' | 'flutterwave' | 'mpesa' | 'paystack' | 'paypal' | 'revenuecat' | 'pesapal'
 
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded' | 'cancelled'
 
