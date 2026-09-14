@@ -103,8 +103,8 @@ interface BillingDashboardData {
     code: string
     count: number
     earnedPremiumDays: number
-    currentTier: { count: number; days: number; name: string; emoji: string } | null
-    nextTier: { count: number; days: number; name: string; emoji: string } | null
+    currentTier: { count: number; days: number; name: string; emoji: string; cashReward?: number } | null
+    nextTier: { count: number; days: number; name: string; emoji: string; cashReward?: number } | null
     progressToNext: number
     recentRewards: Array<{
       id: string
@@ -628,7 +628,7 @@ export function PricingDashboardPage() {
         <QuickAction
           icon={Gift}
           label="Refer Friends"
-          description="Earn premium days"
+          description="Earn premium days + $10 cash at 100"
           onClick={() => handleCopyReferral()}
         />
         <QuickAction
@@ -867,7 +867,7 @@ export function PricingDashboardPage() {
                 <Gift className="h-4 w-4 text-violet-500" />
                 Referral Program
               </CardTitle>
-              <CardDescription>Earn premium days by inviting friends</CardDescription>
+              <CardDescription>Earn premium days — and $10 USD wallet cash at 100 referrals</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2">
@@ -900,7 +900,11 @@ export function PricingDashboardPage() {
                       <span className="font-medium">
                         {referral.nextTier.emoji} {referral.nextTier.name}
                       </span>{' '}
-                      ({referral.nextTier.days === 36500 ? 'lifetime' : `${referral.nextTier.days} days`})
+                      ({referral.nextTier.cashReward
+                        ? `$${referral.nextTier.cashReward} USD cash`
+                        : referral.nextTier.days === 36500
+                        ? 'lifetime'
+                        : `${referral.nextTier.days} days`})
                     </p>
                   </>
                 ) : (

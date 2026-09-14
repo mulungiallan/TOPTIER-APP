@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { verifyPassword, generateToken, generateReferralCode, successResponse, errorResponse, needsRehash, rehashPassword, getRequestIp, getRequestDevice } from '@/lib/auth'
 import { authRouteSchema, validateBody } from '@/lib/validation'
+import { grantReferralCashMilestones } from '@/lib/services/referral-rewards'
 
 export async function POST(request: NextRequest) {
   try {
@@ -85,6 +86,13 @@ export async function POST(request: NextRequest) {
               },
             }),
           ])
+
+          // ── 100-referral milestone: $10 USD wallet cash ──────────────────
+          // Every time the referrer crosses a multiple of 100 referrals they
+          // receive $10 USD deposited into their wallet (usable for
+          // withdrawals, competitions, or premium). Idempotent — the ledger
+          // reference and reward rows prevent double-granting.
+          await grantReferralCashMilestones(referrer.id)
         }
       }
 

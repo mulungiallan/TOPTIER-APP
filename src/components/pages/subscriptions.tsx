@@ -249,7 +249,7 @@ const referralTiers = [
   { referrals: 10, reward: '1 day Premium', name: 'Silver' },
   { referrals: 20, reward: '2 days Premium', name: 'Gold' },
   { referrals: 50, reward: '7 days Premium', name: 'Platinum' },
-  { referrals: 100, reward: '30 days Premium', name: 'Diamond' },
+  { referrals: 100, reward: '$10 USD Cash', name: 'Diamond' },
   { referrals: 500, reward: 'Lifetime Premium', name: 'Legendary' },
 ]
 
@@ -260,7 +260,7 @@ const faqItems = [
   },
   {
     question: 'What happens after my free trial?',
-    answer: 'After your 30-day free trial ends, your account will automatically switch to the free tier with limited features. You will not be charged unless you explicitly subscribe to a premium plan. We will remind you before the trial expires.',
+    answer: 'After your 7-day free trial ends, your account will automatically switch to the free tier with limited features. You will not be charged unless you explicitly subscribe to a premium plan. We will remind you before the trial expires.',
   },
   {
     question: 'Is there a refund policy?',
@@ -1031,7 +1031,7 @@ export function SubscriptionsPage() {
             </div>
             <div>
               <CardTitle className="text-lg">Refer & Earn</CardTitle>
-              <CardDescription>Share with friends and earn free Premium days</CardDescription>
+              <CardDescription>Share with friends and earn free Premium days — plus $10 USD wallet cash at 100 referrals</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -1158,7 +1158,9 @@ export function SubscriptionsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={ref.status === 'pending' ? 'text-muted-foreground' : 'text-emerald-500 font-medium'}>
-                          {ref.rewardAmount} days
+                          {ref.rewardType === 'wallet_cash'
+                            ? `$${ref.rewardAmount} USD`
+                            : `${ref.rewardAmount} days`}
                         </span>
                       </TableCell>
                     </TableRow>

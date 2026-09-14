@@ -1,6 +1,7 @@
 // ─── Social Services: Social Feed, Leaderboards, Competitions, Messaging, Groups ─
 import { db } from '@/lib/db'
 import type { Prisma } from '@/generated/prisma'
+import { withdrawCash } from '@/lib/services/wallet'
 
 // Lazy backfill: existing CopyTrader rows created under the old DEFAULT 0 for
 // platformFeePct need to be updated to the current default (10%). Only runs once
@@ -670,6 +671,18 @@ export class CompetitionService {
     if (existingEntry) throw new Error('Already entered in this competition')
     if (competition.maxParticipants && competition._count.entries >= competition.maxParticipants) {
       throw new Error('Competition is full')
+    }
+    // Paid entry: deduct the fee from the user's USD wallet balance. Free
+    // competitions (< $1) skip this. Refunded on a wallet credit if the
+    // competition is later cancelled.
+    if ((competition.entryFee || 0) > 0) {
+      await withdrawCash({
+        userId,
+        asset: 'USD',
+        amount: competition.entryFee,
+        reference: `COMP_JOIN_${competitionId}_${userId}`,
+        memo: `Competition entry fee — ${competition.name}`,
+      })
     }
     return db.competitionEntry.create({
       data: { competitionId, userId },

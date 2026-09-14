@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
+import { grantReferralCashMilestones } from '@/lib/services/referral-rewards'
 
 // ─── Plan catalogue (kept in sync with /api/subscriptions) ─────────────────
 const PLAN_CATALOG = [
@@ -138,6 +139,10 @@ export async function GET(request: NextRequest) {
       return errorResponse('User not found', 404)
     }
 
+    // Backfill referral cash milestones (existing users who already crossed
+    // 100+ referrals get their $10 wallet reward automatically).
+    await grantReferralCashMilestones(userId)
+
     // ─── Payment transactions (billing history) ───────────────────────────
     const transactions = await db.paymentTransaction.findMany({
       where: { userId },
@@ -240,7 +245,7 @@ export async function GET(request: NextRequest) {
       { count: 10, days: 1, name: 'Silver', emoji: '🥈' },
       { count: 20, days: 2, name: 'Gold', emoji: '🥇' },
       { count: 50, days: 7, name: 'Platinum', emoji: '💎' },
-      { count: 100, days: 30, name: 'Diamond', emoji: '💠' },
+      { count: 100, days: 0, name: 'Diamond', emoji: '💠', cashReward: 10 },
       { count: 500, days: 36500, name: 'Legendary', emoji: '👑' },
     ]
     const referralCount = user.referralCount || 0

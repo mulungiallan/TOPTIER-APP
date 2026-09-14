@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
     return successResponse({ entry }, 201)
   } catch (error) {
     console.error('Join competition error:', error)
+    if (error instanceof Error && error.message.includes('insufficient_balance')) {
+      return errorResponse('Insufficient wallet balance to enter this competition. Top up your wallet first.', 400)
+    }
     return errorResponse('Failed to join competition', 500)
   }
 }
