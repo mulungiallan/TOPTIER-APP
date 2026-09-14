@@ -135,6 +135,27 @@ export function WalletPage() {
     return () => ctrl.abort()
   }, [fetchData])
 
+  // Poll wallet balance while the PesaPal checkout iframe is open
+  useEffect(() => {
+    if (!checkoutUrl) return
+    let active = true
+    const snapshot = data?.balances
+    const poll = async () => {
+      try {
+        const res = await api.get<{ success: boolean; data: WalletData }>('/wallet')
+        const fresh = res?.data
+        if (!active || !fresh) return
+        if (snapshot && JSON.stringify(fresh.balances) !== JSON.stringify(snapshot)) {
+          setData(fresh)
+          setCheckoutUrl(null)
+          toast.success('Wallet top-up successful!')
+        }
+      } catch { /* keep polling */ }
+    }
+    const id = setInterval(poll, 4000)
+    return () => { active = false; clearInterval(id) }
+  }, [checkoutUrl, data?.balances])
+
   const runAction = async (key: string, body: Record<string, unknown>) => {
     setBusy(key)
     try {
@@ -187,11 +208,14 @@ const handleTopup = async () => {
   }
 
   const handleCheckoutLoaded = () => {
+    // Payment completion is detected by the polling useEffect above, which
+    // refreshes the wallet balance every 4 s while the dialog is open. The
+    // iframe's onLoad is retained so we can close the dialog when the user
+    // finishes and the page reloads to a same-origin response.
     let search: string | undefined
     try {
       search = iframeRef.current?.contentWindow?.location.search
     } catch {
-      // PesaPal's hosted page is cross-origin — ignore until it returns to this app
       return
     }
     if (!search) return

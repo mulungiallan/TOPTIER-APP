@@ -50,13 +50,22 @@ function isProviderConfigured(provider: PaymentProvider): boolean {
 
 // Get list of available providers (for UI display).
 //
-// Only in-app methods are surfaced here. M-Pesa uses the Daraja STK push
-// (the customer approves on their own phone — no redirect) and "Bank" is a
-// manual, admin-confirmed transfer to our account details. Redirect gateways
-// (Stripe, PesaPal, PayStack, Flutterwave, PayPal) are intentionally not
-// exposed to the chooser.
+// PesaPal is the primary instant-payment gateway — it handles M-Pesa, cards,
+// and Airtel Money on the customer's behalf with no STK-push or manual
+// confirmation required. M-Pesa (Daraja STK push), Airtel Money, MTN MoMo,
+// and Bank Transfer are in-app manual methods that need admin confirmation.
 export function getAvailableProviders(): PaymentProviderInfo[] {
   const list: PaymentProviderInfo[] = [
+    {
+      id: pesapalGateway.provider,
+      name: pesapalGateway.displayName,
+      icon: pesapalGateway.icon,
+      description: 'Pay instantly with M-Pesa, card, or Airtel Money — enter your details and complete payment.',
+      supportedCurrencies: pesapalGateway.supportedCurrencies,
+      supportedCountries: pesapalGateway.supportedCountries,
+      isAvailable: isProviderConfigured(pesapalGateway.provider),
+      checkoutConfig: pesapalGateway.getCheckoutConfig(),
+    },
     {
       id: mpesaGateway.provider,
       name: mpesaGateway.displayName,

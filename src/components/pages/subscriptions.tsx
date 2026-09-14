@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Check,
   X,
@@ -31,6 +31,7 @@ import {
   ShoppingBag,
   ExternalLink,
   Bell,
+  ShieldCheck,
 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
@@ -69,6 +70,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -294,6 +296,8 @@ export function SubscriptionsPage() {
   const [payReference, setPayReference] = useState('')
   const [processingPayment, setProcessingPayment] = useState(false)
   const [referralRewards, setReferralRewards] = useState<Array<{ id: string; status: string; rewardType: string; rewardAmount: number; createdAt: string; referredUser?: { name?: string | null } }>>([])
+  const [pesapalCheckoutUrl, setPesapalCheckoutUrl] = useState<string | null>(null)
+  const pesapalIframeRef = useRef<HTMLIFrameElement>(null)
 
   const currentPlan = user?.subscriptionTier || 'free'
   const referralCode = user?.referralCode || 'TRADE123'
@@ -327,6 +331,29 @@ export function SubscriptionsPage() {
   useEffect(() => {
     fetchSubscriptions()
   }, [fetchSubscriptions])
+
+  // Poll for subscription activation while the PesaPal iframe is open
+  useEffect(() => {
+    if (!pesapalCheckoutUrl) return
+    let active = true
+    const poll = async () => {
+      try {
+        const res = await api.get('/subscriptions')
+        const data = res?.data as Record<string, unknown>
+        const sub = data?.currentSubscription as Record<string, unknown> | undefined
+        const tier = sub?.tier as string | undefined
+        if (tier && tier !== 'free' && active) {
+          updateUser({ subscriptionTier: tier })
+          setPesapalCheckoutUrl(null)
+          toast.success('Subscription activated! Enjoy your premium plan.')
+          setShowPaymentPicker(false)
+        }
+      } catch { /* keep polling */ }
+    }
+    const id = setInterval(poll, 4000)
+    poll()
+    return () => { active = false; clearInterval(id) }
+  }, [pesapalCheckoutUrl, updateUser])
 
   const handleCopyReferral = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
@@ -445,9 +472,9 @@ export function SubscriptionsPage() {
         setShowPaymentPicker(false)
         setPage('dashboard')
       } else if (payment?.checkoutUrl && ![...IN_APP_MANUAL, 'mpesa'].includes(selectedProvider)) {
-        // Legacy external checkout — kept for any redirect gateway that
-        // reappears, but the in-app chooser no longer surfaces them.
-        window.location.href = payment.checkoutUrl as string
+        // PesaPal or other redirect gateway — open in an in-app iframe
+        // dialog so the user never leaves the app.
+        setPesapalCheckoutUrl(payment.checkoutUrl as string)
       } else if (selectedProvider === 'bank') {
         toast.success('Request received! Your plan activates once your transfer is confirmed.')
         setShowPaymentPicker(false)
@@ -1178,6 +1205,39 @@ export function SubscriptionsPage() {
           </div>
         </div>
       </div>
+
+      {/* ─── PesaPal checkout iframe (subscriptions) ────────────── */}
+      <Dialog
+        open={!!pesapalCheckoutUrl}
+        onOpenChange={(open) => {
+          if (!open) setPesapalCheckoutUrl(null)
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          className="max-h-[92vh] w-full max-w-xl gap-0 overflow-hidden border bg-background p-0 sm:max-w-xl"
+        >
+          <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <ShieldCheck className="size-4 shrink-0 text-emerald-500" />
+              <p className="truncate text-sm font-semibold">Secure payment — PesaPal</p>
+            </div>
+            <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => setPesapalCheckoutUrl(null)}>
+              <X className="size-4" />
+            </Button>
+          </div>
+          <iframe
+            ref={pesapalIframeRef}
+            src={pesapalCheckoutUrl || undefined}
+            title="PesaPal checkout"
+            className="h-[68vh] w-full bg-background"
+          />
+          <p className="border-t px-4 py-2 text-center text-xs text-muted-foreground">
+            A payment prompt may appear on your phone — enter your PIN to complete. Your subscription activates automatically once the payment is confirmed.
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
