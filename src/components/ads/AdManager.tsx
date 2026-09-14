@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useStore } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
 import { getAdSettings, applyAdSettings, shouldShowAds, type AdSettings } from '@/lib/ads'
@@ -76,6 +77,12 @@ export function AdManager({
   // Don't render any ad chrome on auth pages or for premium users
   const isAuthPage =
     currentPage === 'login' || currentPage === 'register' || currentPage === 'onboarding'
+
+  // HTML overlay ads are a web-browser feature only. On native (Capacitor)
+  // the AdMob plugin owns all ad surfaces, so never render these here.
+  if (Capacitor.isNativePlatform()) {
+    return <>{children}</>
+  }
 
   if (!seeAds || isAuthPage) {
     return <>{children}</>

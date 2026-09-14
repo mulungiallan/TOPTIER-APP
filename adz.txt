@@ -1,0 +1,29 @@
+
+Set up a new app
+You've successfully added toptier
+What to do next
+Create ad units and test your SDK integration
+After you complete testing, publish your app to a supported app store
+Add shops to your AdMob app. We'll do a few checks to make sure it's ready to show ads. This typically takes a couple of days but, in some cases, may require more time to evaluate your app.
+© 2026 Google Privacy Terms
+Setting up billing
+
+
+ca-app-pub-1957010192109128~4528257117
+
+ca-app-pub-1957010192109128/1075710222
+
+ca-app-pub-1957010192109128~4528257117
+
+ca-app-pub-1957010192109128/6322141351
+
+ca-app-pub-1957010192109128~4528257117
+
+ca-app-pub-1957010192109128/2117329153
+
+ca-app-pub-1957010192109128~4528257117
+
+ca-app-pub-1957010192109128/4625916302
+ca-app-pub-1957010192109128~4528257117
+ca-app-pub-1957010192109128/2855695757
+

@@ -51,6 +51,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { PoweredBy } from '@/components/branding/powered-by'
 import { BrandLogo } from '@/components/branding/brand-logo'
 import { AdManager } from '@/components/ads'
+import { useBannerAd } from '@/lib/ads/useAds'
 import { TickerTape } from '@/components/layout/ticker-tape'
 import { WalletBalanceChip } from '@/components/layout/wallet-balance-chip'
 import {
@@ -436,6 +437,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const goBack = useStore((s) => s.goBack)
   const locale = useStore((s) => s.locale)
   const logout = useStore((s) => s.logout)
+
+  // Native (AdMob) banner on non-auth screens; on web this is a no-op.
+  const showNativeBanner = !['login', 'register', 'onboarding', 'privacy', 'terms'].includes(currentPage)
+  useBannerAd(showNativeBanner)
   const isMobile = useIsMobile()
 
   const handleLogout = () => {
