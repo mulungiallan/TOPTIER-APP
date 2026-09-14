@@ -1,38 +1,33 @@
 'use client'
 
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   Bell,
   Plus,
-  Edit3,
-  Trash2,
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  ArrowUpRight,
-  ArrowDownRight,
-  ArrowLeftRight,
+  Target,
+  ShieldAlert,
+  Activity,
+  TrendingUp,
+  Ban,
   Clock,
-  RefreshCcw,
   Zap,
   Crown,
-  Search,
-  ChevronRight,
-  Check,
   Loader2,
   AlertCircle,
   Volume2,
   Vibrate,
+  Radio,
+  RefreshCcw,
+  ArrowUpRight,
+  ArrowDownRight,
   BellRing,
 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
-import { useLiveMarket } from '@/hooks/use-live-market'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -52,163 +47,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type PriceAlertType = 'Above' | 'Below' | 'Crosses'
-type AlertStatus = 'active' | 'triggered' | 'paused'
-type AlertFrequency = 'one-time' | 'recurring'
+type Category = 'price' | 'take_profit' | 'stop_loss' | 'indicator' | 'signal'
 
-interface PriceAlert {
-  id: string
-  asset: string
-  type: PriceAlertType
-  targetPrice: number
-  currentPrice: number
-  status: AlertStatus
-  frequency: AlertFrequency
-  triggeredAt?: string
-  createdAt: string
-  soundEnabled: boolean
-  soundUri?: string | null
-  vibrateEnabled: boolean
-  notifyType: string
+interface AlertRow {
+  id: number
+  market: string
+  symbol: string
+  conditionType: string
+  field: string
+  comparator: string
+  threshold: number
+  category: Category
+  sound: string
+  vibration: string
+  status: string
+  createdAt: Date
+  triggeredAt: Date | null
+  triggeredValue: number | null
+  note: string
 }
 
-type CustomAlertType = 'RSI' | 'MACD' | 'MA Cross' | 'Volume Spike' | 'S/R Break'
-
-interface CustomAlert {
-  id: string
-  asset: string
-  type: CustomAlertType
-  condition: string
-  status: AlertStatus
-  frequency: AlertFrequency
-  createdAt: string
-  soundEnabled: boolean
-  soundUri?: string | null
-  vibrateEnabled: boolean
-  notifyType: string
+interface EngineNotification {
+  id: number
+  title: string
+  body: string
+  sound: string
+  vibration: string
+  priority: string
+  payload: Record<string, unknown> | null
 }
 
-// ─── Helper: Map API data to UI types ──────────────────────────────────────────
-
-function mapApiAlertTypeToUi(apiType: string): PriceAlertType {
-  const map: Record<string, PriceAlertType> = {
-    above: 'Above',
-    below: 'Below',
-    crosses: 'Crosses',
-  }
-  return map[apiType] || 'Above'
-}
-
-function mapUiAlertTypeToApi(uiType: PriceAlertType): string {
-  const map: Record<string, string> = {
-    Above: 'above',
-    Below: 'below',
-    Crosses: 'crosses',
-  }
-  return map[uiType] || 'above'
-}
-
-function mapApiCustomTypeToUi(apiType: string): CustomAlertType {
-  const map: Record<string, CustomAlertType> = {
-    rsi: 'RSI',
-    macd: 'MACD',
-    ma_cross: 'MA Cross',
-    volume_spike: 'Volume Spike',
-    support_resistance: 'S/R Break',
-  }
-  return map[apiType] || 'RSI'
-}
-
-function mapUiCustomTypeToApi(uiType: CustomAlertType): string {
-  const map: Record<string, string> = {
-    RSI: 'rsi',
-    MACD: 'macd',
-    'MA Cross': 'ma_cross',
-    'Volume Spike': 'volume_spike',
-    'S/R Break': 'support_resistance',
-  }
-  return map[uiType] || 'rsi'
-}
-
-function getAlertStatus(isActive: boolean, isTriggered: boolean): AlertStatus {
-  if (isTriggered) return 'triggered'
-  if (!isActive) return 'paused'
-  return 'active'
-}
-
-const assetOptions = [
-  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CHF',
-  'NZD/USD', 'USD/CAD', 'BTC/USD', 'ETH/USD', 'XAU/USD',
-]
-
-// ─── Helper Components ─────────────────────────────────────────────────────────
-
-function AlertTypeBadge({ type }: { type: PriceAlertType }) {
-  const config = {
-    Above: { icon: ArrowUpRight, className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
-    Below: { icon: ArrowDownRight, className: 'bg-red-500/10 text-red-600 border-red-500/20' },
-    Crosses: { icon: ArrowLeftRight, className: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
-  }
-  const { icon: Icon, className } = config[type]
-  return (
-    <Badge variant="outline" className={cn('gap-1', className)}>
-      <Icon className="size-3" />
-      {type}
-    </Badge>
-  )
-}
-
-function StatusBadge({ status }: { status: AlertStatus }) {
-  const config = {
-    active: { dot: 'bg-emerald-500', label: 'Active', className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
-    triggered: { dot: 'bg-amber-500', label: 'Triggered', className: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
-    paused: { dot: 'bg-gray-400', label: 'Paused', className: 'bg-gray-500/10 text-gray-500 border-gray-500/20' },
-  }
-  const { dot, label, className } = config[status]
-  return (
-    <Badge variant="outline" className={cn('gap-1', className)}>
-      <span className={cn('size-1.5 rounded-full', dot)} />
-      {label}
-    </Badge>
-  )
-}
-
-function FrequencyBadge({ frequency }: { frequency: AlertFrequency }) {
-  return (
-    <Badge variant="secondary" className="gap-1 text-[10px]">
-      {frequency === 'one-time' ? <Clock className="size-3" /> : <RefreshCcw className="size-3" />}
-      {frequency === 'one-time' ? 'One-time' : 'Recurring'}
-    </Badge>
-  )
-}
-
-function CustomAlertTypeBadge({ type }: { type: CustomAlertType }) {
-  const colorMap: Record<CustomAlertType, string> = {
-    RSI: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
-    MACD: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20',
-    'MA Cross': 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-    'Volume Spike': 'bg-pink-500/10 text-pink-600 border-pink-500/20',
-    'S/R Break': 'bg-teal-500/10 text-teal-600 border-teal-500/20',
-  }
-  return (
-    <Badge variant="outline" className={cn('gap-1', colorMap[type])}>
-      {type}
-    </Badge>
-  )
-}
-
-// ─── Alert Notification Options ──────────────────────────────────────────────────
+// ─── Constants ─────────────────────────────────────────────────────────────────
 
 const SOUND_OPTIONS = [
-  { value: '', label: 'Default (system sound)' },
+  { value: 'default', label: 'Default' },
   { value: 'bell', label: 'Classic Bell' },
   { value: 'ding', label: 'Ding' },
   { value: 'chime', label: 'Chime' },
@@ -220,106 +98,132 @@ const SOUND_OPTIONS = [
   { value: 'gentle', label: 'Gentle Tone' },
 ]
 
-const NOTIFY_TYPE_OPTIONS = [
-  { value: 'system', label: 'System / Home-screen' },
-  { value: 'in_app', label: 'In-app only' },
-  { value: 'both', label: 'Both' },
+const VIBRATION_OPTIONS = [
+  { value: 'default', label: 'Default' },
+  { value: 'soft', label: 'Soft' },
+  { value: 'strong', label: 'Strong' },
+  { value: 'urgent', label: 'Urgent' },
+  { value: 'off', label: 'Off' },
 ]
 
-interface AlertNotifValue {
-  soundEnabled: boolean
-  soundUri?: string | null
-  vibrateEnabled: boolean
-  notifyType: string
+const MARKET_OPTIONS = [
+  { value: 'stock', label: 'Stocks' },
+  { value: 'crypto', label: 'Crypto' },
+  { value: 'forex', label: 'Forex' },
+]
+
+const SYMBOL_SUGGESTIONS: Record<string, string[]> = {
+  stock: ['AAPL', 'NVDA', 'MSFT', 'TSLA', 'GOOG', 'AMZN', 'META', 'NFLX'],
+  crypto: ['BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD', 'BNB/USD', 'DOGE/USD'],
+  forex: ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CHF', 'USD/CAD', 'XAU/USD'],
 }
 
-function AlertNotificationOptions({
-  value,
-  onChange,
-}: {
-  value: AlertNotifValue
-  onChange: (next: AlertNotifValue) => void
-}) {
-  return (
-    <div className="space-y-3 rounded-lg border p-3">
-      <p className="text-sm font-medium">Notification</p>
+const INDICATOR_FIELDS = [
+  'rsi_14', 'macd', 'macd_signal', 'macd_hist', 'sma_20', 'sma_50',
+  'sma_200', 'ema_12', 'ema_26', 'bb_upper', 'bb_lower', 'bb_mid', 'atr_14', 'close',
+]
 
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label className="text-sm">Play a sound</Label>
-          <p className="text-xs text-muted-foreground">Ringtone / alert tone when it triggers</p>
-        </div>
-        <Switch checked={value.soundEnabled} onCheckedChange={(c) => onChange({ ...value, soundEnabled: c })} />
-      </div>
-
-      {value.soundEnabled && (
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Sound</Label>
-          <Select
-            value={value.soundUri ?? ''}
-            onValueChange={(v) => onChange({ ...value, soundUri: v || null })}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Choose a sound" />
-            </SelectTrigger>
-            <SelectContent>
-              {SOUND_OPTIONS.map((s) => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label className="text-sm">Vibrate</Label>
-          <p className="text-xs text-muted-foreground">Vibration alert on your phone</p>
-        </div>
-        <Switch checked={value.vibrateEnabled} onCheckedChange={(c) => onChange({ ...value, vibrateEnabled: c })} />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">Alert delivery</Label>
-        <Select
-          value={value.notifyType || 'system'}
-          onValueChange={(v) => onChange({ ...value, notifyType: v })}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {NOTIFY_TYPE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  )
+const INDICATOR_FIELD_LABELS: Record<string, string> = {
+  rsi_14: 'RSI (14)',
+  macd: 'MACD',
+  macd_signal: 'MACD Signal',
+  macd_hist: 'MACD Histogram',
+  sma_20: 'SMA (20)',
+  sma_50: 'SMA (50)',
+  sma_200: 'SMA (200)',
+  ema_12: 'EMA (12)',
+  ema_26: 'EMA (26)',
+  bb_upper: 'Bollinger Upper',
+  bb_mid: 'Bollinger Mid',
+  bb_lower: 'Bollinger Lower',
+  atr_14: 'ATR (14)',
+  close: 'Close price',
 }
 
-function NotifyBadges({ value }: { value: AlertNotifValue }) {
-  return (
-    <>
-      {value.soundEnabled && (
-        <Badge variant="outline" className="gap-1 text-[10px]">
-          <Volume2 className="size-3" /> Sound
-        </Badge>
-      )}
-      {value.vibrateEnabled && (
-        <Badge variant="outline" className="gap-1 text-[10px]">
-          <Vibrate className="size-3" /> Vibrate
-        </Badge>
-      )}
-      {(value.notifyType === 'system' || value.notifyType === 'both') && (
-        <Badge variant="outline" className="gap-1 text-[10px]">
-          <BellRing className="size-3" /> System
-        </Badge>
-      )}
-    </>
-  )
+const SIGNAL_STRATEGIES = [
+  'trend_following', 'mean_reversion', 'momentum', 'swing_trading',
+  'scalping', 'stat_arbitrage', 'market_making_bias', 'breakout',
+  'composite', 'consensus',
+]
+
+const STRATEGY_LABELS: Record<string, string> = {
+  trend_following: 'Trend Following',
+  mean_reversion: 'Mean Reversion',
+  momentum: 'Momentum',
+  swing_trading: 'Swing Trading',
+  scalping: 'Scalping',
+  stat_arbitrage: 'Stat Arbitrage',
+  market_making_bias: 'Market Making Bias',
+  breakout: 'Breakout',
+  composite: 'Composite',
+  consensus: 'Consensus',
 }
+
+const CATEGORY_META: Record<Category, { label: string; icon: React.ComponentType<{ className?: string }>; className: string }> = {
+  price: { label: 'Price', icon: Bell, className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
+  take_profit: { label: 'Take Profit', icon: Target, className: 'bg-teal-500/10 text-teal-600 border-teal-500/20' },
+  stop_loss: { label: 'Stop Loss', icon: ShieldAlert, className: 'bg-red-500/10 text-red-600 border-red-500/20' },
+  indicator: { label: 'Indicator', icon: Activity, className: 'bg-purple-500/10 text-purple-600 border-purple-500/20' },
+  signal: { label: 'Signal', icon: TrendingUp, className: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20' },
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+function sqliteToDate(value: string | null): Date | null {
+  if (!value) return null
+  const iso = value.replace(' ', 'T')
+  return new Date(iso.endsWith('Z') ? iso : `${iso}Z`)
+}
+
+function mapEngineRow(row: any): AlertRow {
+  return {
+    id: row.id,
+    market: row.market,
+    symbol: row.symbol,
+    conditionType: row.condition_type,
+    field: row.field,
+    comparator: row.comparator,
+    threshold: row.threshold,
+    category: row.category as Category,
+    sound: row.sound,
+    vibration: row.vibration,
+    status: row.status,
+    createdAt: sqliteToDate(row.created_at) || new Date(),
+    triggeredAt: sqliteToDate(row.triggered_at),
+    triggeredValue: row.triggered_value,
+    note: row.note || '',
+  }
+}
+
+function formatPrice(value: number): string {
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+}
+
+function signalTargetText(row: AlertRow): string {
+  const target = Math.round(row.threshold + 0.5)
+  const name = STRATEGY_LABELS[row.field] || row.field
+  const direction = target === 1 ? 'Bullish' : target === -1 ? 'Bearish' : 'Flat'
+  return `${name} -> ${direction}`
+}
+
+function conditionText(row: AlertRow): string {
+  switch (row.category) {
+    case 'price':
+      return row.conditionType === 'price_above'
+        ? `Price above ${formatPrice(row.threshold)}`
+        : `Price below ${formatPrice(row.threshold)}`
+    case 'take_profit':
+      return `Take profit at ${formatPrice(row.threshold)}`
+    case 'stop_loss':
+      return `Stop loss at ${formatPrice(row.threshold)}`
+    case 'indicator':
+      return `${INDICATOR_FIELD_LABELS[row.field] || row.field} ${row.comparator} ${formatPrice(row.threshold)}`
+    case 'signal':
+      return signalTargetText(row)
+  }
+}
+
+// ─── Sound + Vibration engine (synthesized ringtones, no asset files needed) ──
 
 const RINGTONE_URLS: Record<string, string> = {}
 
@@ -351,7 +255,7 @@ function generateWavBlob(sampleRate: number, channels: number, samples: Float32A
 
   for (let i = 0; i < numSamples; i++) {
     const s = Math.max(-1, Math.min(1, samples[i]))
-    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true)
   }
 
   return new Blob([buffer], { type: 'audio/wav' })
@@ -441,158 +345,238 @@ function ensureRingtoneUrls() {
   }
 }
 
-function playAlertSound(uri?: string | null) {
+function playAlertSound(uri: string) {
   if (typeof window === 'undefined') return
   ensureRingtoneUrls()
 
-  const selected = uri && uri !== '' && RINGTONE_URLS[uri] ? uri : 'bell'
+  const selected = RINGTONE_URLS[uri] ? uri : 'bell'
   const url = RINGTONE_URLS[selected]
   if (!url) return
 
   try {
     const audio = new Audio(url)
     audio.volume = 1.0
-    audio.play().catch(() => {
-      try {
-        const Ctx = window.AudioContext || (window as any).webkitAudioContext
-        if (!Ctx) return
-        const ctx = new Ctx()
-        const now = ctx.currentTime
-        const tone = (freq: number, start: number, dur: number, type: OscillatorType = 'sine', gain = 0.25) => {
-          const osc = ctx.createOscillator()
-          const g = ctx.createGain()
-          osc.type = type
-          osc.frequency.value = freq
-          g.gain.setValueAtTime(0.0001, now + start)
-          g.gain.exponentialRampToValueAtTime(gain, now + start + 0.02)
-          g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur)
-          osc.connect(g)
-          g.connect(ctx.destination)
-          osc.start(now + start)
-          osc.stop(now + start + dur + 0.05)
-        }
-        if (selected === 'ding') {
-          tone(1318, 0, 0.6, 'sine')
-        } else if (selected === 'chime') {
-          tone(1046, 0, 0.5, 'sine')
-          tone(1568, 0.12, 0.7, 'sine')
-        } else if (selected === 'alarm') {
-          tone(880, 0, 0.15, 'square', 0.2)
-          tone(880, 0.2, 0.15, 'square', 0.2)
-          tone(880, 0.4, 0.15, 'square', 0.2)
-          tone(880, 0.6, 0.15, 'square', 0.2)
-        } else if (selected === 'siren') {
-          tone(600, 0, 0.4, 'sawtooth', 0.15)
-          tone(1000, 0.4, 0.4, 'sawtooth', 0.15)
-          tone(600, 0.8, 0.4, 'sawtooth', 0.15)
-          tone(1000, 1.2, 0.4, 'sawtooth', 0.15)
-        } else {
-          tone(880, 0, 0.4, 'sine')
-          tone(1318, 0.18, 0.5, 'sine')
-        }
-      } catch (e) {}
-    })
-  } catch (e) {}
+    audio.play().catch(() => {})
+  } catch {}
 }
 
-function fireAlertNotification(prefs: AlertNotifValue, asset?: string, targetPrice?: number) {
-  if (typeof navigator === 'undefined') return
-  if (prefs.soundEnabled) playAlertSound(prefs.soundUri)
-  if (prefs.vibrateEnabled && typeof navigator.vibrate === 'function') {
-    try { navigator.vibrate([200, 80, 200, 80, 200]) } catch (e) {}
+function vibrate(pattern: string) {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
+  const patterns: Record<string, number | number[]> = {
+    default: [200, 80, 200, 80, 200],
+    soft: [100],
+    strong: [300, 100, 300, 100, 300],
+    urgent: [200, 50, 200, 50, 200, 50, 400],
   }
-  if (prefs.notifyType === 'system' || prefs.notifyType === 'both') {
-    try {
-      if (typeof window !== 'undefined' && 'Notification' in window) {
-        if (Notification.permission === 'default') {
-          Notification.requestPermission()
-        }
-        if (Notification.permission === 'granted') {
-          const title = 'TOPTIER Alert Triggered'
-          const body = asset
-            ? `${asset}${targetPrice != null ? ` reached ${targetPrice}` : ''} — your alert condition has been met.`
-            : 'Your alert condition has been met.'
-          new Notification(title, {
-            body,
-            icon: '/icons/toptier-icon-192.png',
-            badge: '/icons/toptier-icon-192.png',
-            tag: `alert-${asset || 'generic'}`,
-            requireInteraction: true,
-          } as NotificationOptions)
-        }
+  const p = patterns[pattern]
+  if (!p || pattern === 'off') return
+  try {
+    navigator.vibrate(p)
+  } catch {}
+}
+
+function showSystemNotification(title: string, body: string) {
+  try {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {})
       }
-    } catch (e) {}
-  }
+      if (Notification.permission === 'granted') {
+        new Notification(title, {
+          body,
+          icon: '/icons/toptier-icon-192.png',
+          badge: '/icons/toptier-icon-192.png',
+          tag: `alert-${Date.now()}`,
+          requireInteraction: true,
+        } as NotificationOptions)
+      }
+    }
+  } catch {}
 }
 
-// ─── Loading Skeleton ──────────────────────────────────────────────────────────
+// ─── Shared form fragments ─────────────────────────────────────────────────────
 
-function AlertsSkeleton() {
+function MarketSymbolFields({
+  market,
+  setMarket,
+  symbol,
+  setSymbol,
+}: {
+  market: string
+  setMarket: (v: string) => void
+  symbol: string
+  setSymbol: (v: string) => void
+}) {
+  const suggestions = SYMBOL_SUGGESTIONS[market] || []
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="h-7 w-32 animate-pulse rounded bg-muted" />
-        <div className="h-8 w-36 animate-pulse rounded bg-muted" />
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-2">
+        <Label>Market</Label>
+        <Select value={market} onValueChange={setMarket}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MARKET_OPTIONS.map((m) => (
+              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
-          <div className="size-10 animate-pulse rounded-lg bg-muted" />
-          <div className="flex-1 space-y-2">
-            <div className="h-4 w-48 animate-pulse rounded bg-muted" />
-            <div className="h-3 w-64 animate-pulse rounded bg-muted" />
-          </div>
-          <div className="size-8 animate-pulse rounded bg-muted" />
-          <div className="size-8 animate-pulse rounded bg-muted" />
-        </div>
-      ))}
+      <div className="space-y-2">
+        <Label>Symbol</Label>
+        <Input
+          list={`symbol-suggestions-${market}`}
+          placeholder={market === 'stock' ? 'AAPL' : market === 'crypto' ? 'BTC/USD' : 'EUR/USD'}
+          value={symbol}
+          onChange={(e) => setSymbol(e.target.value)}
+        />
+        <datalist id={`symbol-suggestions-${market}`}>
+          {suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </div>
     </div>
   )
 }
 
-// ─── Create Price Alert Dialog ─────────────────────────────────────────────────
-
-function CreatePriceAlertDialog({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false)
-  const [asset, setAsset] = useState('')
-  const [alertType, setAlertType] = useState<PriceAlertType>('Above')
-  const [targetPrice, setTargetPrice] = useState('')
-  const [frequency, setFrequency] = useState<AlertFrequency>('one-time')
-  const [search, setSearch] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [notif, setNotif] = useState<AlertNotifValue>({
-    soundEnabled: true,
-    soundUri: null,
-    vibrateEnabled: true,
-    notifyType: 'system',
-  })
-
-  const filteredAssets = assetOptions.filter(a =>
-    a.toLowerCase().includes(search.toLowerCase())
+function NotificationPrefs({
+  sound,
+  setSound,
+  vibration,
+  setVibration,
+}: {
+  sound: string
+  setSound: (v: string) => void
+  vibration: string
+  setVibration: (v: string) => void
+}) {
+  return (
+    <div className="rounded-lg border p-3 space-y-3">
+      <p className="text-sm font-medium">Notification when it triggers</p>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Sound</Label>
+        <Select value={sound} onValueChange={setSound}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SOUND_OPTIONS.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Vibration</Label>
+        <Select value={vibration} onValueChange={setVibration}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {VIBRATION_OPTIONS.map((v) => (
+              <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
   )
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center h-24 text-sm text-muted-foreground gap-2">
+      <Loader2 className="size-4 animate-spin" />
+      {label}
+    </div>
+  )
+}
+
+function EmptyState({ icon: Icon, title, subtitle }: { icon: React.ComponentType<{ className?: string }>; title: string; subtitle: string }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+        <Icon className="size-12 text-muted-foreground/30 mb-4" />
+        <h3 className="font-semibold mb-1">{title}</h3>
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Create Trading Alert (Price / TP-SL) ─────────────────────────────────────
+
+function CreateTradingAlertDialog({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<'price' | 'tp_sl'>('price')
+  const [market, setMarket] = useState('stock')
+  const [symbol, setSymbol] = useState('')
+  const [condition, setCondition] = useState('above')
+  const [threshold, setThreshold] = useState('')
+  const [side, setSide] = useState('buy')
+  const [entryPrice, setEntryPrice] = useState('')
+  const [takeProfit, setTakeProfit] = useState('')
+  const [stopLoss, setStopLoss] = useState('')
+  const [sound, setSound] = useState('default')
+  const [vibration, setVibration] = useState('default')
+  const [creating, setCreating] = useState(false)
+
+  const reset = () => {
+    setMode('price')
+    setMarket('stock')
+    setSymbol('')
+    setCondition('above')
+    setThreshold('')
+    setSide('buy')
+    setEntryPrice('')
+    setTakeProfit('')
+    setStopLoss('')
+    setSound('default')
+    setVibration('default')
+  }
+
+  const canSubmit = () => {
+    if (!market || !symbol) return false
+    if (mode === 'price') return Number.isFinite(parseFloat(threshold))
+    return (
+      Number.isFinite(parseFloat(entryPrice)) &&
+      (Number.isFinite(parseFloat(takeProfit)) || Number.isFinite(parseFloat(stopLoss)))
+    )
+  }
 
   const handleCreate = async () => {
-    if (!asset || !targetPrice) return
+    if (!canSubmit()) return
     try {
       setCreating(true)
-      await api.post('/alerts', {
-        alertCategory: 'price',
-        asset,
-        alertType: mapUiAlertTypeToApi(alertType),
-        targetPrice: parseFloat(targetPrice),
-        isRecurring: frequency === 'recurring',
-        soundEnabled: notif.soundEnabled,
-        soundUri: notif.soundUri || null,
-        vibrateEnabled: notif.vibrateEnabled,
-        notifyType: notif.notifyType,
-      })
-      toast.success('Price alert created')
+      if (mode === 'price') {
+        await api.post('/alerts', {
+          category: 'price',
+          market,
+          symbol,
+          condition,
+          threshold: parseFloat(threshold),
+          sound,
+          vibration,
+        })
+        toast.success('Price alert created')
+      } else {
+        await api.post('/alerts', {
+          category: 'tp_sl',
+          market,
+          symbol,
+          side,
+          entryPrice: parseFloat(entryPrice),
+          takeProfit: takeProfit ? parseFloat(takeProfit) : undefined,
+          stopLoss: stopLoss ? parseFloat(stopLoss) : undefined,
+          sound,
+          vibration,
+        })
+        toast.success('Take-profit / stop-loss alerts created')
+      }
       setOpen(false)
-      setAsset('')
-      setTargetPrice('')
-      setAlertType('Above')
-      setFrequency('one-time')
-      setSearch('')
-      setNotif({ soundEnabled: true, soundUri: null, vibrateEnabled: true, notifyType: 'system' })
+      reset()
       onCreated()
     } catch (err: any) {
       toast.error(err.message || 'Failed to create alert')
@@ -602,113 +586,109 @@ function CreatePriceAlertDialog({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset() }}>
       <DialogTrigger asChild>
         <Button size="sm" className="gap-2">
           <Plus className="size-4" />
-          Create Price Alert
+          Price / TP-SL Alert
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Price Alert</DialogTitle>
-          <DialogDescription>Set up a price alert for your favorite asset.</DialogDescription>
+          <DialogTitle>Create Trading Alert</DialogTitle>
+          <DialogDescription>Alert on price levels or position take-profit / stop-loss.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          {/* Asset Selector */}
-          <div className="space-y-2">
-            <Label>Asset</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                placeholder="Search asset..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  if (!e.target.value) setAsset('')
-                }}
-                className="pl-9"
-              />
-            </div>
-            {search && !asset && (
-              <div className="border rounded-md max-h-32 overflow-y-auto">
-                {filteredAssets.map((a) => (
+          <div className="flex gap-1 rounded-lg bg-muted p-1">
+            {(['price', 'tp_sl'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  mode === m ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {m === 'price' ? 'Price level' : 'TP / SL'}
+              </button>
+            ))}
+          </div>
+
+          <MarketSymbolFields market={market} setMarket={setMarket} symbol={symbol} setSymbol={setSymbol} />
+
+          {mode === 'price' ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Condition</Label>
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    key={a}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
-                    onClick={() => {
-                      setAsset(a)
-                      setSearch(a)
-                    }}
+                    onClick={() => setCondition('above')}
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors text-left',
+                      condition === 'above' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600' : 'border-border hover:border-primary/30'
+                    )}
                   >
-                    {a}
+                    <ArrowUpRight className="size-4" /> Price above
                   </button>
-                ))}
+                  <button
+                    onClick={() => setCondition('below')}
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors text-left',
+                      condition === 'below' ? 'border-red-500/40 bg-red-500/10 text-red-600' : 'border-border hover:border-primary/30'
+                    )}
+                  >
+                    <ArrowDownRight className="size-4" /> Price below
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-
-          {/* Alert Type */}
-          <div className="space-y-2">
-            <Label>Alert Type</Label>
-            <Select value={alertType} onValueChange={(v) => setAlertType(v as PriceAlertType)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Above">
-                  <span className="flex items-center gap-2">
-                    <ArrowUpRight className="size-3 text-emerald-600" /> Above
-                  </span>
-                </SelectItem>
-                <SelectItem value="Below">
-                  <span className="flex items-center gap-2">
-                    <ArrowDownRight className="size-3 text-red-600" /> Below
-                  </span>
-                </SelectItem>
-                <SelectItem value="Crosses">
-                  <span className="flex items-center gap-2">
-                    <ArrowLeftRight className="size-3 text-amber-600" /> Crosses
-                  </span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Target Price */}
-          <div className="space-y-2">
-            <Label>Target Price</Label>
-            <Input
-              type="number"
-              placeholder="0.00"
-              value={targetPrice}
-              onChange={(e) => setTargetPrice(e.target.value)}
-              step="0.0001"
-            />
-          </div>
-
-          {/* Frequency Toggle */}
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div className="space-y-0.5">
-              <Label className="text-sm">Recurring Alert</Label>
-              <p className="text-xs text-muted-foreground">
-                {frequency === 'one-time' ? 'Fires once then deactivates' : 'Fires every time condition is met'}
-              </p>
+              <div className="space-y-2">
+                <Label>Target price</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  step="0.0001"
+                />
+              </div>
             </div>
-            <Switch
-              checked={frequency === 'recurring'}
-              onCheckedChange={(checked) =>
-                setFrequency(checked ? 'recurring' : 'one-time')
-              }
-            />
-          </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Position side</Label>
+                <Select value={side} onValueChange={setSide}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="buy">Buy (long)</SelectItem>
+                    <SelectItem value="sell">Sell (short)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-2">
+                  <Label>Entry</Label>
+                  <Input type="number" placeholder="0.00" value={entryPrice} onChange={(e) => setEntryPrice(e.target.value)} step="0.0001" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Take profit</Label>
+                  <Input type="number" placeholder="-" value={takeProfit} onChange={(e) => setTakeProfit(e.target.value)} step="0.0001" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Stop loss</Label>
+                  <Input type="number" placeholder="-" value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} step="0.0001" />
+                </div>
+              </div>
+            </div>
+          )}
 
-          <AlertNotificationOptions value={notif} onChange={setNotif} />
+          <NotificationPrefs sound={sound} setSound={setSound} vibration={vibration} setVibration={setVibration} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate} disabled={!asset || !targetPrice || creating}>
-            {creating ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+          <Button onClick={handleCreate} disabled={!canSubmit() || creating}>
+            {creating && <Loader2 className="size-4 animate-spin mr-2" />}
             Create Alert
           </Button>
         </DialogFooter>
@@ -717,164 +697,71 @@ function CreatePriceAlertDialog({ onCreated }: { onCreated: () => void }) {
   )
 }
 
-// ─── Edit Price Alert Dialog ───────────────────────────────────────────────────
+// ─── Create Indicator / Signal Alert ───────────────────────────────────────────
 
-function EditPriceAlertDialog({
-  alert,
-  open,
-  onOpenChange,
-  onSaved,
-}: {
-  alert: PriceAlert
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSaved: () => void
-}) {
-  const [targetPrice, setTargetPrice] = useState(alert.targetPrice.toString())
-  const [alertType, setAlertType] = useState<PriceAlertType>(alert.type)
-  const [frequency, setFrequency] = useState<AlertFrequency>(alert.frequency)
-  const [saving, setSaving] = useState(false)
-  const [notif, setNotif] = useState<AlertNotifValue>({
-    soundEnabled: alert.soundEnabled ?? true,
-    soundUri: alert.soundUri ?? null,
-    vibrateEnabled: alert.vibrateEnabled ?? true,
-    notifyType: alert.notifyType || 'system',
-  })
-
-  const handleSave = async () => {
-    try {
-      setSaving(true)
-      await api.patch('/alerts', {
-        alertCategory: 'price',
-        alertId: alert.id,
-        alertType: mapUiAlertTypeToApi(alertType),
-        targetPrice: parseFloat(targetPrice),
-        isRecurring: frequency === 'recurring',
-        soundEnabled: notif.soundEnabled,
-        soundUri: notif.soundUri || null,
-        vibrateEnabled: notif.vibrateEnabled,
-        notifyType: notif.notifyType,
-      })
-      toast.success('Alert updated')
-      onSaved()
-      onOpenChange(false)
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save changes')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Alert - {alert.asset}</DialogTitle>
-          <DialogDescription>Modify your price alert settings.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Alert Type</Label>
-            <Select value={alertType} onValueChange={(v) => setAlertType(v as PriceAlertType)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Above">Above</SelectItem>
-                <SelectItem value="Below">Below</SelectItem>
-                <SelectItem value="Crosses">Crosses</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Target Price</Label>
-            <Input
-              type="number"
-              value={targetPrice}
-              onChange={(e) => setTargetPrice(e.target.value)}
-              step="0.0001"
-            />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div className="space-y-0.5">
-              <Label className="text-sm">Recurring Alert</Label>
-              <p className="text-xs text-muted-foreground">
-                {frequency === 'one-time' ? 'Fires once then deactivates' : 'Fires every time condition is met'}
-              </p>
-            </div>
-            <Switch
-              checked={frequency === 'recurring'}
-              onCheckedChange={(checked) =>
-                setFrequency(checked ? 'recurring' : 'one-time')
-              }
-            />
-          </div>
-
-          <AlertNotificationOptions value={notif} onChange={setNotif} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-            Save Changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ─── Create Custom Alert Wizard ────────────────────────────────────────────────
-
-function CreateCustomAlertWizard({ onCreated }: { onCreated: () => void }) {
+function CreateIndicatorSignalDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false)
-  const [step, setStep] = useState(1)
-  const [asset, setAsset] = useState('')
-  const [alertType, setAlertType] = useState<CustomAlertType>('RSI')
-  const [condition, setCondition] = useState('')
+  const [kind, setKind] = useState<'indicator' | 'signal'>('indicator')
+  const [market, setMarket] = useState('stock')
+  const [symbol, setSymbol] = useState('')
+  const [field, setField] = useState('rsi_14')
+  const [comparator, setComparator] = useState('<')
   const [threshold, setThreshold] = useState('')
+  const [strategyName, setStrategyName] = useState('consensus')
+  const [targetValue, setTargetValue] = useState('1')
+  const [sound, setSound] = useState('default')
+  const [vibration, setVibration] = useState('default')
   const [creating, setCreating] = useState(false)
-  const [notif, setNotif] = useState<AlertNotifValue>({
-    soundEnabled: true,
-    soundUri: null,
-    vibrateEnabled: true,
-    notifyType: 'system',
-  })
 
-  const conditionPresets: Record<CustomAlertType, string[]> = {
-    RSI: ['RSI below', 'RSI above'],
-    MACD: ['MACD bullish crossover', 'MACD bearish crossover', 'MACD histogram positive'],
-    'MA Cross': ['50 MA crosses above 200 MA', '50 MA crosses below 200 MA', '20 MA crosses above 50 MA'],
-    'Volume Spike': ['Volume above', 'Volume below'],
-    'S/R Break': ['Breaks resistance at', 'Breaks support at'],
+  const reset = () => {
+    setKind('indicator')
+    setMarket('stock')
+    setSymbol('')
+    setField('rsi_14')
+    setComparator('<')
+    setThreshold('')
+    setStrategyName('consensus')
+    setTargetValue('1')
+    setSound('default')
+    setVibration('default')
   }
 
-  const needsThreshold = ['RSI below', 'RSI above', 'Volume above', 'Volume below', 'Breaks resistance at', 'Breaks support at']
+  const canSubmit = () => {
+    if (!market || !symbol) return false
+    if (kind === 'indicator') return Number.isFinite(parseFloat(threshold))
+    return true
+  }
 
   const handleCreate = async () => {
-    const fullCondition = needsThreshold.includes(condition) && threshold
-      ? `${condition} ${threshold}`
-      : condition
+    if (!canSubmit()) return
     try {
       setCreating(true)
-      await api.post('/alerts', {
-        alertCategory: 'custom',
-        asset,
-        alertType: mapUiCustomTypeToApi(alertType),
-        condition: fullCondition,
-        soundEnabled: notif.soundEnabled,
-        soundUri: notif.soundUri || null,
-        vibrateEnabled: notif.vibrateEnabled,
-        notifyType: notif.notifyType,
-      })
-      toast.success('Custom alert created')
+      if (kind === 'indicator') {
+        await api.post('/alerts', {
+          category: 'indicator',
+          market,
+          symbol,
+          field,
+          comparator,
+          threshold: parseFloat(threshold),
+          sound,
+          vibration,
+        })
+        toast.success('Indicator alert created')
+      } else {
+        await api.post('/alerts', {
+          category: 'signal',
+          market,
+          symbol,
+          strategyName,
+          targetValue: parseInt(targetValue, 10),
+          sound,
+          vibration,
+        })
+        toast.success('Signal alert created')
+      }
       setOpen(false)
-      setStep(1)
-      setAsset('')
-      setAlertType('RSI')
-      setCondition('')
-      setThreshold('')
-      setNotif({ soundEnabled: true, soundUri: null, vibrateEnabled: true, notifyType: 'system' })
+      reset()
       onCreated()
     } catch (err: any) {
       toast.error(err.message || 'Failed to create alert')
@@ -883,440 +770,264 @@ function CreateCustomAlertWizard({ onCreated }: { onCreated: () => void }) {
     }
   }
 
-  const canProceed = () => {
-    switch (step) {
-      case 1: return !!asset
-      case 2: return !!alertType
-      case 3: return !!condition && (!needsThreshold.includes(condition) || !!threshold)
-      case 4: return true
-      default: return false
-    }
-  }
-
-  const steps = [
-    { num: 1, label: 'Asset' },
-    { num: 2, label: 'Indicator' },
-    { num: 3, label: 'Condition' },
-    { num: 4, label: 'Review' },
-  ]
-
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setStep(1); setAsset(''); setAlertType('RSI'); setCondition(''); setThreshold('') } }}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset() }}>
       <DialogTrigger asChild>
         <Button size="sm" className="gap-2">
           <Plus className="size-4" />
-          Create Custom Alert
+          Indicator / Signal Alert
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Custom Alert</DialogTitle>
-          <DialogDescription>Set up an indicator-based alert.</DialogDescription>
+          <DialogTitle>Create Indicator / Signal Alert</DialogTitle>
+          <DialogDescription>Alert on an indicator value or a strategy signal flip.</DialogDescription>
         </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="flex gap-1 rounded-lg bg-muted p-1">
+            {(['indicator', 'signal'] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                className={cn(
+                  'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  kind === k ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {k === 'indicator' ? 'Indicator' : 'Strategy signal'}
+              </button>
+            ))}
+          </div>
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 py-2">
-          {steps.map((s, i) => (
-            <React.Fragment key={s.num}>
-              <div className={cn(
-                'flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-                step >= s.num ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-              )}>
-                <span className={cn(
-                  'flex size-5 items-center justify-center rounded-full text-[10px]',
-                  step > s.num ? 'bg-primary text-primary-foreground' :
-                  step === s.num ? 'border border-primary text-primary' : 'border border-muted-foreground/30 text-muted-foreground'
-                )}>
-                  {step > s.num ? <Check className="size-3" /> : s.num}
-                </span>
-                <span className="hidden sm:inline">{s.label}</span>
-              </div>
-              {i < steps.length - 1 && <ChevronRight className="size-3 text-muted-foreground shrink-0" />}
-            </React.Fragment>
-          ))}
-        </div>
+          <MarketSymbolFields market={market} setMarket={setMarket} symbol={symbol} setSymbol={setSymbol} />
 
-        <div className="min-h-[180px]">
-          <AnimatePresence mode="wait">
-            {step === 1 && (
-              <motion.div key="s1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-                <Label>Select Asset</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {assetOptions.map((a) => (
-                    <button
-                      key={a}
-                      className={cn(
-                        'rounded-lg border px-3 py-2 text-sm transition-colors text-left',
-                        asset === a ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary/30'
-                      )}
-                      onClick={() => setAsset(a)}
-                    >
-                      {a}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {step === 2 && (
-              <motion.div key="s2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-                <Label>Select Indicator Type</Label>
-                <div className="space-y-2">
-                  {(['RSI', 'MACD', 'MA Cross', 'Volume Spike', 'S/R Break'] as CustomAlertType[]).map((t) => (
-                    <button
-                      key={t}
-                      className={cn(
-                        'flex items-center gap-3 w-full rounded-lg border px-4 py-3 text-sm transition-colors text-left',
-                        alertType === t ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary/30'
-                      )}
-                      onClick={() => { setAlertType(t); setCondition('') }}
-                    >
-                      <CustomAlertTypeBadge type={t} />
-                      <span className="text-muted-foreground text-xs">
-                        {t === 'RSI' ? 'Relative Strength Index' :
-                         t === 'MACD' ? 'Moving Average Convergence Divergence' :
-                         t === 'MA Cross' ? 'Moving Average Crossover' :
-                         t === 'Volume Spike' ? 'Abnormal Volume Detection' :
-                         'Support/Resistance Breakout'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {step === 3 && (
-              <motion.div key="s3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-                <Label>Set Condition</Label>
-                <Select value={condition} onValueChange={setCondition}>
+          {kind === 'indicator' ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Indicator field</Label>
+                <Select value={field} onValueChange={setField}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select condition..." />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {conditionPresets[alertType].map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    {INDICATOR_FIELDS.map((f) => (
+                      <SelectItem key={f} value={f}>{INDICATOR_FIELD_LABELS[f] || f}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {needsThreshold.includes(condition) && (
-                  <div className="space-y-2">
-                    <Label>Threshold Value</Label>
-                    <Input
-                      type="number"
-                      placeholder="Enter value..."
-                      value={threshold}
-                      onChange={(e) => setThreshold(e.target.value)}
-                    />
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {step === 4 && (
-              <motion.div key="s4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-                <Label>Review Your Alert</Label>
-                <Card>
-                  <CardContent className="p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Asset</span>
-                      <span className="font-medium">{asset}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Indicator</span>
-                      <CustomAlertTypeBadge type={alertType} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Condition</span>
-                      <span className="font-medium text-sm">
-                        {needsThreshold.includes(condition) && threshold
-                          ? `${condition} ${threshold}`
-                          : condition}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <AlertNotificationOptions value={notif} onChange={setNotif} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <DialogFooter>
-          {step > 1 && (
-            <Button variant="outline" onClick={() => setStep(step - 1)}>Back</Button>
-          )}
-          {step < 4 ? (
-            <Button onClick={() => setStep(step + 1)} disabled={!canProceed()}>
-              Next
-            </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Comparator</Label>
+                  <Select value={comparator} onValueChange={(v) => setComparator(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="<">Below (&lt;)</SelectItem>
+                      <SelectItem value=">">Above (&gt;)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Threshold</Label>
+                  <Input type="number" placeholder="0.00" value={threshold} onChange={(e) => setThreshold(e.target.value)} step="0.01" />
+                </div>
+              </div>
+            </div>
           ) : (
-            <Button onClick={handleCreate} disabled={creating}>
-              {creating ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-              Create Alert
-            </Button>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Strategy</Label>
+                <Select value={strategyName} onValueChange={setStrategyName}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SIGNAL_STRATEGIES.map((s) => (
+                      <SelectItem key={s} value={s}>{STRATEGY_LABELS[s] || s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fire when signal turns</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { v: '1', label: 'Bullish', cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600' },
+                    { v: '0', label: 'Flat', cls: 'border-amber-500/40 bg-amber-500/10 text-amber-600' },
+                    { v: '-1', label: 'Bearish', cls: 'border-red-500/40 bg-red-500/10 text-red-600' },
+                  ].map((o) => (
+                    <button
+                      key={o.v}
+                      onClick={() => setTargetValue(o.v)}
+                      className={cn(
+                        'rounded-lg border px-2 py-2 text-sm font-medium transition-colors',
+                        targetValue === o.v ? o.cls : 'border-border hover:border-primary/30'
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
+
+          <NotificationPrefs sound={sound} setSound={setSound} vibration={vibration} setVibration={setVibration} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreate} disabled={!canSubmit() || creating}>
+            {creating && <Loader2 className="size-4 animate-spin mr-2" />}
+            Create Alert
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
-// ─── Price Alert Row ───────────────────────────────────────────────────────────
+// ─── Rows ──────────────────────────────────────────────────────────────────────
 
-function PriceAlertRow({
-  alert,
-  onToggle,
-  onEdit,
-  onDelete,
-  actionLoading,
-}: {
-  alert: PriceAlert
-  onToggle: (id: string) => void
-  onEdit: () => void
-  onDelete: (id: string) => void
-  actionLoading: boolean
-}) {
-  const [editOpen, setEditOpen] = useState(false)
-  const isPaused = alert.status === 'paused'
-  const isTriggered = alert.status === 'triggered'
+function StatusBadge({ status }: { status: string }) {
+  const config = {
+    active: { dot: 'bg-emerald-500', label: 'Active', className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
+    triggered: { dot: 'bg-amber-500', label: 'Triggered', className: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
+    cancelled: { dot: 'bg-gray-400', label: 'Cancelled', className: 'bg-gray-500/10 text-gray-500 border-gray-500/20' },
+  }
+  const cfg = config[status as keyof typeof config] || config.cancelled
+  return (
+    <Badge variant="outline" className={cn('gap-1', cfg.className)}>
+      <span className={cn('size-1.5 rounded-full', cfg.dot)} />
+      {cfg.label}
+    </Badge>
+  )
+}
 
-  const priceDiff = alert.currentPrice - alert.targetPrice
-  const priceDiffPercent = ((priceDiff / alert.targetPrice) * 100).toFixed(2)
-
+function NotifyBadges({ sound, vibration }: { sound: string; vibration: string }) {
   return (
     <>
-      <motion.div
-        layout
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={cn(
-          'flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-4 transition-colors',
-          isPaused && 'opacity-60',
-          isTriggered && 'border-amber-500/30 bg-amber-500/5'
-        )}
-      >
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <Bell className="size-4 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm">{alert.asset}</span>
-              <AlertTypeBadge type={alert.type} />
-              <StatusBadge status={alert.status} />
-              <FrequencyBadge frequency={alert.frequency} />
-              <NotifyBadges value={alert} />
-            </div>
-            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-              <span>Target: <span className="font-medium text-foreground">{alert.targetPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span></span>
-              <span>Current: <span className="font-medium text-foreground">{alert.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span></span>
-              <span className={cn(
-                parseFloat(priceDiffPercent) > 0 ? 'text-emerald-600' :
-                parseFloat(priceDiffPercent) < 0 ? 'text-red-600' : 'text-muted-foreground'
-              )}>
-                ({parseFloat(priceDiffPercent) > 0 ? '+' : ''}{priceDiffPercent}%)
-              </span>
-            </div>
-            {isTriggered && alert.triggeredAt && (
-              <p className="text-xs text-amber-600 mt-1">
-                Triggered {new Date(alert.triggeredAt).toLocaleString()}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 sm:shrink-0">
-          <Switch
-            checked={alert.status === 'active'}
-            disabled={isTriggered || actionLoading}
-            onCheckedChange={() => onToggle(alert.id)}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={() => setEditOpen(true)}
-            disabled={isTriggered || actionLoading}
-          >
-            <Edit3 className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 text-destructive hover:text-destructive"
-            onClick={() => onDelete(alert.id)}
-            disabled={actionLoading}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
-      </motion.div>
-
-      <EditPriceAlertDialog
-        alert={alert}
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        onSaved={onEdit}
-      />
+      <Badge variant="outline" className="gap-1 text-[10px]">
+        <Volume2 className="size-3" /> {sound}
+      </Badge>
+      <Badge variant="outline" className="gap-1 text-[10px]">
+        <Vibrate className="size-3" /> {vibration}
+      </Badge>
     </>
   )
 }
 
-// ─── Custom Alert Row ──────────────────────────────────────────────────────────
-
-function CustomAlertRow({
+function AlertCardRow({
   alert,
-  onToggle,
-  onDelete,
+  onCancel,
   actionLoading,
 }: {
-  alert: CustomAlert
-  onToggle: (id: string) => void
-  onDelete: (id: string) => void
+  alert: AlertRow
+  onCancel: (id: number) => void
   actionLoading: boolean
 }) {
-  const isPaused = alert.status === 'paused'
-  const isTriggered = alert.status === 'triggered'
+  const meta = CATEGORY_META[alert.category]
+  const Icon = meta.icon
+  const isActive = alert.status === 'active'
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
         'flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-4 transition-colors',
-        isPaused && 'opacity-60',
-        isTriggered && 'border-amber-500/30 bg-amber-500/5'
+        alert.status === 'cancelled' && 'opacity-60'
       )}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <AlertTriangle className="size-4 text-primary" />
+        <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg border', meta.className)}>
+          <Icon className="size-4" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">{alert.asset}</span>
-            <CustomAlertTypeBadge type={alert.type} />
+            <span className="font-semibold text-sm">{alert.symbol}</span>
+            <Badge variant="outline" className={cn('gap-1 text-[10px]', meta.className)}>
+              <Icon className="size-3" /> {meta.label}
+            </Badge>
             <StatusBadge status={alert.status} />
-            <NotifyBadges value={alert} />
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Condition: <span className="font-medium text-foreground">{alert.condition}</span>
+            {alert.market} · {conditionText(alert)}
+            {alert.note && <span className="ml-1">· {alert.note}</span>}
           </p>
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <NotifyBadges sound={alert.sound} vibration={alert.vibration} />
+            <Badge variant="outline" className="gap-1 text-[10px]">
+              <Clock className="size-3" /> {alert.createdAt.toLocaleString()}
+            </Badge>
+          </div>
         </div>
       </div>
-
       <div className="flex items-center gap-2 sm:shrink-0">
-        <Switch
-          checked={alert.status === 'active'}
-          disabled={isTriggered || actionLoading}
-          onCheckedChange={() => onToggle(alert.id)}
-        />
         <Button
           variant="ghost"
-          size="icon"
-          className="size-8 text-destructive hover:text-destructive"
-          onClick={() => onDelete(alert.id)}
-          disabled={actionLoading}
+          size="sm"
+          className="gap-1.5 text-muted-foreground"
+          disabled={!isActive || actionLoading}
+          onClick={() => onCancel(alert.id)}
         >
-          <Trash2 className="size-3.5" />
+          <Ban className="size-3.5" />
+          Cancel
         </Button>
       </div>
     </motion.div>
   )
 }
 
-// ─── Main Alerts Page ──────────────────────────────────────────────────────────
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export function AlertsPage() {
   const user = useStore((s) => s.user)
   const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
-  const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([])
-  const [customAlerts, setCustomAlerts] = useState<CustomAlert[]>([])
-  const [triggeredAlerts, setTriggeredAlerts] = useState<PriceAlert[]>([])
-  const [historyOpen, setHistoryOpen] = useState(false)
+
+  const [alerts, setAlerts] = useState<AlertRow[]>([])
+  const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const processingRef = useRef(false)
 
-  // Fetch alerts from API
   const fetchAlerts = useCallback(async () => {
     try {
-      setLoading(true)
       setError(null)
       const result = await api.get('/alerts')
-      const data = result.data as {
-        priceAlerts?: Array<{
-          id: string
-          asset: string
-          alertType: string
-          targetPrice: number
-          isRecurring: boolean
-          isActive: boolean
-          isTriggered: boolean
-          triggeredAt: string | null
-          createdAt: string
-          soundEnabled: boolean
-          soundUri: string | null
-          vibrateEnabled: boolean
-          notifyType: string
-        }>
-        customAlerts?: Array<{
-          id: string
-          asset: string
-          alertType: string
-          condition: string
-          isActive: boolean
-          isTriggered: boolean
-          triggeredAt: string | null
-          createdAt: string
-          soundEnabled: boolean
-          soundUri: string | null
-          vibrateEnabled: boolean
-          notifyType: string
-        }>
-      }
-
-      // Map API price alerts to UI types
-      const mappedPriceAlerts: PriceAlert[] = (data.priceAlerts || []).map((a) => ({
-        id: a.id,
-        asset: a.asset,
-        type: mapApiAlertTypeToUi(a.alertType),
-        targetPrice: a.targetPrice,
-        currentPrice: a.targetPrice * (mapApiAlertTypeToUi(a.alertType) === 'Above' ? 0.995 : 1.005),
-        status: getAlertStatus(a.isActive, a.isTriggered),
-        frequency: a.isRecurring ? 'recurring' : 'one-time',
-        triggeredAt: a.triggeredAt || undefined,
-        createdAt: a.createdAt,
-        soundEnabled: a.soundEnabled ?? true,
-        soundUri: a.soundUri ?? null,
-        vibrateEnabled: a.vibrateEnabled ?? true,
-        notifyType: a.notifyType || 'system',
-      }))
-
-      // Map API custom alerts to UI types
-      const mappedCustomAlerts: CustomAlert[] = (data.customAlerts || []).map((a) => ({
-        id: a.id,
-        asset: a.asset,
-        type: mapApiCustomTypeToUi(a.alertType),
-        condition: a.condition,
-        status: getAlertStatus(a.isActive, a.isTriggered),
-        frequency: 'recurring',
-        createdAt: a.createdAt,
-        soundEnabled: a.soundEnabled ?? true,
-        soundUri: a.soundUri ?? null,
-        vibrateEnabled: a.vibrateEnabled ?? true,
-        notifyType: a.notifyType || 'system',
-      }))
-
-      setPriceAlerts(mappedPriceAlerts.filter((a) => a.status !== 'triggered'))
-      setTriggeredAlerts(mappedPriceAlerts.filter((a) => a.status === 'triggered'))
-      setCustomAlerts(mappedCustomAlerts)
+      const rows: Array<Record<string, unknown>> = result.data?.alerts || []
+      setAlerts(rows.map((r) => mapEngineRow(r)))
+      setLoading(false)
     } catch (err: any) {
       setError(err.message || 'Failed to load alerts')
-    } finally {
       setLoading(false)
+    }
+  }, [])
+
+  const handleTriggered = useCallback(async () => {
+    if (processingRef.current) return
+    processingRef.current = true
+    try {
+      const result = await api.get('/notifications?scope=pending')
+      const list: EngineNotification[] = result.data?.notifications || []
+      setPendingCount(list.length)
+      for (const n of list) {
+        showSystemNotification(n.title, n.body)
+        toast(n.title, { description: n.body })
+        setTimeout(() => playAlertSound(n.sound), 0)
+        vibrate(n.vibration)
+        try {
+          await api.post('/notifications/ack', { id: n.id })
+        } catch {}
+      }
+      setPendingCount(0)
+    } catch {
+    } finally {
+      processingRef.current = false
     }
   }, [])
 
@@ -1324,149 +1035,61 @@ export function AlertsPage() {
     fetchAlerts()
   }, [fetchAlerts])
 
-  // Fetch live prices for every asset referenced by price alerts so the
-  // "Current Price" column shows real-time data instead of a static estimate.
-  const alertSymbols = useMemo(() => {
-    const set = new Set<string>()
-    priceAlerts.forEach(a => { if (a.asset) set.add(a.asset) })
-    triggeredAlerts.forEach(a => { if (a.asset) set.add(a.asset) })
-    return Array.from(set)
-  }, [priceAlerts, triggeredAlerts])
-
-  const { prices: livePrices, source, lastUpdated } = useLiveMarket({
-    symbols: alertSymbols,
-    refreshMs: 30_000,
-    enabled: alertSymbols.length > 0,
-  })
-
-  const livePriceMap = useMemo(() => {
-    const m = new Map<string, number>()
-    livePrices.forEach(p => m.set(p.symbol, p.price))
-    return m
-  }, [livePrices])
-
-  // Overlay live prices on top of the API-provided alerts. Falls back to the
-  // existing estimate when no live price is available for an asset.
-  const mergedPriceAlerts = useMemo<PriceAlert[]>(() => {
-    return priceAlerts.map(a => {
-      const live = livePriceMap.get(a.asset)
-      return live !== undefined ? { ...a, currentPrice: live } : a
-    })
-  }, [priceAlerts, livePriceMap])
-
-  const mergedTriggeredAlerts = useMemo<PriceAlert[]>(() => {
-    return triggeredAlerts.map(a => {
-      const live = livePriceMap.get(a.asset)
-      return live !== undefined ? { ...a, currentPrice: live } : a
-    })
-  }, [triggeredAlerts, livePriceMap])
-
-  // Fire sound + vibration + system notification when an alert is first
-  // detected as triggered (server flips isTriggered during polling).
-  const seenTriggeredRef = useRef<Set<string>>(new Set())
-  const notifiedTriggeredRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const fresh = new Set<string>()
-    triggeredAlerts.forEach((a) => {
-      fresh.add(a.id)
-      if (!seenTriggeredRef.current.has(a.id) && !notifiedTriggeredRef.current.has(a.id)) {
-        notifiedTriggeredRef.current.add(a.id)
-        fireAlertNotification({
-          soundEnabled: a.soundEnabled,
-          soundUri: a.soundUri,
-          vibrateEnabled: a.vibrateEnabled,
-          notifyType: a.notifyType,
-        }, a.asset, a.targetPrice)
-        toast('Alert triggered', {
-          description: `${a.asset} price alert was triggered`,
-        })
-      }
-    })
-    seenTriggeredRef.current = fresh
-  }, [triggeredAlerts])
+    const timer = setInterval(handleTriggered, 15_000)
+    return () => clearInterval(timer)
+  }, [handleTriggered])
+
+  useEffect(() => {
+    handleTriggered()
+  }, [handleTriggered])
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {})
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const isLive = source === 'finnhub' || source === 'yahoo' || source === 'mixed'
+  const checkNow = async () => {
+    try {
+      setChecking(true)
+      const result = await api.post('/alerts/check', {})
+      const fired = result.data?.fired
+      if (Array.isArray(fired) && fired.length > 0) {
+        toast.success(`${fired.length} alert${fired.length === 1 ? '' : 's'} triggered`)
+      }
+      await fetchAlerts()
+    } catch (err: any) {
+      toast.error(err.message || 'Check failed')
+    } finally {
+      setChecking(false)
+    }
+  }
 
-  const activeAlerts = priceAlerts.filter((a) => a.status === 'active').length
+  const cancelAlert = async (id: number) => {
+    try {
+      setActionLoading(true)
+      await api.post('/alerts/cancel', { id })
+      toast.success('Alert cancelled')
+      await fetchAlerts()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to cancel alert')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const { tradingAlerts, indicatorSignals, triggered } = useMemo(() => {
+    const tradingCategories: Category[] = ['price', 'take_profit', 'stop_loss']
+    const tradingAlerts = alerts.filter((a) => tradingCategories.includes(a.category) && a.status !== 'triggered')
+    const indicatorSignals = alerts.filter((a) => (a.category === 'indicator' || a.category === 'signal') && a.status !== 'triggered')
+    const triggeredList = alerts.filter((a) => a.status === 'triggered')
+    return { tradingAlerts, indicatorSignals, triggered: triggeredList }
+  }, [alerts])
+
+  const activeCount = alerts.filter((a) => a.status === 'active').length
   const maxFreeAlerts = 5
 
-  const togglePriceAlert = async (id: string) => {
-    const alert = priceAlerts.find((a) => a.id === id)
-    if (!alert) return
-    const newActive = alert.status !== 'active'
-    try {
-      setActionLoading(true)
-      await api.patch('/alerts', {
-        alertCategory: 'price',
-        alertId: id,
-        isActive: newActive,
-      })
-      await fetchAlerts()
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to toggle alert')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const editPriceAlert = () => {
-    // Refresh data after edit
-    fetchAlerts()
-  }
-
-  const deletePriceAlert = async (id: string) => {
-    try {
-      setActionLoading(true)
-      await api.delete(`/alerts?alertId=${id}&alertCategory=price`)
-      toast.success('Alert deleted')
-      await fetchAlerts()
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete alert')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const toggleCustomAlert = async (id: string) => {
-    const alert = customAlerts.find((a) => a.id === id)
-    if (!alert) return
-    const newActive = alert.status !== 'active'
-    try {
-      setActionLoading(true)
-      await api.patch('/alerts', {
-        alertCategory: 'custom',
-        alertId: id,
-        isActive: newActive,
-      })
-      await fetchAlerts()
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to toggle alert')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const deleteCustomAlert = async (id: string) => {
-    try {
-      setActionLoading(true)
-      await api.delete(`/alerts?alertId=${id}&alertCategory=custom`)
-      toast.success('Alert deleted')
-      await fetchAlerts()
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete alert')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  // Loading state
   if (loading) {
     return (
       <div className="p-3 sm:p-4 space-y-5">
@@ -1477,12 +1100,11 @@ export function AlertsPage() {
           </div>
           <div className="h-6 w-40 animate-pulse rounded bg-muted" />
         </div>
-        <AlertsSkeleton />
+        <LoadingState label="Loading alerts…" />
       </div>
     )
   }
 
-  // Error state
   if (error) {
     return (
       <div className="p-3 sm:p-4 space-y-5">
@@ -1509,30 +1131,41 @@ export function AlertsPage() {
 
   return (
     <div className="p-3 sm:p-4 space-y-5">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Bell className="size-6 text-primary" />
             Alerts
-            {isLive && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                LIVE
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Signal Engine
+            </span>
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your price and indicator-based alerts
-            {lastUpdated && (
-              <span className="ml-1 text-[11px]">
-                · Updated {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
-            )}
+            Price, indicator, take-profit and stop-loss alerts with sound + vibration.
           </p>
         </div>
-        {/* Alert counter */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={checkNow}
+            disabled={checking}
+          >
+            {checking ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
+            Check now
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5"
+            onClick={fetchAlerts}
+            disabled={actionLoading}
+          >
+            <RefreshCcw className="size-3.5" />
+            Refresh
+          </Button>
           <Badge variant="outline" className="gap-1.5 py-1 px-3">
             {isPremium ? (
               <>
@@ -1542,175 +1175,132 @@ export function AlertsPage() {
             ) : (
               <>
                 <Zap className="size-3" />
-                {activeAlerts}/{maxFreeAlerts} active alerts (Free)
+                {activeCount}/{maxFreeAlerts} active alerts (Free)
               </>
             )}
           </Badge>
+          {pendingCount > 0 && (
+            <Badge variant="outline" className="gap-1.5 py-1 px-3 border-amber-500/30 text-amber-600 bg-amber-500/10">
+              <Radio className="size-3" />
+              {pendingCount} pending
+            </Badge>
+          )}
         </div>
       </div>
 
-      <Tabs defaultValue="price" className="space-y-4">
+      <Tabs defaultValue="trading" className="space-y-4">
         <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="price" className="flex-1 sm:flex-none gap-1.5">
-            <Bell className="size-3.5" />
-            Price Alerts
+          <TabsTrigger value="trading" className="flex-1 sm:flex-none gap-1.5">
+            <Target className="size-3.5" />
+            Price & TP/SL
           </TabsTrigger>
-          <TabsTrigger value="custom" className="flex-1 sm:flex-none gap-1.5">
-            <AlertTriangle className="size-3.5" />
-            Custom Alerts
+          <TabsTrigger value="indicators" className="flex-1 sm:flex-none gap-1.5">
+            <Activity className="size-3.5" />
+            Indicators & Signals
+          </TabsTrigger>
+          <TabsTrigger value="triggered" className="flex-1 sm:flex-none gap-1.5">
+            <BellRing className="size-3.5" />
+            Triggered ({triggered.length})
           </TabsTrigger>
         </TabsList>
 
-        {/* ─── Price Alerts Tab ─── */}
-        <TabsContent value="price" className="space-y-4">
+        <TabsContent value="trading" className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Price Alerts</h2>
-            <CreatePriceAlertDialog onCreated={fetchAlerts} />
+            <h2 className="text-lg font-semibold">Price, Take Profit & Stop Loss</h2>
+            <CreateTradingAlertDialog onCreated={fetchAlerts} />
           </div>
-
-          {mergedPriceAlerts.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <Bell className="size-12 text-muted-foreground/30 mb-4" />
-                <h3 className="font-semibold mb-1">No Price Alerts</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Create your first alert to get notified when prices reach your targets.
-                </p>
-                <CreatePriceAlertDialog onCreated={fetchAlerts} />
-              </CardContent>
-            </Card>
+          {tradingAlerts.length === 0 ? (
+            <EmptyState
+              icon={Target}
+              title="No trading alerts"
+              subtitle="Create a price-level alert or attach take-profit / stop-loss alerts to your positions."
+            />
           ) : (
             <div className="space-y-3">
-              {mergedPriceAlerts.map((alert) => (
-                <PriceAlertRow
-                  key={alert.id}
-                  alert={alert}
-                  onToggle={togglePriceAlert}
-                  onEdit={editPriceAlert}
-                  onDelete={deletePriceAlert}
-                  actionLoading={actionLoading}
-                />
-              ))}
+              <AnimatePresence>
+                {tradingAlerts.map((alert) => (
+                  <AlertCardRow key={alert.id} alert={alert} onCancel={cancelAlert} actionLoading={actionLoading} />
+                ))}
+              </AnimatePresence>
             </div>
           )}
-
-          {/* Alert History (Collapsible) */}
-          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between gap-2">
-                <span className="flex items-center gap-2">
-                  <Clock className="size-4 text-muted-foreground" />
-                  Alert History ({mergedTriggeredAlerts.length} triggered)
-                </span>
-                {historyOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Card className="mt-2">
-                <CardContent className="p-0">
-                  <ScrollArea className="max-h-64">
-                    <div className="divide-y">
-                      {mergedTriggeredAlerts.length === 0 ? (
-                        <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                          No triggered alerts in history
-                        </div>
-                      ) : (
-                        mergedTriggeredAlerts.map((alert) => (
-                          <div key={alert.id} className="flex items-center gap-3 px-4 py-3">
-                            <div className="flex size-8 items-center justify-center rounded-full bg-amber-500/10">
-                              <Bell className="size-3.5 text-amber-600" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm">{alert.asset}</span>
-                                <AlertTypeBadge type={alert.type} />
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                Target: {alert.targetPrice.toLocaleString()} → Actual: {alert.currentPrice.toLocaleString()}
-                              </p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-xs text-muted-foreground">
-                                {alert.triggeredAt ? new Date(alert.triggeredAt).toLocaleDateString() : ''}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {alert.triggeredAt ? new Date(alert.triggeredAt).toLocaleTimeString() : ''}
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </CollapsibleContent>
-          </Collapsible>
         </TabsContent>
 
-        {/* ─── Custom Alerts Tab ─── */}
-        <TabsContent value="custom" className="space-y-4">
-          {/* Premium Badge */}
-          {!isPremium && (
-            <Card className="border-yellow-500/30 bg-yellow-500/5">
-              <CardContent className="flex items-center gap-3 p-4">
-                <Crown className="size-5 text-yellow-500 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Custom alerts are a Premium feature</p>
-                  <p className="text-xs text-muted-foreground">
-                    Upgrade to create indicator-based alerts like RSI, MACD, and more.
-                  </p>
-                </div>
-                <Button size="sm" variant="outline" className="shrink-0 gap-1.5 border-yellow-500/30 text-yellow-600 hover:bg-yellow-500/10">
-                  <Crown className="size-3.5" />
-                  Upgrade
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
+        <TabsContent value="indicators" className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Custom Alerts</h2>
-            {isPremium && <CreateCustomAlertWizard onCreated={fetchAlerts} />}
+            <h2 className="text-lg font-semibold">Indicators & Strategy Signals</h2>
+            <CreateIndicatorSignalDialog onCreated={fetchAlerts} />
           </div>
-
-          {!isPremium ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <AlertTriangle className="size-12 text-muted-foreground/30 mb-4" />
-                <h3 className="font-semibold mb-1">Premium Feature</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Custom indicator alerts are available on Premium plans.
-                </p>
-                <Button variant="outline" className="gap-1.5">
-                  <Crown className="size-4 text-yellow-500" />
-                  Upgrade to Premium
-                </Button>
-              </CardContent>
-            </Card>
-          ) : customAlerts.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <AlertTriangle className="size-12 text-muted-foreground/30 mb-4" />
-                <h3 className="font-semibold mb-1">No Custom Alerts</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Create your first indicator-based alert.
-                </p>
-                <CreateCustomAlertWizard onCreated={fetchAlerts} />
-              </CardContent>
-            </Card>
+          {indicatorSignals.length === 0 ? (
+            <EmptyState
+              icon={Activity}
+              title="No indicator / signal alerts"
+              subtitle="Alert on RSI, MACD, moving averages, or a strategy signal turning bullish or bearish."
+            />
           ) : (
             <div className="space-y-3">
-              {customAlerts.map((alert) => (
-                <CustomAlertRow
-                  key={alert.id}
-                  alert={alert}
-                  onToggle={toggleCustomAlert}
-                  onDelete={deleteCustomAlert}
-                  actionLoading={actionLoading}
-                />
-              ))}
+              <AnimatePresence>
+                {indicatorSignals.map((alert) => (
+                  <AlertCardRow key={alert.id} alert={alert} onCancel={cancelAlert} actionLoading={actionLoading} />
+                ))}
+              </AnimatePresence>
             </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="triggered" className="space-y-4">
+          <h2 className="text-lg font-semibold">Triggered History</h2>
+          {triggered.length === 0 ? (
+            <EmptyState
+              icon={Clock}
+              title="No triggered alerts"
+              subtitle="Alerts that fire will show up here with the value that triggered them."
+            />
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <ScrollArea className="max-h-[26rem]">
+                  <div className="divide-y">
+                    {triggered.map((alert) => {
+                      const meta = CATEGORY_META[alert.category]
+                      const Icon = meta.icon
+                      return (
+                        <div key={alert.id} className="flex items-center gap-3 px-4 py-3">
+                          <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-full border', meta.className)}>
+                            <Icon className="size-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm">{alert.symbol}</span>
+                              <Badge variant="outline" className={cn('gap-1 text-[10px]', meta.className)}>
+                                {meta.label}
+                              </Badge>
+                              <NotifyBadges sound={alert.sound} vibration={alert.vibration} />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {conditionText(alert)}
+                              {alert.triggeredValue != null && (
+                                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                  {' '}&rarr; Hit at {formatPrice(alert.triggeredValue)}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs text-muted-foreground">
+                              {alert.triggeredAt ? alert.triggeredAt.toLocaleDateString() : '—'}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {alert.triggeredAt ? alert.triggeredAt.toLocaleTimeString() : ''}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
       </Tabs>

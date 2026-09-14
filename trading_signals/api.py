@@ -16,7 +16,11 @@ Example:
 """
 
 from __future__ import annotations
-from fastapi import FastAPI, HTTPException, Query
+import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import pandas as pd
@@ -35,8 +39,82 @@ from . import news as news_mod
 from . import cash_wallet as cash_mod
 from . import crypto_wallet as crypto_mod
 from . import ledger as ledger_mod
+from . import notifications as notif_mod
 
-app = FastAPI(title="Trading Signals API", version="0.2.0")
+ALERTS_CHECK_INTERVAL = int(os.environ.get("ALERTS_CHECK_INTERVAL_SECONDS", "180"))
+ALERTS_LOGGER = logging.getLogger("trading_signals")
+
+
+async def _run_alert_cycle() -> None:
+    """Evaluate active alerts for every user and push any new notifications to
+    that user's connected WebSocket clients. Errors are logged, never thrown,
+    so a single bad feed can't take down the scheduler."""
+    users = alert_mod.list_active_users()
+    if not users:
+        return
+    for uid in users:
+        try:
+            fired = alert_mod.check_alerts(user_id=uid)
+            if fired:
+                for n in notif_mod.get_pending_notifications(uid):
+                    await ws_manager.send_to_user(uid, n)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            ALERTS_LOGGER.exception("Alert cycle failed for user %s", uid)
+
+
+async def _alert_scheduler() -> None:
+    while True:
+        try:
+            await asyncio.sleep(ALERTS_CHECK_INTERVAL)
+            await _run_alert_cycle()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            ALERTS_LOGGER.exception("Alert scheduler error")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    task = asyncio.create_task(_alert_scheduler())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+app = FastAPI(title="Trading Signals API", version="0.3.1", lifespan=lifespan)
+
+
+class ConnectionManager:
+    """
+    Minimal in-memory WebSocket connection registry, keyed by user_id. Fine
+    for a single-process deployment; if you scale to multiple backend
+    instances, replace this with a shared pub/sub (Redis, etc.) so a
+    notification fired on one instance reaches a client connected to another.
+    """
+
+    def __init__(self):
+        self._connections: dict[str, list[WebSocket]] = {}
+
+    async def connect(self, user_id: str, websocket: WebSocket):
+        await websocket.accept()
+        self._connections.setdefault(user_id, []).append(websocket)
+
+    def disconnect(self, user_id: str, websocket: WebSocket):
+        conns = self._connections.get(user_id, [])
+        if websocket in conns:
+            conns.remove(websocket)
+
+    async def send_to_user(self, user_id: str, message: dict):
+        for ws in list(self._connections.get(user_id, [])):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                self.disconnect(user_id, ws)
+
+
+ws_manager = ConnectionManager()
 
 
 # ---------------------------------------------------------------------------
@@ -70,11 +148,38 @@ class OrderCreate(BaseModel):
 class AlertCreate(BaseModel):
     market: str
     symbol: str
-    condition_type: str  # 'price_above'|'price_below'|'indicator'
+    condition_type: str  # 'price_above'|'price_below'|'indicator'|'take_profit'|'stop_loss'|'signal'
     threshold: float
     field: str = "close"
     comparator: str = ">"
     user_id: str = "default"
+    note: str = ""
+    sound: str = "default"
+    vibration: str = "default"
+    linked_order_id: int | None = None
+
+
+class TpSlAlertCreate(BaseModel):
+    market: str
+    symbol: str
+    side: str  # 'buy' | 'sell'
+    entry_price: float
+    take_profit_price: float | None = None
+    stop_loss_price: float | None = None
+    user_id: str = "default"
+    sound: str = "default"
+    vibration: str = "default"
+    linked_order_id: int | None = None
+
+
+class SignalAlertCreate(BaseModel):
+    market: str
+    symbol: str
+    strategy_name: str
+    target_value: int
+    user_id: str = "default"
+    sound: str = "default"
+    vibration: str = "default"
     note: str = ""
 
 
@@ -253,7 +358,10 @@ def check_pending_orders(user_id: str = Query("default")):
 
 
 # ---------------------------------------------------------------------------
-# Alerts
+# Alerts (price / indicator / take-profit / stop-loss / signal), each with
+# a sound + vibration setting. See alerts.py and notifications.py docstrings
+# — this backend queues notifications; your client app plays the sound and
+# triggers the vibration using the device's own APIs.
 # ---------------------------------------------------------------------------
 @app.post("/alerts")
 def create_alert(body: AlertCreate):
@@ -261,15 +369,43 @@ def create_alert(body: AlertCreate):
         return alert_mod.create_alert(
             market=body.market, symbol=body.symbol, condition_type=body.condition_type,
             threshold=body.threshold, field=body.field, comparator=body.comparator,
-            user_id=body.user_id, note=body.note,
+            user_id=body.user_id, note=body.note, sound=body.sound, vibration=body.vibration,
+            linked_order_id=body.linked_order_id,
+        )
+    except alert_mod.AlertError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/alerts/tp-sl")
+def create_tp_sl_alert(body: TpSlAlertCreate):
+    """Create matching take-profit and/or stop-loss alerts for a position in one call."""
+    try:
+        return alert_mod.create_tp_sl_alert(
+            market=body.market, symbol=body.symbol, side=body.side, entry_price=body.entry_price,
+            take_profit_price=body.take_profit_price, stop_loss_price=body.stop_loss_price,
+            user_id=body.user_id, sound=body.sound, vibration=body.vibration,
+            linked_order_id=body.linked_order_id,
+        )
+    except alert_mod.AlertError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/alerts/signal")
+def create_signal_alert(body: SignalAlertCreate):
+    """Create an alert that fires when a strategy's signal (or 'consensus') equals target_value."""
+    try:
+        return alert_mod.create_signal_alert(
+            market=body.market, symbol=body.symbol, strategy_name=body.strategy_name,
+            target_value=body.target_value, user_id=body.user_id, sound=body.sound,
+            vibration=body.vibration, note=body.note,
         )
     except alert_mod.AlertError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/alerts")
-def list_alerts(user_id: str = Query("default"), status: str | None = Query(None)):
-    return alert_mod.list_alerts(user_id=user_id, status=status)
+def list_alerts(user_id: str = Query("default"), status: str | None = Query(None), category: str | None = Query(None)):
+    return alert_mod.list_alerts(user_id=user_id, status=status, category=category)
 
 
 @app.post("/alerts/{alert_id}/cancel")
@@ -278,9 +414,60 @@ def cancel_alert(alert_id: int):
 
 
 @app.post("/alerts/check")
-def check_alerts(user_id: str = Query("default")):
-    """Call this on a schedule (e.g. every 1-5 minutes) to evaluate active alerts."""
-    return alert_mod.check_alerts(user_id=user_id)
+async def check_alerts(user_id: str = Query("default")):
+    """
+    Call this on a schedule (e.g. every 1-5 minutes via a cron/scheduler in
+    your app) to evaluate active alerts. Anything that fires is queued as a
+    notification AND pushed immediately over the WebSocket channel to any
+    connected client for that user_id.
+    """
+    fired = alert_mod.check_alerts(user_id=user_id)
+    if fired:
+        pending = notif_mod.get_pending_notifications(user_id)
+        for n in pending:
+            await ws_manager.send_to_user(user_id, n)
+    return fired
+
+
+# ---------------------------------------------------------------------------
+# Notifications: poll these endpoints, or use the WebSocket channel below for
+# real-time push instead of polling. Either way, call ack once your app has
+# shown the notification and triggered sound/vibration.
+# ---------------------------------------------------------------------------
+@app.get("/notifications/pending")
+def get_pending_notifications(user_id: str = Query("default")):
+    return notif_mod.get_pending_notifications(user_id)
+
+
+@app.post("/notifications/{notification_id}/ack")
+def ack_notification(notification_id: int):
+    return notif_mod.mark_delivered(notification_id)
+
+
+@app.get("/notifications/history")
+def get_notification_history(user_id: str = Query("default"), limit: int = Query(100)):
+    return notif_mod.get_notification_history(user_id, limit)
+
+
+@app.websocket("/ws/notifications/{user_id}")
+async def notifications_websocket(websocket: WebSocket, user_id: str):
+    """
+    Real-time push channel. On connect, immediately flushes any notifications
+    queued while the client was offline, then streams new ones as
+    /alerts/check fires them. On receiving a message, your client should:
+      1. Parse the JSON (title, body, sound, vibration, priority, payload)
+      2. Show a local notification / in-app banner
+      3. Play `sound` and trigger `vibration` using the platform's own APIs
+      4. POST /notifications/{id}/ack
+    """
+    await ws_manager.connect(user_id, websocket)
+    try:
+        for n in notif_mod.get_pending_notifications(user_id):
+            await websocket.send_json(n)
+        while True:
+            await websocket.receive_text()  # keep-alive; client pings are ignored
+    except WebSocketDisconnect:
+        ws_manager.disconnect(user_id, websocket)
 
 
 # ---------------------------------------------------------------------------

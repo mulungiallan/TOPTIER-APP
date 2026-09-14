@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Alert Notification Client — Reference Demo</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #131a22; --border: #22303c; --text: #e6edf3;
+    --muted: #8b98a5; --green: #26d07c; --red: #ff5c5c; --blue: #4d9fff; --yellow: #f5c542;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 24px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+  input, select, button { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+  button { cursor: pointer; background: var(--blue); border: none; color: #04121f; font-weight: 600; }
+  button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+  button:hover { opacity: 0.9; }
+  #status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+  .dot.connected { background: var(--green); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; animation: slide 0.25s ease; }
+  .card.high { border-left: 4px solid var(--yellow); }
+  .card-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .card-body { font-size: 13px; color: var(--muted); }
+  .card-meta { font-size: 11px; color: var(--muted); margin-top: 8px; display: flex; gap: 12px; }
+  @keyframes slide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  #log { max-width: 640px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 20px 0; }
+</style>
+</head>
+<body>
+
+<h1>Alert Notification Client</h1>
+<div class="sub">Reference demo: connects to the backend's WebSocket push channel, then actually plays sound + vibrates using the browser's own APIs. Port this logic into React Native / Flutter for a real mobile app.</div>
+
+<div class="row">
+  <input id="userId" value="default" placeholder="user_id" style="width:120px">
+  <input id="apiBase" value="http://localhost:8000" placeholder="API base URL" style="width:220px">
+  <button onclick="connect()">Connect</button>
+  <button class="secondary" onclick="testNotification()">Simulate incoming alert</button>
+  <button class="secondary" onclick="requestPermission()">Enable browser notifications</button>
+</div>
+
+<div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Not connected</span></div>
+
+<div id="log"></div>
+
+<audio id="defaultSound" preload="auto">
+  <!-- Short beep tone, base64-encoded so this demo has zero external dependencies -->
+  <source src="data:audio/wav;base64,UklGRtQEAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YbAEAACAqL63l21LQlV9pb25mnFNQlN5obu6nnVQQlB1nrq7oXlTQk5xmri8pH1WQ0xtlra9p4BZQ0pqk7S9qoNcREhmj7K9rYdfRkdji6+9r4tjR0Zfh6y9sY9mSUVcg6m8s5JqS0RZgKa8tZZuTURXfaO6t5lxT0RUeaC5uJ11UkRSdZ24uaB5VERQcZm2uqN9V0VObpa0u6aAWkZMapKyu6iDXUdKZ46wu6uHYUhJZIutu62LZElIYYeru6+OZ0tHXoOourGSa01HW4ClubOVbk9GWH2iuLWYclFGVnmft7acdlRGVHactrefeVZGUXKYtLiifVlHUG+VsrikgFxITmuRsLmng19JTGiOrrmph2JKS2WKrLmsimVLSmKHqbiujmhNSV+DpriwkWxPSVyApLexlG9RSFp9obazmHJTSFd5nrW0m3ZVSFV2m7S1nnlYSVNzl7K2oH1aSVFvlLC2o4BdSlBska63poNgS05pjay3qIZjTE1miqq3qopmTUxjhqi2rI1pT0tgg6W2rpBsUUtegKK1r5RwUkpbfaC0sZdzVUpZep2zspp2V0pXdpqys5x6WUtVc5awtJ99XEtTcJOvtKKAXkxSbZCttaSDYU1Qao2rtaaGZE5PZ4motaiJZ09OZIamtKqNalFNYYOktKyQbVJNX4Chs66TcFRMXX2esq+Wc1ZMWnqcsbCZd1hMWHeZsLGbeltNVnSWrrKefV1NVXGTrbKggGBOU26Pq7Ojg2JPUmuMqbOlhmVQUWiJp7OniWhRUGWGpbKpjGtST2ODorKqj25UT2CAoLGsknFWTl59nbCtlXRYTlx6mq+umHdaTlp3mK6vmnpcT1h0la2wnX1eT1Zxkquwn4BhUFVuj6mxoYNjUFRrjKixpIZmUlNpiaaxpYlpU1JmhqOxp4xsVFFkg6GwqY9uVlBhgJ+vqpFxV1BffZyvq5R0WVBdepmurZd3W1Bbd5esrZl6XVBadZSrrpx9YFFYcpGqr56AYlFXb46or6CCZFJVbIumr6KFZ1NUaoikr6SIalRTZ4Wir6aLbFZTZYKgrqeOb1dSY4CdrqmRcllSYH6braqTdVtSXnuZrKuWeF1SXXiWq6yYe19SW3WTqaybfmFTWXKRqK2dgGNTWHCOpq2fgmVUV22Lpa2hhWhVVmqIo62jiGpWVWiFoa2ki21XVGaCn62mjnBZVGSAnKynkHNaVGJ+mquok3VcVGB7mKqplXheVF54lamql3tgVFx1k6irmn5iVFtzkKernIBkVVpwjaWsnoJmVlhui6OsoIVpV1driKGsoYhrWFdphaCro4puWVZngp2rpI1wWlZlgJuqppBzXFVjfpmqp5J2XVVhe5epqJR4X1VfeJSoqZd7YVVedpKmqZl+Y1Zcc4+lqpuAZVZbcY2kqp2CZ1daboqiqp+FalhZbIegqqCHbFlYaoWeqqKKb1pYaIKcqaONcVxXZoCaqaSPdF1XZH6YqKWRdl9XYnuWp6aUeWBXYHmUpqeWe2JXX3aRpaiYfmRXXnSPpKiagGZYXHGMoqicgmhZW2+KoaidhWtaWm2Hn6ifh21bWmuFnaigim9cWWmCm6iijHJdWWc=" type="audio/wav">
+</audio>
+
+<script>
+let ws = null;
+
+const CATEGORY_ICON = { price: '🔔', indicator: '📊', take_profit: '🟢', stop_loss: '🔴', signal: '⚡' };
+
+// --- Sound + vibration mapping -------------------------------------------
+// 'default'  -> built-in tone / built-in vibration pattern
+// 'silent'   -> nothing
+// anything else -> treated as a custom filename (sound) or a comma-separated
+//                  millisecond pattern (vibration) — swap the URL/lookup for
+//                  wherever your app actually stores custom sound assets.
+const SUGGESTED_VIBRATION = { normal: [200], high: [200, 100, 200, 100, 200] };
+
+function playSound(soundSetting, priority) {
+  if (soundSetting === 'silent') return;
+  if (soundSetting === 'default' || !soundSetting) {
+    document.getElementById('defaultSound').currentTime = 0;
+    document.getElementById('defaultSound').play().catch(() => {});
+    return;
+  }
+  // Custom sound: in a real app, map this filename to a bundled asset or
+  // CDN URL. Here we just attempt to play it as a relative path if present.
+  const audio = new Audio(soundSetting);
+  audio.play().catch(() => {
+    console.warn(`Could not play custom sound '${soundSetting}', falling back to default.`);
+    playSound('default', priority);
+  });
+}
+
+function triggerVibration(vibrationSetting, priority) {
+  if (!('vibrate' in navigator)) return; // most desktop browsers don't support this — real target is mobile
+  if (vibrationSetting === 'silent') return;
+  if (vibrationSetting === 'default' || !vibrationSetting) {
+    navigator.vibrate(SUGGESTED_VIBRATION[priority] || SUGGESTED_VIBRATION.normal);
+    return;
+  }
+  const pattern = vibrationSetting.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
+  navigator.vibrate(pattern.length ? pattern : SUGGESTED_VIBRATION.normal);
+}
+
+function showBrowserNotification(notif) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  new Notification(notif.title, { body: notif.body, tag: `alert-${notif.id}` });
+}
+
+function requestPermission() {
+  if ('Notification' in window) Notification.requestPermission();
+}
+
+// --- Rendering -------------------------------------------------------------
+function renderNotification(notif) {
+  const log = document.getElementById('log');
+  const empty = log.querySelector('.empty');
+  if (empty) empty.remove();
+
+  const card = document.createElement('div');
+  card.className = 'card' + (notif.priority === 'high' ? ' high' : '');
+  const icon = CATEGORY_ICON[notif.payload?.category] || '🔔';
+  card.innerHTML = `
+    <div class="card-title">${icon} ${notif.title}</div>
+    <div class="card-body">${notif.body}</div>
+    <div class="card-meta">
+      <span>sound: ${notif.sound}</span>
+      <span>vibration: ${notif.vibration}</span>
+      <span>priority: ${notif.priority}</span>
+    </div>
+  `;
+  log.prepend(card);
+
+  playSound(notif.sound, notif.priority);
+  triggerVibration(notif.vibration, notif.priority);
+  showBrowserNotification(notif);
+
+  // Acknowledge so the backend stops resending it as "pending"
+  const apiBase = document.getElementById('apiBase').value;
+  fetch(`${apiBase}/notifications/${notif.id}/ack`, { method: 'POST' }).catch(() => {});
+}
+
+// --- WebSocket connection ---------------------------------------------------
+function connect() {
+  const userId = document.getElementById('userId').value || 'default';
+  const apiBase = document.getElementById('apiBase').value;
+  const wsUrl = apiBase.replace(/^http/, 'ws') + `/ws/notifications/${userId}`;
+
+  if (ws) ws.close();
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    document.getElementById('statusDot').classList.add('connected');
+    document.getElementById('statusText').textContent = `Connected as ${userId}`;
+  };
+  ws.onclose = () => {
+    document.getElementById('statusDot').classList.remove('connected');
+    document.getElementById('statusText').textContent = 'Disconnected — click Connect to retry';
+  };
+  ws.onerror = () => {
+    document.getElementById('statusText').textContent = 'Connection error (is the API server running?)';
+  };
+  ws.onmessage = (event) => {
+    const notif = JSON.parse(event.data);
+    renderNotification(notif);
+  };
+}
+
+// --- Local demo, no backend required ---------------------------------------
+function testNotification() {
+  renderNotification({
+    id: Date.now(),
+    title: 'Take profit hit 🟢: AAPL',
+    body: 'AAPL hit your take-profit level at 250.00.',
+    sound: 'default',
+    vibration: 'default',
+    priority: 'high',
+    payload: { category: 'take_profit' },
+  });
+}
+
+document.getElementById('log').innerHTML = '<div class="empty">No notifications yet. Click "Connect" to link to your backend, or "Simulate incoming alert" to preview the sound/vibration/visual behavior locally.</div>';
+</script>
+
+</body>
+</html>

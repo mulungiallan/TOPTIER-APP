@@ -1,6 +1,14 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
+import {
+  listAlerts,
+  createPriceAlert,
+  createTpSlAlert,
+  createIndicatorAlert,
+  createSignalAlert,
+  INDICATOR_FIELDS,
+  SIGNAL_STRATEGIES,
+} from '@/lib/trading-signals'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,28 +18,14 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const type = searchParams.get('type') // 'price' or 'custom' or null for both
+    const status = searchParams.get('status') || undefined
+    const category = searchParams.get('category') || undefined
 
-    const result: Record<string, unknown> = {}
-
-    if (!type || type === 'price') {
-      result.priceAlerts = await db.priceAlert.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-      })
-    }
-
-    if (!type || type === 'custom') {
-      result.customAlerts = await db.customAlert.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-      })
-    }
-
-    return successResponse(result)
-  } catch (error) {
+    const alerts = await listAlerts(userId, status, category)
+    return successResponse({ alerts })
+  } catch (error: any) {
     console.error('Alerts GET error:', error)
-    return errorResponse('Failed to fetch alerts', 500)
+    return errorResponse('Failed to fetch alerts', error?.status || 500)
   }
 }
 
@@ -43,158 +37,82 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { alertCategory } = body // 'price' or 'custom'
+    const { category, market, symbol, sound, vibration } = body
 
-    if (alertCategory === 'price') {
-      const { asset, alertType, targetPrice, isRecurring, soundEnabled, soundUri, vibrateEnabled, notifyType } = body
-      if (!asset || !alertType || !targetPrice) {
-        return errorResponse('asset, alertType, and targetPrice are required', 400)
+    if (!category || !market || !symbol) {
+      return errorResponse('category, market, and symbol are required', 400)
+    }
+
+    const base = {
+      market: String(market).toLowerCase(),
+      symbol: String(symbol),
+      sound: String(sound || 'default'),
+      vibration: String(vibration || 'default'),
+      user_id: userId,
+    }
+
+    if (category === 'price') {
+      const condition = body.condition // 'above' | 'below'
+      const threshold = parseFloat(body.threshold)
+      if (!['above', 'below'].includes(condition) || !Number.isFinite(threshold)) {
+        return errorResponse('price alerts need condition (above|below) and a numeric threshold', 400)
       }
-
-      const alert = await db.priceAlert.create({
-        data: {
-          userId,
-          asset,
-          alertType, // above, below, crosses
-          targetPrice: parseFloat(targetPrice),
-          isRecurring: isRecurring || false,
-          soundEnabled: soundEnabled !== undefined ? !!soundEnabled : true,
-          soundUri: soundUri ?? null,
-          vibrateEnabled: vibrateEnabled !== undefined ? !!vibrateEnabled : true,
-          notifyType: notifyType || 'system',
-        },
-      })
-
+      const alert = await createPriceAlert({ ...base, condition, threshold, note: body.note })
       return successResponse(alert, 201)
     }
 
-    if (alertCategory === 'custom') {
-      const { asset, alertType, condition, soundEnabled, soundUri, vibrateEnabled, notifyType } = body
-      if (!asset || !alertType || !condition) {
-        return errorResponse('asset, alertType, and condition are required', 400)
+    if (category === 'tp_sl') {
+      const side = body.side // 'buy' | 'sell'
+      const entryPrice = parseFloat(body.entryPrice)
+      const takeProfit = body.takeProfit != null && body.takeProfit !== '' ? parseFloat(body.takeProfit) : undefined
+      const stopLoss = body.stopLoss != null && body.stopLoss !== '' ? parseFloat(body.stopLoss) : undefined
+      if (!['buy', 'sell'].includes(side) || !Number.isFinite(entryPrice)) {
+        return errorResponse('tp_sl alerts need side (buy|sell) and a numeric entryPrice', 400)
       }
-
-      const alert = await db.customAlert.create({
-        data: {
-          userId,
-          asset,
-          alertType, // rsi, macd, ma_cross, volume_spike, support_resistance
-          condition: typeof condition === 'string' ? condition : JSON.stringify(condition),
-          soundEnabled: soundEnabled !== undefined ? !!soundEnabled : true,
-          soundUri: soundUri ?? null,
-          vibrateEnabled: vibrateEnabled !== undefined ? !!vibrateEnabled : true,
-          notifyType: notifyType || 'system',
-        },
+      if (takeProfit == null && stopLoss == null) {
+        return errorResponse('Provide at least a take profit or stop loss price', 400)
+      }
+      const created = await createTpSlAlert({
+        ...base,
+        side,
+        entry_price: entryPrice,
+        take_profit_price: takeProfit,
+        stop_loss_price: stopLoss,
+        linked_order_id: body.linkedOrderId ?? null,
       })
+      return successResponse(created, 201)
+    }
 
+    if (category === 'indicator') {
+      const field = String(body.field || '')
+      const comparator = String(body.comparator || '>')
+      const threshold = parseFloat(body.threshold)
+      if (!INDICATOR_FIELDS.includes(field)) {
+        return errorResponse(`Unknown indicator field "${field}". Options: ${INDICATOR_FIELDS.join(', ')}`, 400)
+      }
+      if (!['>', '<'].includes(comparator) || !Number.isFinite(threshold)) {
+        return errorResponse('indicator alerts need comparator (>|<) and a numeric threshold', 400)
+      }
+      const alert = await createIndicatorAlert({ ...base, field, comparator: comparator as '>' | '<', threshold, note: body.note })
       return successResponse(alert, 201)
     }
 
-    return errorResponse('Invalid alertCategory. Use "price" or "custom"', 400)
-  } catch (error) {
+    if (category === 'signal') {
+      const strategyName = String(body.strategyName || '')
+      const targetValue = parseInt(body.targetValue, 10)
+      if (!SIGNAL_STRATEGIES.includes(strategyName)) {
+        return errorResponse(`Unknown strategy "${strategyName}". Options: ${SIGNAL_STRATEGIES.join(', ')}`, 400)
+      }
+      if (![1, 0, -1].includes(targetValue)) {
+        return errorResponse('signal targetValue must be 1 (bullish), 0 (flat), or -1 (bearish)', 400)
+      }
+      const alert = await createSignalAlert({ ...base, strategy_name: strategyName, target_value: targetValue, note: body.note })
+      return successResponse(alert, 201)
+    }
+
+    return errorResponse('Invalid category. Use "price", "tp_sl", "indicator", or "signal"', 400)
+  } catch (error: any) {
     console.error('Alerts POST error:', error)
-    return errorResponse('Failed to create alert', 500)
-  }
-}
-
-export async function PATCH(request: NextRequest) {
-  try {
-    const userId = getUserIdFromRequest(request)
-    if (!userId) {
-      return errorResponse('Unauthorized', 401)
-    }
-
-    const body = await request.json()
-    const { alertCategory, alertId } = body
-
-    if (!alertCategory || !alertId) {
-      return errorResponse('alertCategory and alertId are required', 400)
-    }
-
-    if (alertCategory === 'price') {
-      const alert = await db.priceAlert.findFirst({ where: { id: alertId, userId } })
-      if (!alert) return errorResponse('Alert not found', 404)
-
-      const data: Record<string, unknown> = {}
-      if (body.isActive !== undefined) data.isActive = body.isActive
-      if (body.asset !== undefined) data.asset = body.asset
-      if (body.alertType !== undefined) data.alertType = body.alertType
-      if (body.targetPrice !== undefined) data.targetPrice = parseFloat(body.targetPrice)
-      if (body.isRecurring !== undefined) data.isRecurring = !!body.isRecurring
-      if (body.soundEnabled !== undefined) data.soundEnabled = !!body.soundEnabled
-      if (body.soundUri !== undefined) data.soundUri = body.soundUri
-      if (body.vibrateEnabled !== undefined) data.vibrateEnabled = !!body.vibrateEnabled
-      if (body.notifyType !== undefined) data.notifyType = body.notifyType
-
-      const updated = await db.priceAlert.update({
-        where: { id: alertId },
-        data,
-      })
-
-      return successResponse(updated)
-    }
-
-    if (alertCategory === 'custom') {
-      const alert = await db.customAlert.findFirst({ where: { id: alertId, userId } })
-      if (!alert) return errorResponse('Alert not found', 404)
-
-      const data: Record<string, unknown> = {}
-      if (body.isActive !== undefined) data.isActive = body.isActive
-      if (body.condition !== undefined) data.condition = typeof body.condition === 'string' ? body.condition : JSON.stringify(body.condition)
-      if (body.soundEnabled !== undefined) data.soundEnabled = !!body.soundEnabled
-      if (body.soundUri !== undefined) data.soundUri = body.soundUri
-      if (body.vibrateEnabled !== undefined) data.vibrateEnabled = !!body.vibrateEnabled
-      if (body.notifyType !== undefined) data.notifyType = body.notifyType
-
-      const updated = await db.customAlert.update({
-        where: { id: alertId },
-        data,
-      })
-
-      return successResponse(updated)
-    }
-
-    return errorResponse('Invalid alertCategory', 400)
-  } catch (error) {
-    console.error('Alerts PATCH error:', error)
-    return errorResponse('Failed to update alert', 500)
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const userId = getUserIdFromRequest(request)
-    if (!userId) {
-      return errorResponse('Unauthorized', 401)
-    }
-
-    const { searchParams } = new URL(request.url)
-    const alertId = searchParams.get('alertId')
-    const alertCategory = searchParams.get('alertCategory')
-
-    if (!alertId || !alertCategory) {
-      return errorResponse('alertId and alertCategory query params are required', 400)
-    }
-
-    if (alertCategory === 'price') {
-      const alert = await db.priceAlert.findFirst({ where: { id: alertId, userId } })
-      if (!alert) return errorResponse('Alert not found', 404)
-
-      await db.priceAlert.delete({ where: { id: alertId } })
-      return successResponse({ deleted: true })
-    }
-
-    if (alertCategory === 'custom') {
-      const alert = await db.customAlert.findFirst({ where: { id: alertId, userId } })
-      if (!alert) return errorResponse('Alert not found', 404)
-
-      await db.customAlert.delete({ where: { id: alertId } })
-      return successResponse({ deleted: true })
-    }
-
-    return errorResponse('Invalid alertCategory', 400)
-  } catch (error) {
-    console.error('Alerts DELETE error:', error)
-    return errorResponse('Failed to delete alert', 500)
+    return errorResponse('Failed to create alert', error?.status || 500)
   }
 }

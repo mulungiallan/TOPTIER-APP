@@ -112,6 +112,12 @@ bun.lock
 __pycache__/
 *.pyc
 
+# Python trading-signals engine runtime state — never commit (lives on the /data volume)
+/trading_signals/trading_app.db
+/trading_signals/trading_app.db-shm
+/trading_signals/trading_app.db-wal
+/trading_signals/chart.html
+
 # PesaPal integration reference files — credentials + downloaded docs, not part of the app
 payment api.txt
 Integration - Overview - Pesapal Developer Community.html

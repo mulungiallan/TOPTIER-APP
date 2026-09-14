@@ -203,6 +203,55 @@ GET  /wallet/ledger/verify            books-balance sanity check — run on a sc
 4. `credit_confirmed_deposit()` must only be called from a verified webhook handler (with signature verification) — never from user-facing code — and only after the provider considers the deposit final (enough confirmations).
 5. Add a withdrawal review policy (limits, delays, manual review above a threshold) before going live — on-chain and most fiat rails are irreversible once sent.
 
+### Alerts, TP/SL & signal notifications with sound + vibration (`alerts.py`, `notifications.py`)
+
+**Important boundary:** this backend detects when a condition is met and
+queues a notification describing what should happen — it cannot make a
+phone vibrate or play a sound itself. That final step happens in your
+client app using the device's own APIs. `client_demo.html` (included) is a
+working reference showing exactly that handoff in a browser; port the same
+logic into React Native (`expo-notifications` + `expo-av` or
+`react-native-sound`) or Flutter (`flutter_local_notifications` +
+`vibration` package) for a real mobile app.
+
+**Alert types**, each created with a `sound` and `vibration` setting
+(`"default"`, `"silent"`, or a custom sound filename / comma-separated
+millisecond vibration pattern like `"200,100,200"`):
+- `price_above` / `price_below` — plain price alerts
+- `indicator` — any column from `indicators.add_all_indicators` (e.g. RSI crossing 30)
+- `take_profit` / `stop_loss` — created together via `create_tp_sl_alert()`, which infers the correct direction from the position's side
+- `signal` — fires when a strategy's signal (or `consensus`) flips to a target value, via `create_signal_alert()`
+
+```
+POST /alerts              generic alert (price/indicator)
+POST /alerts/tp-sl         {market, symbol, side, entry_price, take_profit_price?, stop_loss_price?}
+POST /alerts/signal        {market, symbol, strategy_name, target_value}
+GET  /alerts               list (filter by status/category)
+POST /alerts/{id}/cancel
+POST /alerts/check         evaluate all active alerts — call on a schedule (1-5 min); fires push + queues notifications
+```
+
+**Delivery — two options, use either or both:**
+```
+GET  /notifications/pending          poll for anything not yet delivered
+POST /notifications/{id}/ack         call after showing it + playing sound/vibration
+WS   /ws/notifications/{user_id}     real-time push — recommended over polling for a "real" alert system
+```
+On WebSocket connect, any notifications queued while the client was offline
+are flushed immediately, then new ones stream in as `/alerts/check` fires
+them. The connection manager in `api.py` is in-memory and single-process;
+if you scale to multiple backend instances, swap it for a shared pub/sub
+(Redis, etc.) so a notification fired on one instance reaches a client
+connected to another.
+
+**Try the reference client:** open `client_demo.html` in a browser, point
+it at your running API (`uvicorn trading_signals.api:app --port 8000`),
+click Connect, then trigger an alert (e.g. via `/alerts/check` once a
+price condition is met) — you'll see it arrive, play a sound, and vibrate
+(on a device that supports the Vibration API; most desktop browsers don't,
+but phones do). "Simulate incoming alert" previews the behavior with zero
+backend required.
+
 ## Data sources
 
 - **Stocks**: `yfinance` (free, delayed data — fine for signals, not for

@@ -74,15 +74,34 @@ CREATE TABLE IF NOT EXISTS alerts (
     user_id TEXT NOT NULL DEFAULT 'default',
     market TEXT NOT NULL,
     symbol TEXT NOT NULL,
-    condition_type TEXT NOT NULL,       -- 'price_above'|'price_below'|'indicator'
-    field TEXT NOT NULL DEFAULT 'close',-- 'close'|'rsi_14'|'sma_20'... for indicator alerts
+    condition_type TEXT NOT NULL,       -- 'price_above'|'price_below'|'indicator'|'take_profit'|'stop_loss'|'signal'
+    field TEXT NOT NULL DEFAULT 'close',-- 'close'|'rsi_14'|'sma_20'... for indicator alerts; strategy name for signal alerts
     comparator TEXT NOT NULL DEFAULT '>',-- '>' | '<'
     threshold REAL NOT NULL,
+    category TEXT NOT NULL DEFAULT 'price', -- 'price'|'indicator'|'take_profit'|'stop_loss'|'signal'
+    sound TEXT NOT NULL DEFAULT 'default',  -- 'default'|'silent'|custom sound name
+    vibration TEXT NOT NULL DEFAULT 'default', -- 'default'|'silent'|'200,100,200' style pattern
+    linked_order_id INTEGER,
     status TEXT NOT NULL DEFAULT 'active', -- 'active'|'triggered'|'cancelled'
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     triggered_at TEXT,
     triggered_value REAL,
     note TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    alert_id INTEGER REFERENCES alerts(id),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    sound TEXT DEFAULT 'default',
+    vibration TEXT DEFAULT 'default',
+    priority TEXT DEFAULT 'normal',     -- 'normal'|'high'
+    payload TEXT DEFAULT '{}',          -- JSON
+    delivered INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    delivered_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS risk_settings (

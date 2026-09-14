@@ -13,7 +13,6 @@ import { Server as HTTPServer } from 'http'
 import { db } from '@/lib/db'
 import { marketDataService } from '@/lib/services/market-data'
 import { verifyToken } from '@/lib/auth'
-import { startAlertMonitor, stopAlertMonitor } from '@/lib/services/alert-monitor'
 
 let io: SocketServer | null = null
 let priceUpdateTimer: NodeJS.Timeout | null = null
@@ -178,9 +177,6 @@ export function initSocketServer(server: HTTPServer): SocketServer {
   // ─── Start background price-update service ──────────────────────────────────
   startPriceUpdateService(io)
 
-  // ─── Start background price-alert monitor ───────────────────────────────────
-  startAlertMonitor(io)
-
   return io
 }
 
@@ -242,7 +238,6 @@ export function getIO(): SocketServer | null {
  * Graceful shutdown.
  */
 export function closeSocketServer() {
-  stopAlertMonitor()
   if (priceUpdateTimer) {
     clearInterval(priceUpdateTimer)
     priceUpdateTimer = null

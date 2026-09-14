@@ -37,12 +37,6 @@ export async function register() {
     process.on("SIGTERM", () => void shutdown("SIGTERM"));
     process.on("SIGINT", () => void shutdown("SIGINT"));
 
-    // Start the background alert monitor so price alerts fire automatically in
-    // production. The standalone Next.js server never creates the socket server,
-    // so we must start the monitor here (it polls prices + notifies on trigger).
-    const { startAlertMonitor } = await import("./lib/services/alert-monitor");
-    startAlertMonitor(null);
-
     // Start the background signal generator so the Signals feed stays populated
     // without blocking API requests. It refreshes every few minutes and is
     // internally throttled + guarded against overlapping runs.
