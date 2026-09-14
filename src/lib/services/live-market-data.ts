@@ -429,8 +429,13 @@ export class LiveMarketData {
       let url: string
 
       if (useRange) {
-        // For intraday: use range parameter (e.g. 5d for 15m candles gives enough data)
-        const range = count <= 5 ? '1d' : count <= 30 ? '5d' : count <= 90 ? '1mo' : '3mo'
+        // Yahoo v8 restricts intraday intervals to the LAST 60 DAYS: asking for
+        // range=3mo with interval=15m/30m returns HTTP 422 (which the caller sees
+        // as `[]`). That was silently killing every forex signal -- all forex
+        // pairs are fetched via Yahoo. Cap intraday requests at 1mo so we always
+        // stay inside the allowed window (1mo of 15m candles ≈ 2000 bars, more
+        // than enough for any intraday count the generator asks for).
+        const range = count <= 5 ? '1d' : count <= 30 ? '5d' : '1mo'
         url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
           yahooSymbol
         )}?range=${range}&interval=${yahooInterval}`
