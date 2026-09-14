@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     // Already fulfilled by the IPN or a previous callback — treat as success.
     if (transaction && transaction.status === 'completed') {
-      return Response.redirect(`${appUrl}/?payment=success&provider=pesapal`)
+      return Response.redirect(`${appUrl}/?page=${transaction.planType === 'wallet_fund' ? 'wallet' : 'pricing'}&payment=success&provider=pesapal`)
     }
 
     if (!transaction || transaction.status !== 'pending') {
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
           { provider: 'pesapal', paymentMethod }
         )
       }
-      return Response.redirect(`${appUrl}/?payment=success&provider=pesapal`)
+      return Response.redirect(`${appUrl}/?page=${transaction.planType === 'wallet_fund' ? 'wallet' : 'pricing'}&payment=success&provider=pesapal`)
     }
 
     return Response.redirect(`${appUrl}/?payment=failed&provider=pesapal`)

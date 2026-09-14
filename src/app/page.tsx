@@ -650,7 +650,7 @@ export default function Home() {
     const pageParam = params.get('page')
     if (pageParam && isAuthenticated) {
       // Validate the page param against known Page IDs (light validation)
-      const valid: string[] = ['dashboard', 'signals', 'screenshot', 'chat-analyser', 'watchlist', 'alerts', 'calendar', 'news', 'performance', 'subscriptions', 'pricing', 'pricing-dashboard', 'social', 'leaderboards', 'competitions', 'messages', 'groups', 'copy-trading', 'paper-trading', 'trading-bot', 'backtesting', 'ai-predictions', 'patterns', 'strategy-builder', 'tradingview', 'settings', 'community', 'education', 'support', 'profile', 'stats', 'monetization']
+      const valid: string[] = ['dashboard', 'signals', 'screenshot', 'chat-analyser', 'watchlist', 'alerts', 'calendar', 'news', 'performance', 'subscriptions', 'pricing', 'pricing-dashboard', 'social', 'leaderboards', 'competitions', 'messages', 'groups', 'copy-trading', 'paper-trading', 'trading-bot', 'backtesting', 'ai-predictions', 'patterns', 'strategy-builder', 'tradingview', 'settings', 'community', 'education', 'support', 'profile', 'stats', 'monetization', 'wallet']
       if (valid.includes(pageParam) && pageParam !== currentPage) {
         setPage(pageParam as any)
       }
