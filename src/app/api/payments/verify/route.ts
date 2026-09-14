@@ -29,6 +29,11 @@ export async function POST(request: NextRequest) {
       return errorResponse('provider is required', 400)
     }
 
+    // Bank transfers are confirmed manually by an admin — nothing to query.
+    if (provider === 'bank') {
+      return successResponse({ verified: false, status: 'pending', amount: 0, currency: 'KES' })
+    }
+
     // Verify the payment with the provider
     const result = await verifyPayment(provider, {
       provider,

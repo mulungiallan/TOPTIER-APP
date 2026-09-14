@@ -55,6 +55,22 @@ interface WalletData {
 const CASH_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP']
 const CRYPTO_ASSETS = ['BTC', 'ETH', 'USDT', 'SOL']
 
+// In-app bank-transfer branch list (mirrors src/lib/payments/bank.ts).
+const BANKS = [
+  'Absa Bank',
+  'Bank of Africa',
+  'Co-operative Bank',
+  'Diamond Trust Bank',
+  'Equity Bank',
+  'Family Bank',
+  'I&M Bank',
+  'KCB Bank',
+  'NCBA Bank',
+  'Standard Chartered',
+  'Stanbic Bank',
+  'M-Pesa / M-Pesa Agent',
+]
+
 const TX_LABELS: Record<string, string> = {
   deposit: 'Deposit',
   withdrawal: 'Withdrawal',
@@ -102,7 +118,7 @@ export function WalletPage() {
   const [data, setData] = useState<WalletData | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [deposit, setDeposit] = useState({ asset: 'KES', amount: '' })
+  const [deposit, setDeposit] = useState({ asset: 'KES', amount: '', method: 'mpesa', phone: '', bank: '', reference: '' })
   const [withdraw, setWithdraw] = useState({ asset: 'USD', amount: '' })
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -133,7 +149,7 @@ export function WalletPage() {
     try {
       await api.post('/wallet', body)
       toast.success(`${key === 'deposit' ? 'Deposit' : key === 'withdraw' ? 'Withdrawal' : key === 'crypto-credit' ? 'Crypto credit' : 'Withdrawal'} recorded`)
-      setDeposit({ asset: body.asset as string, amount: '' })
+      setDeposit((d) => ({ ...d, asset: body.asset as string, amount: '', phone: '', bank: '', reference: '' }))
       setWithdraw({ asset: body.asset as string, amount: '' })
       setCryptoRef({ txHash: '', amount: '' })
       await fetchData()
@@ -150,23 +166,55 @@ export function WalletPage() {
     toast.success('Address copied')
   }
 
-  // Real-money top-up via PesaPal: creates a pending PaymentTransaction and
-  // redirects the customer to the PesaPal hosted payment page. The wallet is
-  // credited only when PesaPal confirms the payment (callback/IPN).
-  const handleTopup = async () => {
+// Real-money top-up fully in-app. M-Pesa uses the Daraja STK push (the
+// customer approves on their phone — no redirect); Bank creates a manual,
+// admin-confirmed transfer request. The wallet is credited on confirmation.
+const handleTopup = async () => {
+    if (!deposit.amount || Number(deposit.amount) <= 0) {
+      toast.error('Enter a valid amount')
+      return
+    }
+    if (deposit.method === 'mpesa') {
+      const digits = deposit.phone.replace(/[^0-9]/g, '')
+      if (digits.length < 9) {
+        toast.error('Enter a valid M-Pesa phone number')
+        return
+      }
+    } else {
+      if (!deposit.bank) {
+        toast.error('Select your bank')
+        return
+      }
+      if (!deposit.reference.trim()) {
+        toast.error('Enter the payment reference')
+        return
+      }
+    }
     setBusy('topup')
     try {
-      const res = await api.post<{ success: boolean; data: { payment: { checkoutUrl?: string } } }>('/wallet/fund', {
+      const body: Record<string, unknown> = {
         asset: deposit.asset,
         amount: Number(deposit.amount),
-        provider: 'pesapal',
-      })
-      const checkoutUrl = res?.data?.payment?.checkoutUrl
-      if (checkoutUrl) {
-        window.location.href = checkoutUrl
-      } else {
-        toast.error('No payment URL returned')
+        provider: deposit.method,
       }
+      if (deposit.method === 'mpesa') {
+        body.phone = deposit.phone.trim()
+      } else {
+        body.bank = deposit.bank
+        body.reference = deposit.reference.trim()
+      }
+      const res = await api.post<{ success: boolean; data: { payment: { checkoutUrl?: string } } }>('/wallet/fund', body)
+      const checkoutUrl = res?.data?.payment?.checkoutUrl
+      if (checkoutUrl && deposit.method !== 'bank' && deposit.method !== 'mpesa') {
+        // Legacy redirect gateways only — the in-app chooser never reaches this.
+        window.location.href = checkoutUrl
+      } else if (deposit.method === 'bank') {
+        toast.success('Top-up request received! We will confirm once your transfer arrives.')
+      } else {
+        toast.success('Payment prompt sent! Enter your M-Pesa PIN on your phone to approve.')
+      }
+      setDeposit((d) => ({ ...d, amount: '', phone: '', bank: '', reference: '' }))
+      await fetchData()
     } catch (e) {
       const msg = e instanceof Error ? e.message.replace(/_/g, ' ') : 'Top-up failed'
       toast.error(msg)
@@ -263,11 +311,11 @@ export function WalletPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            {/* Top up with PesaPal */}
+            {/* Top up (fully in-app) */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><ArrowDownToLine className="size-4 text-emerald-500" /> Top up with PesaPal</CardTitle>
-                <CardDescription>Pay via M-Pesa, card or Airtel Money. Funds are credited when payment is confirmed.</CardDescription>
+                <CardTitle className="flex items-center gap-2 text-base"><ArrowDownToLine className="size-4 text-emerald-500" /> Add funds</CardTitle>
+                <CardDescription>Top up with M-Pesa (approve on your phone) or a bank transfer that we confirm manually.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -295,8 +343,67 @@ export function WalletPage() {
                     />
                   </div>
                 </div>
+
+                <div className="space-y-1.5">
+                  <Label>Method</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['mpesa', 'bank'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setDeposit({ ...deposit, method: m })}
+                        className={cn(
+                          'h-9 rounded-lg border px-3 text-sm font-medium transition-colors',
+                          deposit.method === m
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-input bg-background text-muted-foreground hover:border-primary/40'
+                        )}
+                      >
+                        {m === 'mpesa' ? 'M-Pesa' : 'Bank Transfer'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {deposit.method === 'mpesa' ? (
+                  <div className="space-y-1.5">
+                    <Label>M-Pesa phone number</Label>
+                    <Input
+                      type="tel"
+                      placeholder="07XXXXXXXX"
+                      value={deposit.phone}
+                      onChange={(e) => setDeposit({ ...deposit, phone: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">Approve with your M-Pesa PIN on your phone. No external site is opened.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label>Send from bank</Label>
+                      <select
+                        className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                        value={deposit.bank}
+                        onChange={(e) => setDeposit({ ...deposit, bank: e.target.value })}
+                      >
+                        <option value="">Select your bank…</option>
+                        {BANKS.map((b) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Payment reference</Label>
+                      <Input
+                        placeholder="Reference / code from your transfer"
+                        value={deposit.reference}
+                        onChange={(e) => setDeposit({ ...deposit, reference: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+
                 {deposit.asset !== 'KES' && (
-                  <p className="text-xs text-muted-foreground">You will be charged the {deposit.asset} → KES equivalent at checkout.</p>
+                  <p className="text-xs text-muted-foreground">You will be charged the {deposit.asset} → KES equivalent.</p>
                 )}
                 <Button
                   className="w-full gap-1.5"
@@ -304,7 +411,7 @@ export function WalletPage() {
                   onClick={handleTopup}
                 >
                   {busy === 'topup' ? <Loader2 className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
-                  Top up
+                  {deposit.method === 'bank' ? 'Request Top-up' : 'Send Payment Prompt'}
                 </Button>
               </CardContent>
             </Card>

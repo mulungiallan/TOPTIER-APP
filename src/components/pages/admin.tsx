@@ -1047,6 +1047,7 @@ export default function AdminPage() {
   const [adminAudit, setAdminAudit] = useState<any[]>([])
   const [adUsage, setAdUsage] = useState<{ userId: string; count: number; name: string; email: string }[]>([])
   const [recentAdEvents, setRecentAdEvents] = useState<any[]>([])
+  const [adminPayments, setAdminPayments] = useState<any[]>([])
 
   const [userSearch, setUserSearch] = useState('')
   const [userTierFilter, setUserTierFilter] = useState('all')
@@ -1114,7 +1115,7 @@ export default function AdminPage() {
       setError(null)
       const [overviewRes, dataRes, settingsRes, secRes, jobsRes, aiRes] = await Promise.all([
         api.get<{ success: boolean; data: OverviewData }>('/admin/overview', { signal }),
-        api.get<{ success: boolean; data: { users?: any[]; signals?: any[]; coupons?: any[]; tickets?: any[]; auditLog?: any[]; adUsage?: any[]; recentAdEvents?: any[] } }>('/admin/data', { signal }),
+        api.get<{ success: boolean; data: { users?: any[]; signals?: any[]; coupons?: any[]; tickets?: any[]; auditLog?: any[]; adUsage?: any[]; recentAdEvents?: any[]; payments?: any[] } }>('/admin/data', { signal }),
         api.get<{ success: boolean; data: { featureFlags?: any[]; appSettings?: any } }>('/admin/settings', { signal }),
         api.get<{ success: boolean; data: any }>('/admin/security', { signal }).catch(() => null),
         api.get<{ success: boolean; data: any }>('/admin/jobs', { signal }).catch(() => null),
@@ -1130,6 +1131,7 @@ export default function AdminPage() {
           if (dataRes.data.auditLog) setAdminAudit(dataRes.data.auditLog)
           if (dataRes.data.adUsage) setAdUsage(dataRes.data.adUsage)
           if (dataRes.data.recentAdEvents) setRecentAdEvents(dataRes.data.recentAdEvents)
+          if (dataRes.data.payments) setAdminPayments(dataRes.data.payments)
         }
         if (settingsRes?.data) {
           if (Array.isArray(settingsRes.data.featureFlags) && settingsRes.data.featureFlags.length) {
@@ -1157,6 +1159,28 @@ export default function AdminPage() {
     fetchAll(ctrl.signal)
     return () => ctrl.abort()
   }, [isAdmin, fetchAll])
+
+  // Confirm / reject an in-app bank (or M-Pesa) payment awaiting manual review.
+  const confirmPayment = async (tx: any) => {
+    try {
+      await runAdminAction('confirm_payment', { transactionId: tx.id })
+      toast.success('Payment confirmed — subscription / wallet activated.')
+      fetchAll()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to confirm payment')
+    }
+  }
+  const rejectPayment = async (tx: any) => {
+    const reason = window.prompt('Reason for rejection (sent to the user):', 'Could not verify the funds')
+    if (reason === null) return
+    try {
+      await runAdminAction('reject_payment', { transactionId: tx.id, reason })
+      toast.success('Payment rejected.')
+      fetchAll()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to reject payment')
+    }
+  }
 
   const saveAppSettings = async () => {
     setSavingSettings(true)
@@ -1790,6 +1814,67 @@ export default function AdminPage() {
 
         {/* ─── Payments ─────────────────────────────────────────────── */}
         <TabsContent value="payments" className="space-y-4 mt-4">
+          {/* In-app payments awaiting manual confirmation (bank transfers) */}
+          <Card className="border-amber-500/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><Clock className="size-5 text-amber-500" /> Awaiting Confirmation</CardTitle>
+              <CardDescription>In-app bank transfers / M-Pesa payments that still need manual verification before the subscription or wallet is activated.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {adminPayments.length === 0 ? (
+                <EmptyState icon={Clock} text="Nothing pending confirmation." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">User</TableHead>
+                        <TableHead className="text-xs">Type</TableHead>
+                        <TableHead className="text-xs">Amount</TableHead>
+                        <TableHead className="text-xs">Method</TableHead>
+                        <TableHead className="text-xs">Reference</TableHead>
+                        <TableHead className="text-xs">When</TableHead>
+                        <TableHead className="text-xs">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {adminPayments.map((p) => (
+                        <TableRow key={p.id}>
+                          <TableCell className="text-sm whitespace-nowrap">
+                            {p.user?.name || '—'}
+                            <span className="text-xs text-muted-foreground"> · {p.user?.email}</span>
+                          </TableCell>
+                          <TableCell className="text-sm capitalize">
+                            {p.planType === 'wallet_fund' ? 'Wallet top-up' : p.planType?.replace(/_/g, ' ')}
+                          </TableCell>
+                          <TableCell className="text-sm">{fmtMoney(p.amount, p.currency)}</TableCell>
+                          <TableCell className="text-sm capitalize">{p.paymentProvider || '—'}</TableCell>
+                          <TableCell className="text-xs">
+                            <code className="rounded bg-muted px-1.5 py-0.5">{p.stripeSessionId || '—'}</code>
+                            {p.description?.match(/\|ref:([^|]+)/) && (
+                              <span className="ml-1 text-muted-foreground">· {p.description.match(/\|ref:([^|]+)/)[1]}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{fmtDate(p.createdAt)}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1.5">
+                              <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={() => confirmPayment(p)}>
+                                <CheckCircle2 className="size-3.5" /> Confirm
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-500" onClick={() => rejectPayment(p)}>
+                                <XCircle className="size-3.5" /> Reject
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard title="Completed" value={(overview?.stats.revenue.totalTransactions ?? 0).toLocaleString()} icon={CheckCircle2} />
             <StatCard title="Pending" value={(overview?.stats.revenue.pendingTransactions ?? 0).toLocaleString()} icon={Clock} />

@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserIdFromRequest, authenticateRequest, successResponse, errorResponse } from '@/lib/auth'
 import { initializePayment, type PaymentProvider, type PlanType } from '@/lib/payments/registry'
+import { generateBankReference } from '@/lib/payments/bank'
 import { getExchangeRate } from '@/lib/payments/exchange-rates'
 import { countryNameToCode } from '@/lib/countries'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
@@ -142,6 +143,41 @@ export async function POST(request: NextRequest) {
         description: `TOPTIER ${planType.replace('_', ' ')} subscription${discount > 0 ? ` (discount: $${discount.toFixed(2)})` : ''}${couponUsed ? `|coupon:${couponUsed}` : ''}`,
       },
     })
+
+    // In-app bank transfer: no gateway call. Record the intent, mint our
+    // order reference, and wait for manual admin confirmation.
+    if (provider === 'bank') {
+      const bankRef = generateBankReference()
+      const bank = metadata?.bank || ''
+      const userRef = metadata?.reference || ''
+      await db.paymentTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          stripeSessionId: bankRef,
+          description: `${transaction.description || ''}|bank:${bank}|ref:${userRef}`,
+        },
+      })
+
+      return successResponse({
+        requiresPayment: true,
+        transaction: {
+          id: transaction.id,
+          amount: finalAmount,
+          currency,
+          planType,
+          originalAmount: plan.price,
+          discount,
+          status: 'pending',
+        },
+        payment: {
+          provider: 'bank',
+          providerTransactionId: bankRef,
+          reference: bankRef,
+          status: 'pending',
+          metadata: { bank, reference: userRef },
+        },
+      })
+    }
 
     // Initialize payment with the selected provider
     const result = await initializePayment(provider, {

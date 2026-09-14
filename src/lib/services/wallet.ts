@@ -152,7 +152,7 @@ export async function fulfillWalletFunding(
     return { fulfilled: false, reason: 'already_processed' }
   }
 
-  const marker = (transaction.description || '').match(/^WALLET_FUND\|([A-Z]{3})\|([\d.]+)$/)
+  const marker = (transaction.description || '').match(/^WALLET_FUND\|([A-Z]{3})\|([\d.]+)/)
   if (!marker) {
     return { fulfilled: false, reason: 'invalid_marker' }
   }
@@ -172,7 +172,7 @@ export async function fulfillWalletFunding(
     asset,
     amount: creditAmount,
     reference: transaction.orderTrackingId,
-    memo: `Wallet top-up via PesaPal${extra?.paymentMethod ? ` (${extra.paymentMethod})` : ''}`,
+    memo: `Wallet top-up${extra?.paymentMethod ? ` via ${extra.paymentMethod}` : ''}`,
   })
   await db.paymentTransaction.updateMany({
     where: { id: transaction.id, status: 'pending' },

@@ -46,11 +46,13 @@ interface PaymentProviderInfo {
   supportedCurrencies: string[]
   supportedCountries: string[]
   isAvailable: boolean
+  checkoutConfig?: Record<string, string>
 }
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import {
   Accordion,
@@ -218,11 +220,11 @@ const faqItems = [
   },
   {
     question: 'What payment methods do you accept?',
-    answer: 'We accept multiple payment methods to serve traders worldwide: Credit/Debit cards (Visa, Mastercard, Amex) via Stripe, Mobile Money and bank transfers via Flutterwave, M-Pesa (Lipa Na M-Pesa) for Kenya, Paystack for Nigeria/Ghana/South Africa, PayPal for global payments, and in-app purchases via App Store/Google Play through RevenueCat. All payments are processed securely with industry-standard encryption.',
+    answer: 'Everything happens inside the app — no redirects. You can pay with M-Pesa (Lipa Na M-Pesa): enter your phone number and approve with your M-Pesa PIN on your phone. You can also pay by bank transfer: choose your bank, send the money to our account, and submit the payment reference so we can verify and activate your plan.',
   },
   {
     question: 'Is my payment information secure?',
-    answer: 'Absolutely. All payment processing is handled by PCI DSS Level 1 certified providers (Stripe, Flutterwave, Paystack, PayPal). M-Pesa transactions go directly through Safaricom\'s Daraja API. We never store your full card details on our servers. Your financial data is encrypted with 256-bit SSL/TLS and protected with industry-standard security measures. RevenueCat handles in-app purchases through Apple and Google\'s secure payment systems.',
+    answer: 'Yes. M-Pesa transactions go directly through Safaricom\'s Daraja API and you approve them with your M-Pesa PIN on your phone — we never see your PIN. Bank transfers are sent to our own bank details and confirmed manually by our team; we never store your bank login or card numbers. All traffic is encrypted with 256-bit SSL/TLS.',
   },
 ]
 
@@ -243,6 +245,9 @@ export function SubscriptionsPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
   const [paymentProviders, setPaymentProviders] = useState<PaymentProviderInfo[]>([])
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
+  const [payPhone, setPayPhone] = useState('')
+  const [payBank, setPayBank] = useState('')
+  const [payReference, setPayReference] = useState('')
   const [processingPayment, setProcessingPayment] = useState(false)
   const [referralRewards, setReferralRewards] = useState<Array<{ id: string; status: string; rewardType: string; rewardAmount: number; createdAt: string; referredUser?: { name?: string | null } }>>([])
 
@@ -355,11 +360,33 @@ export function SubscriptionsPage() {
       return
     }
     try {
+      // In-app payment details — M-Pesa phone, or bank + transfer reference.
+      const metadata: Record<string, string> = {}
+      if (selectedProvider === 'mpesa') {
+        const digits = payPhone.replace(/[^0-9]/g, '')
+        if (digits.length < 9) {
+          toast.error('Please enter a valid M-Pesa phone number')
+          return
+        }
+        metadata.phone = payPhone.trim()
+      } else if (selectedProvider === 'bank') {
+        if (!payBank) {
+          toast.error('Please select your bank')
+          return
+        }
+        if (!payReference.trim()) {
+          toast.error('Please enter the payment reference')
+          return
+        }
+        metadata.bank = payBank
+        metadata.reference = payReference.trim()
+      }
       setProcessingPayment(true)
       const result = await api.post('/payments/init', {
         provider: selectedProvider,
         planType: selectedPlan,
         couponCode: couponCode || undefined,
+        metadata,
       })
       const data = result.data as Record<string, unknown>
       const payment = data.payment as Record<string, unknown> | undefined
@@ -370,15 +397,21 @@ export function SubscriptionsPage() {
         toast.success('Free trial activated! Enjoy premium features for 7 days.')
         setShowPaymentPicker(false)
         setPage('dashboard')
-      } else if (payment?.checkoutUrl) {
-        // Redirect to external checkout
+      } else if (payment?.checkoutUrl && selectedProvider !== 'bank' && selectedProvider !== 'mpesa') {
+        // Legacy external checkout — kept for any redirect gateway that
+        // reappears, but the in-app chooser no longer surfaces them.
         window.location.href = payment.checkoutUrl as string
-      } else if (payment?.clientSecret) {
-        // Stripe embedded checkout (could be enhanced with Stripe Elements)
-        toast.info('Payment processing... You will be redirected shortly.')
-      } else {
-        toast.success('Payment initiated! Check your phone for M-Pesa prompt.')
+      } else if (selectedProvider === 'bank') {
+        toast.success('Request received! Your plan activates once your transfer is confirmed.')
         setShowPaymentPicker(false)
+        setPayPhone('')
+        setPayBank('')
+        setPayReference('')
+      } else {
+        // M-Pesa STK push — approved on the user's phone, no redirect.
+        toast.success('Payment prompt sent! Enter your M-Pesa PIN on your phone to approve.')
+        setShowPaymentPicker(false)
+        setPayPhone('')
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to initiate payment')
@@ -459,6 +492,17 @@ export function SubscriptionsPage() {
     'shopping-bag': <ShoppingBag className="size-5" />,
   }
 
+  // In-app method details from the selected provider's checkoutConfig.
+  const selectedProviderInfo = paymentProviders.find((p) => p.id === selectedProvider)
+  const bankDetails = selectedProviderInfo?.checkoutConfig || {}
+  let banks: string[] = []
+  try {
+    const parsed = bankDetails.banks ? JSON.parse(bankDetails.banks) : []
+    banks = Array.isArray(parsed) ? parsed : []
+  } catch {
+    banks = []
+  }
+
   return (
     <div className="p-4 md:p-6 space-y-8 max-w-[1200px] mx-auto">
       {/* Payment Method Picker Modal */}
@@ -514,6 +558,64 @@ export function SubscriptionsPage() {
                 ))}
               </div>
 
+              {/* In-app details for the chosen method — everything stays inside the app */}
+              {selectedProvider === 'mpesa' && (
+                <div className="mt-4 space-y-3 rounded-xl border bg-muted/30 p-4">
+                  <div className="space-y-1.5">
+                    <Label>M-Pesa phone number</Label>
+                    <Input
+                      type="tel"
+                      placeholder="07XXXXXXXX"
+                      value={payPhone}
+                      onChange={(e) => setPayPhone(e.target.value)}
+                      disabled={!selectedProviderInfo?.isAvailable}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      We'll send a payment prompt to this phone — approve it with your M-Pesa PIN. No external site is opened.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {selectedProvider === 'bank' && (
+                <div className="mt-4 space-y-3 rounded-xl border bg-muted/30 p-4">
+                  <div className="space-y-1.5">
+                    <Label>Send money from this bank</Label>
+                    <select
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                      value={payBank}
+                      onChange={(e) => setPayBank(e.target.value)}
+                    >
+                      <option value="">Select your bank…</option>
+                      {banks.map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {bankDetails.accountName && (
+                    <div className="rounded-lg border bg-background p-3 text-xs">
+                      <p className="mb-1 font-medium">Send to:</p>
+                      <p>{bankDetails.accountName}</p>
+                      {bankDetails.accountNumber && <p>Account: {bankDetails.accountNumber}</p>}
+                      {bankDetails.bankName && <p>Bank: {bankDetails.bankName}</p>}
+                      {bankDetails.tillNumber && <p>M-Pesa Till / Paybill: {bankDetails.tillNumber}</p>}
+                      {bankDetails.phone && <p>Confirm with us: {bankDetails.phone}</p>}
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label>Payment reference</Label>
+                    <Input
+                      placeholder="Reference / code from your transfer"
+                      value={payReference}
+                      onChange={(e) => setPayReference(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Your plan activates once we confirm the funds. Keep this reference handy.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6 flex gap-3">
                 <Button
                   variant="outline"
@@ -531,6 +633,16 @@ export function SubscriptionsPage() {
                     <>
                       <Loader2 className="size-4 mr-1 animate-spin" />
                       Processing...
+                    </>
+                  ) : selectedProvider === 'bank' ? (
+                    <>
+                      <Check className="size-4 mr-1" />
+                      Submit for Confirmation
+                    </>
+                  ) : selectedProvider === 'mpesa' ? (
+                    <>
+                      <Smartphone className="size-4 mr-1" />
+                      Send Payment Prompt
                     </>
                   ) : (
                     <>
@@ -705,6 +817,9 @@ export function SubscriptionsPage() {
                         // Paid plan - show payment method picker
                         setSelectedPlan(plan.id)
                         setSelectedProvider(null)
+                        setPayPhone('')
+                        setPayBank('')
+                        setPayReference('')
                         setShowPaymentPicker(true)
                       }
                   }}

@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'all'
     const signalStatus = searchParams.get('signalStatus') || 'all'
 
-    const [users, signals, coupons, tickets, auditLog, adUsage, recentAdEvents] = await Promise.all([
+    const [users, signals, coupons, tickets, auditLog, adUsage, recentAdEvents, payments] = await Promise.all([
       db.user.findMany({
         where: {
           deletedAt: null,
@@ -117,9 +117,27 @@ export async function GET(request: NextRequest) {
           user: { select: { name: true, email: true } },
         },
       }),
+      // Pending in-app payments (bank / M-Pesa) — queued for manual confirmation.
+      db.paymentTransaction.findMany({
+        where: { status: 'pending', paymentProvider: { in: ['bank', 'mpesa'] } },
+        select: {
+          id: true,
+          userId: true,
+          amount: true,
+          currency: true,
+          planType: true,
+          paymentProvider: true,
+          stripeSessionId: true,
+          description: true,
+          createdAt: true,
+          user: { select: { name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
     ])
 
-    return successResponse({ users, signals, coupons, tickets, auditLog, adUsage, recentAdEvents })
+    return successResponse({ users, signals, coupons, tickets, auditLog, adUsage, recentAdEvents, payments })
   } catch (error) {
     console.error('Admin data GET error:', error)
     return errorResponse('Failed to fetch admin data', 500)

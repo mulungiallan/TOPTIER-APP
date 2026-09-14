@@ -16,6 +16,8 @@ import {
 } from '@/lib/auth'
 import { emailService } from '@/lib/services/email'
 import { notifyUser, notifyUsers } from '@/lib/services/notifications'
+import { fulfillPendingPayment } from '@/lib/payments/fulfillment'
+import { fulfillWalletFunding } from '@/lib/services/wallet'
 import { requireAdmin } from '@/lib/admin-guard'
 import { requirePermission, ADMIN_ROLES, adminCan } from '@/lib/admin-permissions'
 import { ManagedCopyService } from '@/lib/services/managed-copy'
@@ -89,6 +91,8 @@ function permForAction(action: string): string | null {
     delete_event: 'content.write',
     process_data_deletion: 'users.gdpr',
     settle_broker_copy: 'payments.write',
+    confirm_payment: 'payments.write',
+    reject_payment: 'payments.write',
   }
   return map[action] ?? null
 }
@@ -166,6 +170,10 @@ export async function POST(request: NextRequest) {
         return await handleRefundTransaction(adminId, body)
       case 'record_earning':
         return await handleRecordEarning(adminId, body)
+      case 'confirm_payment':
+        return await handleConfirmPayment(adminId, body)
+      case 'reject_payment':
+        return await handleRejectPayment(adminId, body)
       // ── Trading ops ──
       case 'expire_signals':
         return await handleExpireSignals(adminId, body)
@@ -1215,6 +1223,64 @@ async function handleRecordEarning(adminId: string, body: any) {
   })
   await logAdminAction(adminId, 'RECORD_EARNING', { earningId: earning.id, source, amount: num })
   return successResponse(earning)
+}
+
+// ─── Manual (in-app bank) payment confirmation ────────────────────────────────
+
+// Approve a pending in-app payment: activates the subscription, or credits the
+// wallet for a WALLET_FUND transaction. Idempotent — only pending rows claim.
+async function handleConfirmPayment(adminId: string, body: any) {
+  const { transactionId } = body
+  if (!transactionId) return errorResponse('transactionId required', 400)
+  const tx = await db.paymentTransaction.findUnique({ where: { id: transactionId } })
+  if (!tx) return errorResponse('Transaction not found', 404)
+  if (tx.status !== 'pending') return errorResponse('Transaction is not pending', 400)
+
+  let fulfilled: boolean
+  if (tx.planType === 'wallet_fund') {
+    const res = await fulfillWalletFunding(
+      { id: tx.id, userId: tx.userId, description: tx.description, orderTrackingId: tx.stripeSessionId },
+      { paymentMethod: 'Bank transfer' }
+    )
+    fulfilled = res.fulfilled
+  } else {
+    const res = await fulfillPendingPayment({ id: tx.id }, { provider: 'bank', paymentMethod: 'Bank transfer' })
+    fulfilled = res.fulfilled
+  }
+  if (!fulfilled) return errorResponse('Payment could not be fulfilled (already processed)', 400)
+
+  await notifyUser(tx.userId, {
+    type: 'subscription',
+    title: 'Payment Confirmed',
+    message: `Your ${tx.planType === 'wallet_fund' ? 'wallet top-up' : 'payment of ' + tx.currency + ' ' + tx.amount} was confirmed. Thank you!`,
+    actionUrl: '/wallet',
+  }).catch(() => {})
+
+  await logAdminAction(adminId, 'CONFIRM_PAYMENT', { transactionId, userId: tx.userId, amount: tx.amount, currency: tx.currency, planType: tx.planType })
+  return successResponse({ approved: true, transactionId })
+}
+
+async function handleRejectPayment(adminId: string, body: any) {
+  const { transactionId, reason } = body
+  if (!transactionId) return errorResponse('transactionId required', 400)
+  const tx = await db.paymentTransaction.findUnique({ where: { id: transactionId } })
+  if (!tx) return errorResponse('Transaction not found', 404)
+  if (tx.status !== 'pending') return errorResponse('Transaction is not pending', 400)
+
+  const updated = await db.paymentTransaction.update({
+    where: { id: transactionId },
+    data: { status: 'failed', description: `${tx.description || ''} | REJECTED: ${reason || 'could not verify funds'}` },
+  })
+
+  await notifyUser(tx.userId, {
+    type: 'system',
+    title: 'Payment not confirmed',
+    message: `We could not confirm your payment (${tx.currency} ${tx.amount}). ${reason || 'Please contact support.'}`,
+    actionUrl: '/support',
+  }).catch(() => {})
+
+  await logAdminAction(adminId, 'REJECT_PAYMENT', { transactionId, userId: tx.userId, amount: tx.amount, reason: reason || null })
+  return successResponse({ approved: false, transactionId, updated })
 }
 
 // ─── Trading ops ─────────────────────────────────────────────────────────────

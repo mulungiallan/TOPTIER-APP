@@ -9,8 +9,11 @@ import { paystackGateway } from './paystack'
 import { paypalGateway } from './paypal'
 import { revenuecatGateway } from './revenuecat'
 import { pesapalGateway } from './pesapal'
+import { bankGateway } from './bank'
 
-// All registered gateways
+// All registered gateways. Card / redirect gateways stay registered so their
+// webhooks and callbacks keep working, but they are NOT offered in the app's
+// payment chooser (see getAvailableProviders below) — everything is in-app.
 const gateways: Record<PaymentProvider, PaymentGateway> = {
   stripe: stripeGateway,
   flutterwave: flutterwaveGateway,
@@ -19,6 +22,7 @@ const gateways: Record<PaymentProvider, PaymentGateway> = {
   paypal: paypalGateway,
   revenuecat: revenuecatGateway,
   pesapal: pesapalGateway,
+  bank: bankGateway,
 }
 
 // Check if a provider's environment variables are configured
@@ -26,28 +30,49 @@ function isProviderConfigured(provider: PaymentProvider): boolean {
   const envChecks: Record<PaymentProvider, string[]> = {
     stripe: ['STRIPE_SECRET_KEY', 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],
     flutterwave: ['FLUTTERWAVE_SECRET_KEY', 'NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY'],
-    mpesa: ['MPESA_CONSUMER_KEY', 'MPESA_CONSUMER_SECRET', 'MPESA_SHORTCODE'],
+    mpesa: ['MPESA_CONSUMER_KEY', 'MPESA_CONSUMER_SECRET', 'MPESA_SHORTCODE', 'MPESA_PASSKEY'],
     paystack: ['PAYSTACK_SECRET_KEY', 'NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY'],
     paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'NEXT_PUBLIC_PAYPAL_CLIENT_ID'],
     revenuecat: ['REVENUECAT_SECRET_KEY', 'NEXT_PUBLIC_REVENUECAT_PUBLIC_KEY'],
     pesapal: ['PESAPAL_CONSUMER_KEY', 'PESAPAL_CONSUMER_SECRET'],
+    bank: ['BANK_ACCOUNT_NAME'],
   }
 
   const required = envChecks[provider] || []
   return required.every(key => !!process.env[key])
 }
 
-// Get list of all available providers (for UI display)
+// Get list of available providers (for UI display).
+//
+// Only in-app methods are surfaced here. M-Pesa uses the Daraja STK push
+// (the customer approves on their own phone — no redirect) and "Bank" is a
+// manual, admin-confirmed transfer to our account details. Redirect gateways
+// (Stripe, PesaPal, PayStack, Flutterwave, PayPal) are intentionally not
+// exposed to the chooser.
 export function getAvailableProviders(): PaymentProviderInfo[] {
-  return Object.values(gateways).map(gw => ({
-    id: gw.provider,
-    name: gw.displayName,
-    icon: gw.icon,
-    description: gw.description,
-    supportedCurrencies: gw.supportedCurrencies,
-    supportedCountries: gw.supportedCountries,
-    isAvailable: isProviderConfigured(gw.provider),
-  }))
+  const list: PaymentProviderInfo[] = [
+    {
+      id: mpesaGateway.provider,
+      name: mpesaGateway.displayName,
+      icon: mpesaGateway.icon,
+      description: 'Lipa Na M-Pesa — enter your phone and approve with your M-Pesa PIN on your phone.',
+      supportedCurrencies: mpesaGateway.supportedCurrencies,
+      supportedCountries: mpesaGateway.supportedCountries,
+      isAvailable: isProviderConfigured(mpesaGateway.provider),
+      checkoutConfig: mpesaGateway.getCheckoutConfig(),
+    },
+    {
+      id: bankGateway.provider,
+      name: bankGateway.displayName,
+      icon: bankGateway.icon,
+      description: 'Transfer from any bank, then confirm with your payment reference. Activated once we verify the funds.',
+      supportedCurrencies: bankGateway.supportedCurrencies,
+      supportedCountries: bankGateway.supportedCountries,
+      isAvailable: true,
+      checkoutConfig: bankGateway.getCheckoutConfig(),
+    },
+  ]
+  return list
 }
 
 // Get a specific gateway instance

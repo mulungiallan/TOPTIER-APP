@@ -53,6 +53,22 @@ export const env = {
   get pesapalConsumerSecret(): string | undefined {
     return process.env.PESAPAL_CONSUMER_SECRET
   },
+  // ─── In-app bank / manual payments ───────────────────────────────────────
+  get bankAccountName(): string | undefined {
+    return process.env.BANK_ACCOUNT_NAME
+  },
+  get bankAccountNumber(): string | undefined {
+    return process.env.BANK_ACCOUNT_NUMBER
+  },
+  get bankName(): string | undefined {
+    return process.env.BANK_NAME
+  },
+  get bankTillNumber(): string | undefined {
+    return process.env.BANK_TILL_NUMBER
+  },
+  get bankPaymentPhone(): string | undefined {
+    return process.env.BANK_PAYMENT_PHONE
+  },
   get hfToken(): string | undefined {
     return process.env.HF_TOKEN
   },

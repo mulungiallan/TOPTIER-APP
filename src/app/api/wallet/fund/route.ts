@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateRequest, successResponse, errorResponse } from '@/lib/auth'
 import { initializePayment } from '@/lib/payments/registry'
+import { generateBankReference } from '@/lib/payments/bank'
 import { getExchangeRate } from '@/lib/payments/exchange-rates'
 import { countryNameToCode } from '@/lib/countries'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { asset, amount } = parsed.data
-    const provider = parsed.data.provider || 'pesapal'
+    const provider = parsed.data.provider || 'mpesa'
 
     // PesaPal bills in KES. USD and UGX are converted at the checkout rate;
     // KES passes through unchanged. No app-side limits are imposed — the
@@ -69,6 +70,39 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // In-app bank transfer: no gateway call — record intent + reference and
+    // wait for manual admin confirmation before crediting the wallet.
+    if (provider === 'bank') {
+      const bankRef = generateBankReference()
+      const bank = parsed.data.bank || ''
+      const userRef = parsed.data.reference || ''
+      await db.paymentTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          stripeSessionId: bankRef,
+          description: `WALLET_FUND|${asset}|${amount}|bank:${bank}|ref:${userRef}`,
+        },
+      })
+
+      return successResponse({
+        transaction: {
+          id: transaction.id,
+          amount: chargedAmount,
+          currency: 'KES',
+          asset,
+          creditAmount: amount,
+          status: 'pending',
+        },
+        payment: {
+          provider: 'bank',
+          providerTransactionId: bankRef,
+          reference: bankRef,
+          status: 'pending',
+          metadata: { bank, reference: userRef },
+        },
+      })
+    }
+
     const result = await initializePayment(provider, {
       userId,
       userEmail: user.email || '',
@@ -78,7 +112,7 @@ export async function POST(request: NextRequest) {
       currency: 'KES',
       metadata: {
         transactionId: transaction.id,
-        phone: user.phone || '',
+        phone: parsed.data.phone || user.phone || '',
         country: countryNameToCode(user.country),
         description: `TOPTIER wallet top-up (${amount} ${asset})`,
       },
