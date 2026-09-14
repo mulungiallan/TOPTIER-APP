@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   Wallet as WalletIcon,
@@ -14,6 +14,7 @@ import {
   Loader2,
   ClipboardCheck,
   Eye,
+  X,
 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
@@ -23,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -105,6 +107,8 @@ export function WalletPage() {
   const [deposit, setDeposit] = useState({ asset: 'KES', amount: '' })
   const [withdraw, setWithdraw] = useState({ asset: 'USD', amount: '' })
   const [busy, setBusy] = useState<string | null>(null)
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
 
   const [cryptoAsset, setCryptoAsset] = useState('BTC')
   const [cryptoWithdraw, setCryptoWithdraw] = useState({ amount: '', toAddress: '' })
@@ -167,7 +171,8 @@ const handleTopup = async () => {
       })
       const checkoutUrl = res?.data?.payment?.checkoutUrl
       if (checkoutUrl) {
-        window.location.href = checkoutUrl
+        setDeposit({ asset: deposit.asset, amount: '' })
+        setCheckoutUrl(checkoutUrl)
         return
       }
       toast.success('Top-up request received!')
@@ -178,6 +183,26 @@ const handleTopup = async () => {
       toast.error(msg)
     } finally {
       setBusy(null)
+    }
+  }
+
+  const handleCheckoutLoaded = () => {
+    let search: string | undefined
+    try {
+      search = iframeRef.current?.contentWindow?.location.search
+    } catch {
+      // PesaPal's hosted page is cross-origin — ignore until it returns to this app
+      return
+    }
+    if (!search) return
+    if (search.includes('payment=success')) {
+      setCheckoutUrl(null)
+      toast.success('Wallet top-up successful!')
+      fetchData()
+    } else if (search.includes('payment=failed')) {
+      setCheckoutUrl(null)
+      toast.error('Top-up was not completed.')
+      fetchData()
     }
   }
 
@@ -571,6 +596,40 @@ const handleTopup = async () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ─── PesaPal payment sheet (in-app, no redirect) ─────────── */}
+      <Dialog
+        open={!!checkoutUrl}
+        onOpenChange={(open) => {
+          if (!open) setCheckoutUrl(null)
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          className="max-h-[92vh] w-full max-w-xl gap-0 overflow-hidden border bg-background p-0 sm:max-w-xl"
+        >
+          <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <ShieldCheck className="size-4 shrink-0 text-emerald-500" />
+              <p className="truncate text-sm font-semibold">Secure payment — PesaPal</p>
+            </div>
+            <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => setCheckoutUrl(null)}>
+              <X className="size-4" />
+            </Button>
+          </div>
+          <iframe
+            ref={iframeRef}
+            src={checkoutUrl || undefined}
+            title="PesaPal checkout"
+            className="h-[68vh] w-full bg-background"
+            onLoad={handleCheckoutLoaded}
+          />
+          <p className="border-t px-4 py-2 text-center text-xs text-muted-foreground">
+            A payment prompt may appear on your phone — enter your PIN to complete. You can close this window; your wallet still gets credited.
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
