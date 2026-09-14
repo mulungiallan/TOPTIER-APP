@@ -117,10 +117,10 @@ export function CompetitionsPage() {
     setJoining(id)
     try {
       await api.post('/competitions/join', { competitionId: id })
-      toast.success('Joined competition!')
+      toast.success('Joined competition! Payment was taken from your wallet.')
       fetchCompetitions()
-    } catch {
-      toast.error('Failed to join')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to join')
     } finally {
       setJoining(null)
     }
