@@ -70,17 +70,21 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // In-app bank transfer: no gateway call — record intent + reference and
-    // wait for manual admin confirmation before crediting the wallet.
-    if (provider === 'bank') {
+    // In-app manual methods: bank transfer and mobile wallets (Airtel Money,
+    // MTN MoMo). No gateway call — record intent + reference (and the phone
+    // for mobile money) and wait for manual admin confirmation before
+    // crediting the wallet.
+    if (provider === 'bank' || provider === 'airtel' || provider === 'mtn') {
       const bankRef = generateBankReference()
       const bank = parsed.data.bank || ''
       const userRef = parsed.data.reference || ''
+      const phone = parsed.data.phone || user.phone || ''
+      const detailTag = provider === 'bank' ? `bank:${bank}|ref:${userRef}` : `phone:${phone}`
       await db.paymentTransaction.update({
         where: { id: transaction.id },
         data: {
           stripeSessionId: bankRef,
-          description: `WALLET_FUND|${asset}|${amount}|bank:${bank}|ref:${userRef}`,
+          description: `WALLET_FUND|${asset}|${amount}|${detailTag}`,
         },
       })
 
@@ -94,11 +98,11 @@ export async function POST(request: NextRequest) {
           status: 'pending',
         },
         payment: {
-          provider: 'bank',
+          provider,
           providerTransactionId: bankRef,
           reference: bankRef,
           status: 'pending',
-          metadata: { bank, reference: userRef },
+          metadata: provider === 'bank' ? { bank, reference: userRef } : { phone },
         },
       })
     }
@@ -138,9 +142,14 @@ export async function POST(request: NextRequest) {
     console.error('Wallet fund POST error:', error)
     // Surface provider-side rejections (PesaPal account limits, invalid IPN,
     // etc.) so the user sees the real reason; keep internal errors generic.
-    const message = error instanceof Error && error.message.startsWith('PesaPal:')
-      ? error.message.slice('PesaPal: '.length)
-      : 'Failed to start wallet top-up. Please try again.'
+    // M-Pesa STK can't run until the Daraja keys are configured — point the
+    // user at the in-app methods that work right now.
+    const message =
+      error instanceof Error && error.message.startsWith('PesaPal: ')
+        ? error.message.slice('PesaPal: '.length)
+        : error instanceof Error && error.message.includes('MPESA_')
+          ? 'M-Pesa payments aren\u2019t active yet \u2014 use Airtel Money, MTN MoMo, or Bank Transfer to top up.'
+          : 'Failed to start wallet top-up. Please try again.'
     return errorResponse(message, 500)
   }
 }

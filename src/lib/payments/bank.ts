@@ -16,7 +16,8 @@ import type {
 } from './types'
 import { env } from '@/lib/env'
 
-// Banks offered in the "Pay by Bank" dropdown.
+// Banks offered in the "Pay by Bank" dropdown. Mobile money (M-Pesa, Airtel
+// Money, MTN MoMo) is offered separately as its own in-app method.
 export const IN_APP_BANKS = [
   'Absa Bank',
   'Bank of Africa',
@@ -29,9 +30,6 @@ export const IN_APP_BANKS = [
   'NCBA Bank',
   'Standard Chartered',
   'Stanbic Bank',
-  'M-Pesa / M-Pesa Agent',
-  'Airtel Money',
-  'MTN MoMo',
 ]
 
 export function generateBankReference(): string {

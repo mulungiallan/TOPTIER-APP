@@ -1237,14 +1237,15 @@ async function handleConfirmPayment(adminId: string, body: any) {
   if (tx.status !== 'pending') return errorResponse('Transaction is not pending', 400)
 
   let fulfilled: boolean
+  const paymentMethod = tx.paymentProvider === 'bank' ? 'Bank transfer' : 'Mobile Money'
   if (tx.planType === 'wallet_fund') {
     const res = await fulfillWalletFunding(
       { id: tx.id, userId: tx.userId, description: tx.description, orderTrackingId: tx.stripeSessionId },
-      { paymentMethod: 'Bank transfer' }
+      { paymentMethod }
     )
     fulfilled = res.fulfilled
   } else {
-    const res = await fulfillPendingPayment({ id: tx.id }, { provider: 'bank', paymentMethod: 'Bank transfer' })
+    const res = await fulfillPendingPayment({ id: tx.id }, { provider: tx.paymentProvider || 'bank', paymentMethod })
     fulfilled = res.fulfilled
   }
   if (!fulfilled) return errorResponse('Payment could not be fulfilled (already processed)', 400)

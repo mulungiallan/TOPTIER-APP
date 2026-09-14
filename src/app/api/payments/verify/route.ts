@@ -29,8 +29,9 @@ export async function POST(request: NextRequest) {
       return errorResponse('provider is required', 400)
     }
 
-    // Bank transfers are confirmed manually by an admin — nothing to query.
-    if (provider === 'bank') {
+    // Bank transfers / Airtel Money / MTN MoMo are confirmed manually by an
+    // admin — nothing to query.
+    if (provider === 'bank' || provider === 'airtel' || provider === 'mtn') {
       return successResponse({ verified: false, status: 'pending', amount: 0, currency: 'KES' })
     }
 

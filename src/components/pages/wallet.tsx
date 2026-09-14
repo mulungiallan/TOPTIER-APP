@@ -68,9 +68,14 @@ const BANKS = [
   'NCBA Bank',
   'Standard Chartered',
   'Stanbic Bank',
-  'M-Pesa / M-Pesa Agent',
-  'Airtel Money',
-  'MTN MoMo',
+]
+
+// In-app mobile-money methods, shown side by side with M-Pesa — customers pay
+// from their own Airtel Money / MTN MoMo wallet on their phone.
+const MOBILE_MONEY: { id: string; label: string }[] = [
+  { id: 'mpesa', label: 'M-Pesa' },
+  { id: 'airtel', label: 'Airtel Money' },
+  { id: 'mtn', label: 'MTN MoMo' },
 ]
 
 const TX_LABELS: Record<string, string> = {
@@ -168,18 +173,23 @@ export function WalletPage() {
     toast.success('Address copied')
   }
 
-// Real-money top-up fully in-app. M-Pesa uses the Daraja STK push (the
-// customer approves on their phone — no redirect); Bank creates a manual,
-// admin-confirmed transfer request. The wallet is credited on confirmation.
+// Real-money top-up fully in-app. Mobile money (M-Pesa, Airtel Money, MTN
+// MoMo) is paid from the customer's phone — M-Pesa uses the Daraja STK push,
+// Airtel/MTN are confirmed manually once the payment arrives. Bank creates a
+// manual, admin-confirmed transfer request. The wallet is credited on
+// confirmation.
+const isMobileMoney = (m: string) => m === 'mpesa' || m === 'airtel' || m === 'mtn'
+const mobileName = (m: string) => MOBILE_MONEY.find((x) => x.id === m)?.label || 'Mobile Money'
+
 const handleTopup = async () => {
     if (!deposit.amount || Number(deposit.amount) <= 0) {
       toast.error('Enter a valid amount')
       return
     }
-    if (deposit.method === 'mpesa') {
+    if (isMobileMoney(deposit.method)) {
       const digits = deposit.phone.replace(/[^0-9]/g, '')
       if (digits.length < 9) {
-        toast.error('Enter a valid M-Pesa phone number')
+        toast.error('Enter a valid phone number')
         return
       }
     } else {
@@ -199,7 +209,7 @@ const handleTopup = async () => {
         amount: Number(deposit.amount),
         provider: deposit.method,
       }
-      if (deposit.method === 'mpesa') {
+      if (isMobileMoney(deposit.method)) {
         body.phone = deposit.phone.trim()
       } else {
         body.bank = deposit.bank
@@ -207,13 +217,14 @@ const handleTopup = async () => {
       }
       const res = await api.post<{ success: boolean; data: { payment: { checkoutUrl?: string } } }>('/wallet/fund', body)
       const checkoutUrl = res?.data?.payment?.checkoutUrl
-      if (checkoutUrl && deposit.method !== 'bank' && deposit.method !== 'mpesa') {
-        // Legacy redirect gateways only — the in-app chooser never reaches this.
+      if (checkoutUrl && deposit.method === 'bank') {
         window.location.href = checkoutUrl
-      } else if (deposit.method === 'bank') {
-        toast.success('Top-up request received! We will confirm once your transfer arrives.')
-      } else {
+      } else if (deposit.method === 'mpesa') {
         toast.success('Payment prompt sent! Enter your M-Pesa PIN on your phone to approve.')
+      } else if (isMobileMoney(deposit.method)) {
+        toast.success(`Top-up request received! Complete the ${mobileName(deposit.method)} payment on your phone and we will credit your wallet once it is confirmed.`)
+      } else {
+        toast.success('Top-up request received! We will confirm once your transfer arrives.')
       }
       setDeposit((d) => ({ ...d, amount: '', phone: '', bank: '', reference: '' }))
       await fetchData()
@@ -317,7 +328,7 @@ const handleTopup = async () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base"><ArrowDownToLine className="size-4 text-emerald-500" /> Add funds</CardTitle>
-                <CardDescription>Top up with M-Pesa (approve on your phone) or a bank transfer that we confirm manually.</CardDescription>
+                <CardDescription>Pay with mobile money (M-Pesa, Airtel Money, MTN MoMo) from your phone, or a bank transfer that we confirm manually.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -348,35 +359,51 @@ const handleTopup = async () => {
 
                 <div className="space-y-1.5">
                   <Label>Method</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['mpesa', 'bank'] as const).map((m) => (
+                  <div className="grid grid-cols-3 gap-2">
+                    {MOBILE_MONEY.map((m) => (
                       <button
-                        key={m}
+                        key={m.id}
                         type="button"
-                        onClick={() => setDeposit({ ...deposit, method: m })}
+                        onClick={() => setDeposit({ ...deposit, method: m.id })}
                         className={cn(
-                          'h-9 rounded-lg border px-3 text-sm font-medium transition-colors',
-                          deposit.method === m
+                          'h-9 rounded-lg border px-2 text-sm font-medium transition-colors',
+                          deposit.method === m.id
                             ? 'border-primary bg-primary/10 text-primary'
                             : 'border-input bg-background text-muted-foreground hover:border-primary/40'
                         )}
                       >
-                        {m === 'mpesa' ? 'M-Pesa' : 'Bank Transfer'}
+                        {m.label}
                       </button>
                     ))}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setDeposit({ ...deposit, method: 'bank' })}
+                    className={cn(
+                      'mt-2 h-9 w-full rounded-lg border px-3 text-sm font-medium transition-colors',
+                      deposit.method === 'bank'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-input bg-background text-muted-foreground hover:border-primary/40'
+                    )}
+                  >
+                    Bank Transfer
+                  </button>
                 </div>
 
-                {deposit.method === 'mpesa' ? (
+                {isMobileMoney(deposit.method) ? (
                   <div className="space-y-1.5">
-                    <Label>M-Pesa phone number</Label>
+                    <Label>{mobileName(deposit.method)} phone number</Label>
                     <Input
                       type="tel"
                       placeholder="07XXXXXXXX"
                       value={deposit.phone}
                       onChange={(e) => setDeposit({ ...deposit, phone: e.target.value })}
                     />
-                    <p className="text-xs text-muted-foreground">Approve with your M-Pesa PIN on your phone. No external site is opened.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {deposit.method === 'mpesa'
+                        ? 'Approve with your M-Pesa PIN on your phone. No external site is opened.'
+                        : `Complete the ${mobileName(deposit.method)} payment from your phone and we credit you once it is confirmed.`}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -413,7 +440,7 @@ const handleTopup = async () => {
                   onClick={handleTopup}
                 >
                   {busy === 'topup' ? <Loader2 className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
-                  {deposit.method === 'bank' ? 'Request Top-up' : 'Send Payment Prompt'}
+                  {deposit.method === 'bank' ? 'Request Top-up' : deposit.method === 'mpesa' ? 'Send Payment Prompt' : 'Send Payment Request'}
                 </Button>
               </CardContent>
             </Card>

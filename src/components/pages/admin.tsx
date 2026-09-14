@@ -1818,7 +1818,7 @@ export default function AdminPage() {
           <Card className="border-amber-500/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg"><Clock className="size-5 text-amber-500" /> Awaiting Confirmation</CardTitle>
-              <CardDescription>In-app bank transfers / M-Pesa payments that still need manual verification before the subscription or wallet is activated.</CardDescription>
+              <CardDescription>In-app bank transfers and mobile money (M-Pesa, Airtel Money, MTN MoMo) payments that still need manual verification before the subscription or wallet is activated.</CardDescription>
             </CardHeader>
             <CardContent>
               {adminPayments.length === 0 ? (

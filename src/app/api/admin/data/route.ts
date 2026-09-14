@@ -117,9 +117,9 @@ export async function GET(request: NextRequest) {
           user: { select: { name: true, email: true } },
         },
       }),
-      // Pending in-app payments (bank / M-Pesa) — queued for manual confirmation.
+      // Pending in-app payments (bank / mobile money / M-Pesa) — queued for manual confirmation.
       db.paymentTransaction.findMany({
-        where: { status: 'pending', paymentProvider: { in: ['bank', 'mpesa'] } },
+        where: { status: 'pending', paymentProvider: { in: ['bank', 'mpesa', 'airtel', 'mtn'] } },
         select: {
           id: true,
           userId: true,

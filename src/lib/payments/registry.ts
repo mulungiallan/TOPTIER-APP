@@ -5,6 +5,8 @@ import type { PaymentProvider, PaymentProviderInfo, PaymentGateway, InitPaymentP
 import { stripeGateway } from './stripe'
 import { flutterwaveGateway } from './flutterwave'
 import { mpesaGateway } from './mpesa'
+import { airtelGateway } from './mobile-money'
+import { mtnGateway } from './mobile-money'
 import { paystackGateway } from './paystack'
 import { paypalGateway } from './paypal'
 import { revenuecatGateway } from './revenuecat'
@@ -18,6 +20,8 @@ const gateways: Record<PaymentProvider, PaymentGateway> = {
   stripe: stripeGateway,
   flutterwave: flutterwaveGateway,
   mpesa: mpesaGateway,
+  airtel: airtelGateway,
+  mtn: mtnGateway,
   paystack: paystackGateway,
   paypal: paypalGateway,
   revenuecat: revenuecatGateway,
@@ -31,6 +35,8 @@ function isProviderConfigured(provider: PaymentProvider): boolean {
     stripe: ['STRIPE_SECRET_KEY', 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],
     flutterwave: ['FLUTTERWAVE_SECRET_KEY', 'NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY'],
     mpesa: ['MPESA_CONSUMER_KEY', 'MPESA_CONSUMER_SECRET', 'MPESA_SHORTCODE', 'MPESA_PASSKEY'],
+    airtel: [],
+    mtn: [],
     paystack: ['PAYSTACK_SECRET_KEY', 'NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY'],
     paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'NEXT_PUBLIC_PAYPAL_CLIENT_ID'],
     revenuecat: ['REVENUECAT_SECRET_KEY', 'NEXT_PUBLIC_REVENUECAT_PUBLIC_KEY'],
@@ -60,6 +66,26 @@ export function getAvailableProviders(): PaymentProviderInfo[] {
       supportedCountries: mpesaGateway.supportedCountries,
       isAvailable: isProviderConfigured(mpesaGateway.provider),
       checkoutConfig: mpesaGateway.getCheckoutConfig(),
+    },
+    {
+      id: airtelGateway.provider,
+      name: airtelGateway.displayName,
+      icon: airtelGateway.icon,
+      description: 'Pay with Airtel Money from your phone, then we confirm once your payment arrives.',
+      supportedCurrencies: airtelGateway.supportedCurrencies,
+      supportedCountries: airtelGateway.supportedCountries,
+      isAvailable: true,
+      checkoutConfig: airtelGateway.getCheckoutConfig(),
+    },
+    {
+      id: mtnGateway.provider,
+      name: mtnGateway.displayName,
+      icon: mtnGateway.icon,
+      description: 'Pay with MTN MoMo from your phone, then we confirm once your payment arrives.',
+      supportedCurrencies: mtnGateway.supportedCurrencies,
+      supportedCountries: mtnGateway.supportedCountries,
+      isAvailable: true,
+      checkoutConfig: mtnGateway.getCheckoutConfig(),
     },
     {
       id: bankGateway.provider,

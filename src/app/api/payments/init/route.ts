@@ -144,17 +144,20 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // In-app bank transfer: no gateway call. Record the intent, mint our
-    // order reference, and wait for manual admin confirmation.
-    if (provider === 'bank') {
+    // In-app manual methods (bank transfer, Airtel Money, MTN MoMo): no
+    // gateway call. Record the intent, mint our order reference, and wait for
+    // manual admin confirmation.
+    if (provider === 'bank' || provider === 'airtel' || provider === 'mtn') {
       const bankRef = generateBankReference()
       const bank = metadata?.bank || ''
       const userRef = metadata?.reference || ''
+      const phone = metadata?.phone || user.phone || ''
+      const detailTag = provider === 'bank' ? `bank:${bank}|ref:${userRef}` : `phone:${phone}`
       await db.paymentTransaction.update({
         where: { id: transaction.id },
         data: {
           stripeSessionId: bankRef,
-          description: `${transaction.description || ''}|bank:${bank}|ref:${userRef}`,
+          description: `${transaction.description || ''}|${detailTag}`,
         },
       })
 
@@ -170,11 +173,11 @@ export async function POST(request: NextRequest) {
           status: 'pending',
         },
         payment: {
-          provider: 'bank',
+          provider,
           providerTransactionId: bankRef,
           reference: bankRef,
           status: 'pending',
-          metadata: { bank, reference: userRef },
+          metadata: provider === 'bank' ? { bank, reference: userRef } : { phone },
         },
       })
     }

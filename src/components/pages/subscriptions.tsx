@@ -220,11 +220,11 @@ const faqItems = [
   },
   {
     question: 'What payment methods do you accept?',
-    answer: 'Everything happens inside the app — no redirects. You can pay with M-Pesa (Lipa Na M-Pesa): enter your phone number and approve with your M-Pesa PIN on your phone. You can also pay by bank transfer: choose your bank, send the money to our account, and submit the payment reference so we can verify and activate your plan.',
+    answer: 'Everything happens inside the app — no redirects. Pay with mobile money: M-Pesa (approve with your M-Pesa PIN on your phone), Airtel Money, or MTN MoMo (pay from your wallet and we confirm once it arrives). You can also pay by bank transfer: choose your bank, send the money to our account, and submit the payment reference so we can verify and activate your plan.',
   },
   {
     question: 'Is my payment information secure?',
-    answer: 'Yes. M-Pesa transactions go directly through Safaricom\'s Daraja API and you approve them with your M-Pesa PIN on your phone — we never see your PIN. Bank transfers are sent to our own bank details and confirmed manually by our team; we never store your bank login or card numbers. All traffic is encrypted with 256-bit SSL/TLS.',
+    answer: 'Yes. M-Pesa transactions go directly through Safaricom\'s Daraja API and you approve them with your M-Pesa PIN on your phone — we never see your PIN. Airtel Money / MTN MoMo and bank transfers are confirmed manually by our team after funds arrive; we never store your PIN, bank login, or card numbers. All traffic is encrypted with 256-bit SSL/TLS.',
   },
 ]
 
@@ -360,12 +360,15 @@ export function SubscriptionsPage() {
       return
     }
     try {
-      // In-app payment details — M-Pesa phone, or bank + transfer reference.
+      // In-app payment details — mobile money (M-Pesa / Airtel / MTN) needs a
+      // phone number; bank needs the bank + transfer reference.
+      const IN_APP_MANUAL = ['bank', 'airtel', 'mtn']
+      const MOBILE = ['mpesa', 'airtel', 'mtn']
       const metadata: Record<string, string> = {}
-      if (selectedProvider === 'mpesa') {
+      if (MOBILE.includes(selectedProvider)) {
         const digits = payPhone.replace(/[^0-9]/g, '')
         if (digits.length < 9) {
-          toast.error('Please enter a valid M-Pesa phone number')
+          toast.error('Please enter a valid phone number')
           return
         }
         metadata.phone = payPhone.trim()
@@ -397,7 +400,7 @@ export function SubscriptionsPage() {
         toast.success('Free trial activated! Enjoy premium features for 7 days.')
         setShowPaymentPicker(false)
         setPage('dashboard')
-      } else if (payment?.checkoutUrl && selectedProvider !== 'bank' && selectedProvider !== 'mpesa') {
+      } else if (payment?.checkoutUrl && ![...IN_APP_MANUAL, 'mpesa'].includes(selectedProvider)) {
         // Legacy external checkout — kept for any redirect gateway that
         // reappears, but the in-app chooser no longer surfaces them.
         window.location.href = payment.checkoutUrl as string
@@ -407,6 +410,12 @@ export function SubscriptionsPage() {
         setPayPhone('')
         setPayBank('')
         setPayReference('')
+      } else if (MOBILE.includes(selectedProvider) && selectedProvider !== 'mpesa') {
+        // Airtel Money / MTN MoMo — the customer pays from their own wallet,
+        // then we confirm manually.
+        toast.success(`Request received! Complete the payment on your ${selectedProvider === 'airtel' ? 'Airtel Money' : 'MTN MoMo'} phone, and your plan activates once it is confirmed.`)
+        setShowPaymentPicker(false)
+        setPayPhone('')
       } else {
         // M-Pesa STK push — approved on the user's phone, no redirect.
         toast.success('Payment prompt sent! Enter your M-Pesa PIN on your phone to approve.')
@@ -577,6 +586,23 @@ export function SubscriptionsPage() {
                 </div>
               )}
 
+              {(selectedProvider === 'airtel' || selectedProvider === 'mtn') && (
+                <div className="mt-4 space-y-3 rounded-xl border bg-muted/30 p-4">
+                  <div className="space-y-1.5">
+                    <Label>{selectedProvider === 'airtel' ? 'Airtel Money' : 'MTN MoMo'} phone number</Label>
+                    <Input
+                      type="tel"
+                      placeholder="07XXXXXXXX"
+                      value={payPhone}
+                      onChange={(e) => setPayPhone(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Pay from your {selectedProvider === 'airtel' ? 'Airtel Money' : 'MTN MoMo'} wallet on this phone, then your plan activates once we confirm your payment.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {selectedProvider === 'bank' && (
                 <div className="mt-4 space-y-3 rounded-xl border bg-muted/30 p-4">
                   <div className="space-y-1.5">
@@ -643,6 +669,11 @@ export function SubscriptionsPage() {
                     <>
                       <Smartphone className="size-4 mr-1" />
                       Send Payment Prompt
+                    </>
+                  ) : selectedProvider === 'airtel' || selectedProvider === 'mtn' ? (
+                    <>
+                      <Smartphone className="size-4 mr-1" />
+                      Send Payment Request
                     </>
                   ) : (
                     <>

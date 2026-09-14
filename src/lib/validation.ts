@@ -61,7 +61,7 @@ export const resetPasswordSchema = z.object({
 // The payment-init route uses `planType` (trial | premium_monthly |
 // premium_annual | lifetime). Keep this in sync with the route's local schema.
 export const paymentInitSchema = z.object({
-  provider: z.enum(["stripe", "paypal", "paystack", "flutterwave", "mpesa", "revenuecat", "pesapal", "bank"]),
+  provider: z.enum(["stripe", "paypal", "paystack", "flutterwave", "mpesa", "airtel", "mtn", "revenuecat", "pesapal", "bank"]),
   planType: z.enum(["trial", "premium_monthly", "premium_annual", "lifetime"]),
   couponCode: z.string().trim().max(64).optional(),
   metadata: z.record(z.string(), z.string()).optional(),
@@ -73,7 +73,7 @@ export const paymentInitSchema = z.object({
 export const walletFundSchema = z.object({
   asset: z.enum(["USD", "KES", "UGX"]),
   amount: z.coerce.number().finite().positive(),
-  provider: z.enum(["pesapal", "mpesa", "bank"]).optional(),
+  provider: z.enum(["pesapal", "mpesa", "airtel", "mtn", "bank"]).optional(),
   phone: z.string().trim().min(1).max(32).optional(),
   bank: z.string().trim().min(1).max(64).optional(),
   reference: z.string().trim().min(1).max(128).optional(),
