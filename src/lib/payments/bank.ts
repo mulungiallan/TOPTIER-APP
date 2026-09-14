@@ -30,6 +30,8 @@ export const IN_APP_BANKS = [
   'Standard Chartered',
   'Stanbic Bank',
   'M-Pesa / M-Pesa Agent',
+  'Airtel Money',
+  'MTN MoMo',
 ]
 
 export function generateBankReference(): string {

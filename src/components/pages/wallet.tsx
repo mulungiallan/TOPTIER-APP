@@ -69,6 +69,8 @@ const BANKS = [
   'Standard Chartered',
   'Stanbic Bank',
   'M-Pesa / M-Pesa Agent',
+  'Airtel Money',
+  'MTN MoMo',
 ]
 
 const TX_LABELS: Record<string, string> = {
