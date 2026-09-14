@@ -28,6 +28,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { Capacitor } from '@capacitor/core'
 
 interface WalletLeg {
   asset: string
@@ -156,6 +157,24 @@ export function WalletPage() {
     return () => { active = false; clearInterval(id) }
   }, [checkoutUrl, data?.balances])
 
+  // On native the checkout opens in the system browser — refresh the wallet
+  // when the user returns to the app so the new balance shows immediately.
+  useEffect(() => {
+    let removeAppListener: (() => void) | undefined
+    const init = async () => {
+      try {
+        if (!Capacitor.isNativePlatform()) return
+        const { App } = await import('@capacitor/app')
+        const plugin = await App.addListener('resume', () => fetchData())
+        removeAppListener = () => plugin.remove()
+      } catch {
+        // Not running inside Capacitor — nothing to listen to.
+      }
+    }
+    init()
+    return () => removeAppListener?.()
+  }, [fetchData])
+
   const runAction = async (key: string, body: Record<string, unknown>) => {
     setBusy(key)
     try {
@@ -193,7 +212,16 @@ const handleTopup = async () => {
       const checkoutUrl = res?.data?.payment?.checkoutUrl
       if (checkoutUrl) {
         setDeposit({ asset: deposit.asset, amount: '' })
-        setCheckoutUrl(checkoutUrl)
+        if (Capacitor.isNativePlatform()) {
+          // The Android/iOS WebView cannot render the third-party PesaPal
+          // checkout inside an iframe ("web page not available"). Open it in
+          // the system browser instead — the wallet still credits via the
+          // callback/IPN and refreshes when the user returns.
+          window.open(checkoutUrl, '_system')
+          toast.success('Opening payment page — your wallet credits automatically when the payment completes.')
+        } else {
+          setCheckoutUrl(checkoutUrl)
+        }
         return
       }
       toast.success('Top-up request received!')

@@ -339,6 +339,24 @@ export function SubscriptionsPage() {
     fetchSubscriptions()
   }, [fetchSubscriptions])
 
+  // On native the checkout opens in the system browser — refresh the
+  // subscription state when the user returns to the app.
+  useEffect(() => {
+    let removeAppListener: (() => void) | undefined
+    const init = async () => {
+      try {
+        if (!Capacitor.isNativePlatform()) return
+        const { App } = await import('@capacitor/app')
+        const plugin = await App.addListener('resume', () => fetchSubscriptions())
+        removeAppListener = () => plugin.remove()
+      } catch {
+        // Not running inside Capacitor
+      }
+    }
+    init()
+    return () => removeAppListener?.()
+  }, [fetchSubscriptions])
+
   // Poll for subscription activation while the PesaPal iframe is open
   useEffect(() => {
     if (!pesapalCheckoutUrl) return
@@ -487,9 +505,15 @@ export function SubscriptionsPage() {
         setPayPhone('')
         fetchSubscriptions()
       } else if (payment?.checkoutUrl && ![...IN_APP_MANUAL, 'mpesa'].includes(selectedProvider)) {
-        // PesaPal or other redirect gateway — open in an in-app iframe
-        // dialog so the user never leaves the app.
-        setPesapalCheckoutUrl(payment.checkoutUrl as string)
+        // PesaPal or other redirect gateway. Inside the native app the WebView
+        // cannot render the third-party payment page in an iframe, so open it
+        // in the system browser instead; the web app keeps the in-app iframe.
+        if (Capacitor.isNativePlatform()) {
+          window.open(payment.checkoutUrl as string, '_system')
+          toast.info('Opening payment page — your plan activates automatically once the payment is confirmed.')
+        } else {
+          setPesapalCheckoutUrl(payment.checkoutUrl as string)
+        }
       } else if (selectedProvider === 'bank') {
         toast.success('Request received! Your plan activates once your transfer is confirmed.')
         setShowPaymentPicker(false)
