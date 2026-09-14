@@ -24,6 +24,8 @@ TIMEFRAME_MAP = {
     "H1": mt5.TIMEFRAME_H1,
     "H4": mt5.TIMEFRAME_H4,
     "D1": mt5.TIMEFRAME_D1,
+    "W1": mt5.TIMEFRAME_W1,
+    "MN1": mt5.TIMEFRAME_MN1,
 }
 
 _COLOR_NAME_MAP = {
@@ -102,6 +104,32 @@ def get_rates_dataframe(symbol: str, timeframe: str, n_bars: int) -> pd.DataFram
     df["time"] = pd.to_datetime(df["time"], unit="s")
     df.rename(columns={"tick_volume": "volume"}, inplace=True)
     return df
+
+
+def get_all_tradeable_symbols():
+    """
+    Returns every symbol the broker offers that is actually tradeable (full
+    trade mode + visible/selectable), regardless of name or suffix. Used by
+    auto-detect mode so the bot trades ANY instrument the broker provides
+    instead of a hardcoded, broker-suffix-specific list (EURUSD.m vs
+    EURUSD.a vs EURUSD.std, etc). Never raises -- returns [] on failure.
+    """
+    try:
+        symbols = mt5.symbols_get()
+    except Exception:
+        return []
+
+    result = []
+    for s in symbols or ():
+        try:
+            if getattr(s, "trade_mode", mt5.SYMBOL_TRADE_MODE_FULL) != mt5.SYMBOL_TRADE_MODE_FULL:
+                continue  # e.g. SYMBOL_TRADE_MODE_CLOSEDONLY / DISABLED
+            if not getattr(s, "visible", True):
+                mt5.symbol_select(s.name, True)
+            result.append(s.name)
+        except Exception:
+            continue
+    return result
 
 
 def get_symbol_info(symbol: str):

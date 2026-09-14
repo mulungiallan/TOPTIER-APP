@@ -91,7 +91,9 @@ SYMBOLS = [
 # NOTE: this broker (JustMarkets demo) suffixes every forex symbol with ".m" --
 # confirmed via list_all_symbols.py. If you switch brokers/accounts later, re-run
 # that script and update this list accordingly; suffixes vary a lot by broker.
-TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4"]   # M1/M5 added for scalping
+# All timeframes, scalping (M1) through monthly (MN1): no timeframe is
+# excluded from consideration ("lift timeframe filters").
+TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"]
 BARS_TO_FETCH = 500                                    # live-scan history length per (symbol, timeframe)
 
 # ----------------------------------------------------------------------
@@ -197,7 +199,7 @@ MAX_DAILY_LOSS_PCT = 5.0         # kill switch: stop trading for the day past th
 KILL_SWITCH_CONFIRM_SCANS = 2    # require the breach to show up this many consecutive scans before
                                   # trusting it -- protects against a single bad/transient equity
                                   # reading (e.g. during a brief network hiccup) causing a false alarm
-MAX_SPREAD_PIPS = 3.0            # skip entries if spread is wider than this (low liquidity guard)
+MAX_SPREAD_PIPS = 10000.0       # LIFTED (10k pips) -- wide-spread instruments are no longer rejected. Restore ~3.0 to re-enable the guard.
 ATR_PERIOD = 14                  # used to size stop-loss distance
 ATR_SL_MULTIPLIER = 1.5          # stop-loss = ATR * this multiplier (swing/trend/momentum/mean-reversion)
 ATR_SL_MULTIPLIER_SCALPING = 0.8 # tighter stop for scalping -- see strategies/scalping.py
@@ -239,9 +241,9 @@ NEWS_CACHE_REFRESH_MINUTES = 60  # how often to re-download the calendar feed
 # trailing/closing) outside this window. Set USE_TRADING_HOURS = False
 # to scan and trade around the clock instead.
 # ----------------------------------------------------------------------
-USE_TRADING_HOURS = True
-TRADING_HOURS_START = "07:00"   # e.g. London open
-TRADING_HOURS_END = "16:00"     # e.g. before NY afternoon chop
+USE_TRADING_HOURS = False       # LIFTED -- scan and trade around the clock
+TRADING_HOURS_START = "07:00"   # only used if USE_TRADING_HOURS = True (e.g. London open)
+TRADING_HOURS_END = "16:00"     # only used if USE_TRADING_HOURS = True
 
 # ----------------------------------------------------------------------
 # NO OVERNIGHT HOLD
@@ -316,7 +318,22 @@ LOW_VOL_SYMBOLS = [
 ]
 
 # Keep SYMBOLS as the union for any code that needs the full list (check_symbols, volatility screener)
-SYMBOLS = HIGH_VOL_SYMBOLS + [s for s in LOW_VOL_SYMBOLS if s not in HIGH_VOL_SYMBOLS]
+_UNION = HIGH_VOL_SYMBOLS + [s for s in LOW_VOL_SYMBOLS if s not in HIGH_VOL_SYMBOLS]
+
+# INSTRUMENT / BROKER RESTRICTION RELIEF
+# AUTO_DETECT_SYMBOLS = True trades EVERY tradeable symbol the broker offers,
+# regardless of name or suffix (EURUSD.m vs EURUSD.a vs EURUSD.std, ...) -- the
+# hardcoded lists above become a fallback only. The high-vol/low-vol branch split
+# is re-derived at startup from each symbol's asset class, so it no longer depends
+# on broker-specific symbol naming. When Auto-detect is on, SYMBOLS starts empty
+# and main.py fills it live from the connection.
+AUTO_DETECT_SYMBOLS = True
+SYMBOLS = [] if AUTO_DETECT_SYMBOLS else _UNION
+
+# LIFT_VOLATILITY_FILTER = True lets every backtest-approved strategy vote on a
+# symbol regardless of its current volatility bucket -- volatility no longer
+# excludes instruments or strategies.
+LIFT_VOLATILITY_FILTER = True
 
 # High-vol branch settings.
 # NOTE: HIGH_VOL_MIN_RISK_PCT / HIGH_VOL_MAX_RISK_PCT / HIGH_VOL_MAX_LOT_FLOOR_MULTIPLE
@@ -327,7 +344,7 @@ HIGH_VOL_MIN_RISK_PCT = 0.5      # legacy -- unused (was the risk% floor for hig
 HIGH_VOL_MAX_RISK_PCT = 2.0      # legacy -- unused (was the risk% ceiling for high-vol trades)
 HIGH_VOL_REWARD_RISK_RATIO = 2.0 # tighter than swing (2:1 vs 3:1) since high-vol moves are faster
 HIGH_VOL_ATR_SL_MULTIPLIER = 1.2 # tighter ATR multiplier -- high-vol has bigger ATR already
-HIGH_VOL_MAX_SPREAD_PIPS = 8.0   # gold/BTC/oil have naturally wider spreads than forex
+HIGH_VOL_MAX_SPREAD_PIPS = 10000.0  # LIFTED (10k pips) -- same as above for the high-vol branch
 HIGH_VOL_MIN_VOTES = 1           # only requires 1 strategy to agree (high-vol = act fast)
 HIGH_VOL_MAX_LOT_FLOOR_MULTIPLE = 5.0  # legacy -- unused (lot-floor check is now shared)
 
@@ -438,7 +455,7 @@ MICRO_SCALP_MAX_CONCURRENT = 2         # separate, smaller cap than MAX_OPEN_POS
 # a strategy must clear ALL THREE gates (backtest-approved AND
 # volatility-matched AND session-matched) to vote on a given scan.
 # ----------------------------------------------------------------------
-USE_SESSION_STRATEGY_FILTER = True
+USE_SESSION_STRATEGY_FILTER = False  # LIFTED -- no strategy is barred by the time of day
 SESSION_ASIAN_START_HOUR = 0     # server time, 24h
 SESSION_ASIAN_END_HOUR = 8
 SESSION_LONDON_START_HOUR = 8

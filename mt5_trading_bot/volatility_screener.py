@@ -86,8 +86,23 @@ def get_bucket(symbol: str) -> str:
     return info["bucket"] if info else "MEDIUM"
 
 
+_ALL_STRATEGY_NAMES = sorted({
+    name
+    for _bucket_names in getattr(config, "STRATEGY_VOLATILITY_MAP", {}).values()
+    for name in _bucket_names
+} | {
+    name
+    for _bucket_names in getattr(config, "HIGH_VOL_STRATEGY_MAP", {}).values()
+    for name in _bucket_names
+})
+
+
 def get_allowed_strategies_for_symbol(symbol: str) -> list:
-    """Returns the list of strategy names suited to this symbol's current volatility bucket."""
+    """Returns the list of strategy names suited to this symbol's current volatility bucket.
+    When config.LIFT_VOLATILITY_FILTER is True, every strategy is allowed -- volatility
+    no longer restricts which strategies may vote on a symbol."""
+    if getattr(config, "LIFT_VOLATILITY_FILTER", False):
+        return _ALL_STRATEGY_NAMES
     bucket = get_bucket(symbol)
     return config.STRATEGY_VOLATILITY_MAP.get(bucket, [])
 

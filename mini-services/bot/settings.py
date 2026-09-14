@@ -11,8 +11,38 @@ changes. Secrets are NOT read from this file.
 import os
 from pathlib import Path
 
+
+def _load_dotenv():
+    """Mirror the trading engine's loader: find the nearest .env walking up
+    from the repo root and populate os.environ (without overriding real vars),
+    so the service can be launched directly without hand-setting BOT_SERVICE_KEY."""
+    current = Path(__file__).resolve().parent
+    while True:
+        env_file = current / ".env"
+        try:
+            text = env_file.read_text(encoding="utf-8")
+        except OSError:
+            text = None
+        if text:
+            for line in text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+
 # Repo root = parent of mini-services/  (i.e. <app>)
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+_load_dotenv()
 
 # Where the trading engine modules live (mt5_connector.py, main.py, ...).
 ENGINE_DIR = Path(os.environ.get("BOT_ENGINE_DIR", str(REPO_ROOT / "mt5_trading_bot")))

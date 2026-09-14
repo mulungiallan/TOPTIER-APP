@@ -279,6 +279,36 @@ def run_one_scan():
             break  # symbol now has an open position, move to the next symbol
 
 
+def populate_symbols_universe():
+    """Fills config.SYMBOLS / HIGH_VOL_SYMBOLS / LOW_VOL_SYMBOLS from the live
+    broker connection when AUTO_DETECT_SYMBOLS is on and no explicit symbol list
+    was supplied (per-instance configs may set SYMBOLS explicitly, which skips
+    auto-detection). Falls back to the configured lists silently if the broker
+    returned nothing."""
+    if not getattr(config, "AUTO_DETECT_SYMBOLS", True) or config.SYMBOLS:
+        return
+
+    detected = mt5c.get_all_tradeable_symbols()
+    if not detected:
+        logger.warning("Auto-detect found no tradeable symbols; keeping configured SYMBOLS.")
+        return
+
+    high_vol, low_vol = [], []
+    for sym in detected:
+        if rm.asset_class_for_symbol(sym) in ("crypto", "high_vol"):
+            high_vol.append(sym)
+        else:
+            low_vol.append(sym)
+
+    config.SYMBOLS = detected
+    config.HIGH_VOL_SYMBOLS = high_vol
+    config.LOW_VOL_SYMBOLS = low_vol
+    logger.info(
+        f"Auto-detected {len(detected)} tradeable symbols from broker "
+        f"({len(high_vol)} high-vol / {len(low_vol)} low-vol) -- no broker suffix/whitelist limits."
+    )
+
+
 def main():
     global _scan_counter
 
@@ -287,6 +317,7 @@ def main():
         logger.error("Failed to connect to MT5. Check config.py credentials and that the terminal is installed.")
         sys.exit(1)
 
+    populate_symbols_universe()
     run_backtest_filter()
     vs.refresh_rankings()
 

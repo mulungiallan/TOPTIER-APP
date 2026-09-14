@@ -42,6 +42,12 @@ def _get_high_vol_strategy_pool(symbol: str, approved_combos: dict, timeframe: s
     if not backtest_approved:
         return []
 
+    if getattr(config, "LIFT_VOLATILITY_FILTER", False):
+        pool = list(backtest_approved)
+        if config.USE_AI_STRATEGY:
+            pool = pool + ["ai_strategy"]
+        return pool
+
     bucket = vs.get_bucket(symbol)
     hv_allowed = set(config.HIGH_VOL_STRATEGY_MAP.get(bucket, []))
     pool = [s for s in backtest_approved if s in hv_allowed]
