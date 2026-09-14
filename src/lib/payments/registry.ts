@@ -12,6 +12,7 @@ import { paypalGateway } from './paypal'
 import { revenuecatGateway } from './revenuecat'
 import { pesapalGateway } from './pesapal'
 import { bankGateway } from './bank'
+import { walletGateway } from './wallet'
 
 // All registered gateways. Card / redirect gateways stay registered so their
 // webhooks and callbacks keep working, but they are NOT offered in the app's
@@ -27,6 +28,7 @@ const gateways: Record<PaymentProvider, PaymentGateway> = {
   revenuecat: revenuecatGateway,
   pesapal: pesapalGateway,
   bank: bankGateway,
+  wallet: walletGateway,
 }
 
 // Check if a provider's environment variables are configured
@@ -42,6 +44,7 @@ function isProviderConfigured(provider: PaymentProvider): boolean {
     revenuecat: ['REVENUECAT_SECRET_KEY', 'NEXT_PUBLIC_REVENUECAT_PUBLIC_KEY'],
     pesapal: ['PESAPAL_CONSUMER_KEY', 'PESAPAL_CONSUMER_SECRET'],
     bank: ['BANK_ACCOUNT_NAME'],
+    wallet: [],
   }
 
   const required = envChecks[provider] || []
@@ -52,10 +55,21 @@ function isProviderConfigured(provider: PaymentProvider): boolean {
 //
 // PesaPal is the primary instant-payment gateway — it handles M-Pesa, cards,
 // and Airtel Money on the customer's behalf with no STK-push or manual
-// confirmation required. M-Pesa (Daraja STK push), Airtel Money, MTN MoMo,
-// and Bank Transfer are in-app manual methods that need admin confirmation.
+// confirmation required. Wallet lets users pay straight from their in-app
+// balance. M-Pesa (Daraja STK push), Airtel Money, MTN MoMo, and Bank
+// Transfer are in-app manual methods that need admin confirmation.
 export function getAvailableProviders(): PaymentProviderInfo[] {
   const list: PaymentProviderInfo[] = [
+    {
+      id: walletGateway.provider,
+      name: walletGateway.displayName,
+      icon: walletGateway.icon,
+      description: 'Pay instantly from your wallet balance — no external payment required.',
+      supportedCurrencies: walletGateway.supportedCurrencies,
+      supportedCountries: walletGateway.supportedCountries,
+      isAvailable: true,
+      checkoutConfig: walletGateway.getCheckoutConfig(),
+    },
     {
       id: pesapalGateway.provider,
       name: pesapalGateway.displayName,

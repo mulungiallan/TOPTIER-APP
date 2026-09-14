@@ -10,6 +10,8 @@ import { getExchangeRate } from '@/lib/payments/exchange-rates'
 import { countryNameToCode } from '@/lib/countries'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
 import { validateBody, paymentInitSchema } from '@/lib/validation'
+import { getBalance, withdrawCash } from '@/lib/services/wallet'
+import { fulfillPendingPayment } from '@/lib/payments/fulfillment'
 
 const PLANS: Record<string, { price: number; currency: string }> = {
   trial: { price: 0, currency: 'USD' },
@@ -184,7 +186,50 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Initialize payment with the selected provider
+    // Pay from wallet balance — synchronous, no gateway. Charge USD and
+    // fulfill the subscription immediately.
+    if (provider === 'wallet') {
+      const usdBalance = await getBalance(userId, 'USD')
+      if (usdBalance < finalAmount) {
+        return errorResponse(
+          `Insufficient wallet balance. You need $${finalAmount.toFixed(2)} but your wallet holds $${usdBalance.toFixed(2)}. Please top up your wallet or choose another payment method.`,
+          400
+        )
+      }
+
+      await withdrawCash({
+        userId,
+        asset: 'USD',
+        amount: finalAmount,
+        reference: transaction.id,
+        memo: `Premium ${planType.replace('_', ' ')} payment from wallet`,
+      })
+
+      await fulfillPendingPayment({ id: transaction.id }, { provider: 'wallet', paymentMethod: 'wallet' })
+
+      return successResponse({
+        requiresPayment: true,
+        transaction: {
+          id: transaction.id,
+          amount: finalAmount,
+          currency: 'USD',
+          planType,
+          originalAmount: plan.price,
+          discount,
+          status: 'completed',
+        },
+        payment: {
+          provider: 'wallet',
+          providerTransactionId: transaction.id,
+          reference: transaction.id,
+          status: 'completed',
+          metadata: { method: 'wallet', asset: 'USD' },
+        },
+      })
+    }
+
+    // Initialize payment with the selected provider — except wallet, which is
+    // fulfilled synchronously below (no external gateway involved).
     const result = await initializePayment(provider, {
       userId,
       userEmail: user.email || '',

@@ -94,6 +94,12 @@ interface Plan {
 
 // ─── Plans Data ─────────────────────────────────────────────────────────────
 
+function planPrice(planId: string): number {
+  const p = plans.find((x) => x.id === planId)
+  if (!p) return 0
+  return parseFloat(p.price.replace('$', ''))
+}
+
 const plans: Plan[] = [
   {
     id: 'free',
@@ -290,6 +296,7 @@ export function SubscriptionsPage() {
   const [showPaymentPicker, setShowPaymentPicker] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
   const [paymentProviders, setPaymentProviders] = useState<PaymentProviderInfo[]>([])
+  const [walletBalance, setWalletBalance] = useState(0)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
   const [payPhone, setPayPhone] = useState('')
   const [payBank, setPayBank] = useState('')
@@ -393,7 +400,7 @@ export function SubscriptionsPage() {
   const fetchProviders = useCallback(async () => {
     try {
       const result = await api.get('/payments/providers')
-      const data = result.data as { providers: PaymentProviderInfo[] }
+      const data = result.data as { providers: PaymentProviderInfo[]; walletBalanceUSD?: number }
       if (data?.providers) {
         const providers = data.providers
         if (Capacitor.isNativePlatform() && providers.length > 0 && !providers.some(p => p.id === 'google-play')) {
@@ -408,6 +415,7 @@ export function SubscriptionsPage() {
           })
         }
         setPaymentProviders(providers)
+        if (typeof data.walletBalanceUSD === 'number') setWalletBalance(data.walletBalanceUSD)
       }
     } catch {
       // Silently fail - providers will be empty
@@ -471,6 +479,13 @@ export function SubscriptionsPage() {
         toast.success('Free trial activated! Enjoy premium features for 7 days.')
         setShowPaymentPicker(false)
         setPage('dashboard')
+      } else if (selectedProvider === 'wallet') {
+        // Wallet balance — paid instantly from the in-app wallet.
+        updateUser({ subscriptionTier: 'premium' })
+        toast.success('Payment successful! Your premium plan is now active.')
+        setShowPaymentPicker(false)
+        setPayPhone('')
+        fetchSubscriptions()
       } else if (payment?.checkoutUrl && ![...IN_APP_MANUAL, 'mpesa'].includes(selectedProvider)) {
         // PesaPal or other redirect gateway — open in an in-app iframe
         // dialog so the user never leaves the app.
@@ -629,7 +644,14 @@ export function SubscriptionsPage() {
                           <Badge className="text-[10px] px-1 py-0 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Active</Badge>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{provider.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {provider.description}
+                        {provider.id === 'wallet' && (
+                          <span className="mt-1 block font-medium text-emerald-500/90">
+                            Balance: ${walletBalance.toFixed(2)} USD
+                          </span>
+                        )}
+                      </p>
                     </div>
                     {selectedProvider === provider.id && (
                       <BadgeCheck className="size-5 text-primary shrink-0" />
@@ -713,6 +735,25 @@ export function SubscriptionsPage() {
                 </div>
               )}
 
+              {selectedProvider === 'wallet' && (
+                <div className="mt-4 space-y-3 rounded-xl border bg-muted/30 p-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label>Wallet balance</Label>
+                      <span className="text-sm font-semibold text-emerald-500">${walletBalance.toFixed(2)} USD</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      We'll deduct the {selectedPlan ? `$${planPrice(selectedPlan).toFixed(2)}` : ''} instantly from your wallet.
+                      {walletBalance < planPrice(selectedPlan ?? 'premium_daily') ? (
+                        <span className="text-amber-500"> You need more balance — top up your wallet or pick another method.</span>
+                      ) : (
+                        <span> Your premium activates immediately.</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6 flex gap-3">
                 <Button
                   variant="outline"
@@ -723,13 +764,18 @@ export function SubscriptionsPage() {
                 </Button>
                 <Button
                   className="flex-1"
-                  disabled={!selectedProvider || processingPayment}
+                  disabled={!selectedProvider || processingPayment || (selectedProvider === 'wallet' && walletBalance < planPrice(selectedPlan ?? 'premium_daily'))}
                   onClick={handleCheckout}
                 >
                   {processingPayment ? (
                     <>
                       <Loader2 className="size-4 mr-1 animate-spin" />
                       Processing...
+                    </>
+                  ) : selectedProvider === 'wallet' ? (
+                    <>
+                      <Wallet className="size-4 mr-1" />
+                      Pay from Wallet
                     </>
                   ) : selectedProvider === 'bank' ? (
                     <>
