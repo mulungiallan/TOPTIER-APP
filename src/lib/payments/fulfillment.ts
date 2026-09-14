@@ -64,7 +64,13 @@ export async function fulfillPendingPayment(
   const now = new Date()
   const planType = match.planType || transaction.planType
   let endDate: Date | null = null
-  if (planType === 'premium_monthly') {
+  if (planType === 'premium_daily') {
+    endDate = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
+  } else if (planType === 'premium_weekly') {
+    endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+  } else if (planType === 'premium_quarterly') {
+    endDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
+  } else if (planType === 'premium_monthly') {
     endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
   } else if (planType === 'premium_annual') {
     endDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)

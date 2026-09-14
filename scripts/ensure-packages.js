@@ -1,28 +1,9 @@
-/**
- * Premium Packages Seed Script
- *
- * Usage:
- *   npx tsx prisma/seed-packages.ts
- *
- * Idempotent: re-running updates existing packages.
- */
+// Boot-time catalog sync: makes sure the sellable Premium packages are the
+// daily / weekly / quarterly / yearly tiers, and legacy packages are inactive.
+// Mirrors prisma/seed-packages.ts so the catalog is stable across restarts.
+const { PrismaClient } = require('@prisma/client')
 
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
-
-interface SeedPackage {
-  name: string
-  description: string
-  duration: 'daily' | 'weekly' | 'quarterly' | 'annual'
-  price: number
-  analyses: number
-  splitRatio: number
-  features: string[]
-  isPopular?: boolean
-}
-
-const packages: SeedPackage[] = [
+const PACKAGES = [
   {
     name: 'Premium Daily',
     description: 'One day of full Premium access.',
@@ -123,54 +104,52 @@ const LEGACY_NAMES = [
 ]
 
 async function main() {
-  console.log('🌱 Seeding premium packages...\n')
+  const prisma = new PrismaClient()
 
-  // Deactivate legacy packages so only the new daily/weekly/quarterly/yearly
-  // tiers are sold. Existing orders keep their historical package records.
-  const legacy = await prisma.package.updateMany({
-    where: { name: { in: LEGACY_NAMES } },
-    data: { isActive: false },
-  })
-  if (legacy.count > 0) {
-    console.log(`  ⊘ Deactivated ${legacy.count} legacy package(s)`)
-  }
-
-  for (const pkg of packages) {
-    const result = await prisma.package.upsert({
-      where: { name: pkg.name },
-      update: {
-        description: pkg.description,
-        duration: pkg.duration,
-        price: pkg.price,
-        analyses: pkg.analyses,
-        splitRatio: pkg.splitRatio,
-        features: JSON.stringify(pkg.features),
-        isPopular: pkg.isPopular ?? false,
-        isActive: true,
-      },
-      create: {
-        name: pkg.name,
-        description: pkg.description,
-        duration: pkg.duration,
-        price: pkg.price,
-        analyses: pkg.analyses,
-        splitRatio: pkg.splitRatio,
-        features: JSON.stringify(pkg.features),
-        isPopular: pkg.isPopular ?? false,
-        isActive: true,
-      },
+  try {
+    const legacy = await prisma.package.updateMany({
+      where: { name: { in: LEGACY_NAMES } },
+      data: { isActive: false },
     })
-    console.log(`  ✓ ${result.name.padEnd(20)} $${result.price.toFixed(2).padStart(8)}  ${result.duration}`)
-  }
+    if (legacy.count > 0) {
+      console.log(`[ensure-packages] Deactivated ${legacy.count} legacy package(s)`)
+    }
 
-  console.log(`\n✅ Seeded ${packages.length} packages successfully!`)
+    for (const pkg of PACKAGES) {
+      await prisma.package.upsert({
+        where: { name: pkg.name },
+        update: {
+          description: pkg.description,
+          duration: pkg.duration,
+          price: pkg.price,
+          analyses: pkg.analyses,
+          splitRatio: pkg.splitRatio,
+          features: JSON.stringify(pkg.features),
+          isPopular: pkg.isPopular,
+          isActive: true,
+        },
+        create: {
+          name: pkg.name,
+          description: pkg.description,
+          duration: pkg.duration,
+          price: pkg.price,
+          analyses: pkg.analyses,
+          splitRatio: pkg.splitRatio,
+          features: JSON.stringify(pkg.features),
+          isPopular: pkg.isPopular,
+          isActive: true,
+        },
+      })
+      console.log(`[ensure-packages] ✓ ${pkg.name} $${pkg.price.toFixed(2)} (${pkg.duration})`)
+    }
+
+    console.log('[ensure-packages] Package catalog synced.')
+  } finally {
+    await prisma.$disconnect()
+  }
 }
 
-main()
-  .catch((e) => {
-    console.error('❌ Seeding failed:', e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+main().then(() => process.exit(0)).catch((err) => {
+  console.error('[ensure-packages] FAILED:', err)
+  process.exit(1)
+})

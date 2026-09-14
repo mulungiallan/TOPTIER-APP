@@ -25,13 +25,25 @@ async function revenuecatRequest(endpoint: string, method: string = 'GET', body?
 // Map our plan types to RevenueCat entitlements / offerings
 function getRevenueCatProductId(planType: string, platform: 'ios' | 'android'): string {
   const productMap: Record<string, Record<string, string>> = {
-    premium_monthly: {
-      ios: process.env.REVENUECAT_IOS_MONTHLY || 'toptier_premium_monthly',
-      android: process.env.REVENUECAT_ANDROID_MONTHLY || 'toptier_premium_monthly',
+    premium_daily: {
+      ios: process.env.REVENUECAT_IOS_DAILY || 'toptier_premium_daily',
+      android: process.env.REVENUECAT_ANDROID_DAILY || 'toptier_premium_daily',
+    },
+    premium_weekly: {
+      ios: process.env.REVENUECAT_IOS_WEEKLY || 'toptier_premium_weekly',
+      android: process.env.REVENUECAT_ANDROID_WEEKLY || 'toptier_premium_weekly',
+    },
+    premium_quarterly: {
+      ios: process.env.REVENUECAT_IOS_QUARTERLY || 'toptier_premium_quarterly',
+      android: process.env.REVENUECAT_ANDROID_QUARTERLY || 'toptier_premium_quarterly',
     },
     premium_annual: {
       ios: process.env.REVENUECAT_IOS_ANNUAL || 'toptier_premium_annual',
       android: process.env.REVENUECAT_ANDROID_ANNUAL || 'toptier_premium_annual',
+    },
+    premium_monthly: {
+      ios: process.env.REVENUECAT_IOS_MONTHLY || 'toptier_premium_monthly',
+      android: process.env.REVENUECAT_ANDROID_MONTHLY || 'toptier_premium_monthly',
     },
     lifetime: {
       ios: process.env.REVENUECAT_IOS_LIFETIME || 'toptier_lifetime',

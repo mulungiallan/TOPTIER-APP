@@ -151,8 +151,11 @@ const PIE_COLORS = ['#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#647
 const PLAN_ICONS: Record<string, React.ElementType> = {
   free: Zap,
   trial: Clock,
-  premium_monthly: Sparkles,
+  premium_daily: Sparkles,
+  premium_weekly: Crown,
+  premium_quarterly: Crown,
   premium_annual: Crown,
+  premium_monthly: Sparkles,
   lifetime: InfinityIcon,
 }
 
@@ -994,7 +997,7 @@ export function PricingDashboardPage() {
                         ${plan.price.toFixed(2)}
                       </span>
                       <span className="text-xs text-muted-foreground ml-1">
-                        {plan.interval === 'lifetime' ? 'once' : plan.interval ? `/${plan.interval === '7_days' ? '7d' : plan.interval === 'monthly' ? 'mo' : 'yr'}` : 'free'}
+                        {plan.interval === 'lifetime' ? 'once' : plan.interval === '7_days' ? '/7d' : plan.interval === 'day' ? '/day' : plan.interval === 'week' ? '/week' : plan.interval === 'quarter' ? '/quarter' : plan.interval === 'year' ? '/year' : plan.interval ? '/mo' : 'free'}
                       </span>
                     </div>
                     <ul className="mt-2 space-y-1">
@@ -1151,8 +1154,10 @@ function buildFallbackData(): BillingDashboardData {
     availablePlans: [
       { id: 'free', name: 'Free', price: 0, currency: 'USD', interval: null, color: 'slate', features: ['3 signals per day', 'Basic market coverage', 'Community access', 'Economic calendar'] },
       { id: 'trial', name: '7-Day Trial', price: 0, currency: 'USD', interval: '7_days', color: 'amber', features: ['All premium features', 'Unlimited signals', 'Screenshot analysis', 'Custom alerts'] },
-      { id: 'premium_monthly', name: 'Premium Monthly', price: 29.99, currency: 'USD', interval: 'monthly', color: 'emerald', features: ['Unlimited signals', 'All market coverage', 'AI screenshot analysis', 'No ads'] },
-      { id: 'premium_annual', name: 'Premium Annual', price: 249.99, currency: 'USD', interval: 'annual', color: 'violet', features: ['Everything in Premium Monthly', '2 months free', 'Early access to features', 'Exclusive webinars'] },
+      { id: 'premium_daily', name: 'Premium Daily', price: 1.5, currency: 'USD', interval: 'day', color: 'emerald', features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features'] },
+      { id: 'premium_weekly', name: 'Premium Weekly', price: 7, currency: 'USD', interval: 'week', color: 'teal', features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features'] },
+      { id: 'premium_quarterly', name: 'Premium Quarterly', price: 75, currency: 'USD', interval: 'quarter', color: 'violet', features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features', 'Early access'] },
+      { id: 'premium_annual', name: 'Premium Yearly', price: 120, currency: 'USD', interval: 'year', color: 'amber', features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features', 'Early access', 'Exclusive webinars'] },
       { id: 'lifetime', name: 'Lifetime Access', price: 499.99, currency: 'USD', interval: 'lifetime', color: 'rose', features: ['Everything in Premium', 'Lifetime access', 'One-time payment', 'VIP support'] },
     ],
   }

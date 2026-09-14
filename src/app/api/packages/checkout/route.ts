@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Build line item
-    const isAnnual = pkg.duration === 'annual'
+    const isRecurring = pkg.duration === 'monthly'
     const lineItem: Stripe.Checkout.SessionCreateParams.LineItem =
       pkg.stripePriceId
         ? { price: pkg.stripePriceId, quantity: 1 }
@@ -82,9 +82,9 @@ export async function POST(request: NextRequest) {
                 description: `${pkg.analyses === 0 ? 'Unlimited' : pkg.analyses} analyses · ${pkg.duration}`,
               },
               unit_amount: Math.round(pkg.price * 100),
-              ...(isAnnual
-                ? {}
-                : { recurring: { interval: 'month', interval_count: 1 } }),
+              ...(isRecurring
+                ? { recurring: { interval: 'month', interval_count: 1 } }
+                : {}),
             },
             quantity: 1,
           }
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       customer: customerId,
       payment_method_types: ['card'],
       line_items: [lineItem],
-      mode: isAnnual ? 'payment' : 'subscription',
+      mode: isRecurring ? 'subscription' : 'payment',
       success_url: `${STRIPE_APP_URL}/?payment=success&session_id={CHECKOUT_SESSION_ID}&package=${pkg.name}`,
       cancel_url: `${STRIPE_APP_URL}/?payment=cancelled&package=${pkg.name}`,
       metadata: {
@@ -111,12 +111,14 @@ export async function POST(request: NextRequest) {
 
     // 4. Create pending order in DB
     const now = new Date()
-    const endDate = new Date(now)
-    if (isAnnual) {
-      endDate.setFullYear(endDate.getFullYear() + 1)
-    } else {
-      endDate.setMonth(endDate.getMonth() + 1)
+    const DURATION_DAYS: Record<string, number> = {
+      daily: 1,
+      weekly: 7,
+      quarterly: 90,
+      annual: 365,
+      monthly: 30,
     }
+    const endDate = new Date(now.getTime() + (DURATION_DAYS[pkg.duration] || 30) * 24 * 60 * 60 * 1000)
 
     const order = await db.order.create({
       data: {

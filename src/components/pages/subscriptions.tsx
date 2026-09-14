@@ -119,48 +119,92 @@ const plans: Plan[] = [
     buttonVariant: 'outline',
   },
   {
-    id: 'premium-monthly',
-    name: 'Premium Monthly',
-    price: '$29.99',
-    period: '/month',
-    badge: 'Most Popular',
+    id: 'premium_daily',
+    name: 'Premium Daily',
+    price: '$1.50',
+    period: '/day',
+    badge: 'Try it',
     badgeColor: 'bg-primary text-primary-foreground',
     features: [
+      { text: 'No ads', included: true },
+      { text: 'Trading bot access', included: true },
+      { text: 'TOPTIER signals', included: true },
+      { text: 'Copy trading', included: true },
       { text: 'Real-time instant signals', included: true },
       { text: 'Unlimited screenshot analyses', included: true },
-      { text: 'Full economic calendar (30 days)', included: true },
-      { text: 'Complete news + sentiment analysis', included: true },
-      { text: 'Full performance statistics', included: true },
+      { text: 'All markets available', included: true },
+      { text: 'Unlimited price alerts', included: true },
+      { text: 'Priority support', included: true },
+    ],
+    buttonText: 'Subscribe Now',
+    buttonVariant: 'default',
+  },
+  {
+    id: 'premium_weekly',
+    name: 'Premium Weekly',
+    price: '$7',
+    period: '/week',
+    badge: 'Popular',
+    badgeColor: 'bg-secondary text-secondary-foreground',
+    features: [
+      { text: 'No ads', included: true },
+      { text: 'Trading bot access', included: true },
+      { text: 'TOPTIER signals', included: true },
+      { text: 'Copy trading', included: true },
+      { text: 'Real-time instant signals', included: true },
+      { text: 'Unlimited screenshot analyses', included: true },
       { text: 'All markets available', included: true },
       { text: 'Unlimited price alerts', included: true },
       { text: 'Custom indicator alerts', included: true },
       { text: 'Priority support', included: true },
-      { text: 'Data export (CSV/Excel)', included: true },
     ],
     buttonText: 'Subscribe Now',
     buttonVariant: 'default',
     highlighted: true,
   },
   {
-    id: 'premium-annual',
-    name: 'Premium Annual',
-    price: '$239.99',
-    period: '/year',
+    id: 'premium_quarterly',
+    name: 'Premium Quarterly',
+    price: '$75',
+    period: '/quarter',
     badge: 'Best Value',
     badgeColor: 'bg-emerald-500 text-white',
     features: [
-      { text: 'Everything in Premium Monthly', included: true },
-      { text: 'Save 33% vs monthly', included: true },
+      { text: 'No ads', included: true },
+      { text: 'Trading bot access', included: true },
+      { text: 'TOPTIER signals', included: true },
+      { text: 'Copy trading', included: true },
       { text: 'Real-time instant signals', included: true },
       { text: 'Unlimited screenshot analyses', included: true },
-      { text: 'Full economic calendar (30 days)', included: true },
-      { text: 'Complete news + sentiment analysis', included: true },
-      { text: 'Full performance statistics', included: true },
       { text: 'All markets available', included: true },
       { text: 'Unlimited price alerts', included: true },
       { text: 'Custom indicator alerts', included: true },
-      { text: 'Priority support', included: true },
       { text: 'Data export (CSV/Excel)', included: true },
+      { text: 'Priority support', included: true },
+    ],
+    buttonText: 'Subscribe Now',
+    buttonVariant: 'default',
+  },
+  {
+    id: 'premium_annual',
+    name: 'Premium Yearly',
+    price: '$120',
+    period: '/year',
+    badge: 'Save 72% vs daily',
+    badgeColor: 'bg-amber-500 text-white',
+    features: [
+      { text: 'No ads', included: true },
+      { text: 'Trading bot access', included: true },
+      { text: 'TOPTIER signals', included: true },
+      { text: 'Copy trading', included: true },
+      { text: 'Real-time instant signals', included: true },
+      { text: 'Unlimited screenshot analyses', included: true },
+      { text: 'All markets available', included: true },
+      { text: 'Unlimited price alerts', included: true },
+      { text: 'Custom indicator alerts', included: true },
+      { text: 'Data export (CSV/Excel)', included: true },
+      { text: 'Early access to features', included: true },
+      { text: 'Priority support', included: true },
     ],
     buttonText: 'Subscribe Now',
     buttonVariant: 'default',
@@ -168,7 +212,7 @@ const plans: Plan[] = [
   {
     id: 'lifetime',
     name: 'Lifetime',
-    price: '$599.99',
+    price: '$499.99',
     period: 'one-time',
     badge: 'One-time Payment',
     badgeColor: 'bg-amber-500 text-white',
@@ -313,7 +357,7 @@ export function SubscriptionsPage() {
 
   const getButtonState = (planId: string) => {
     if (currentPlan === 'free' && planId === 'free') return 'current'
-    if (currentPlan === 'premium' && (planId === 'premium-monthly' || planId === 'premium-annual')) return 'current'
+    if (currentPlan === 'premium' && (planId === 'premium_daily' || planId === 'premium_weekly' || planId === 'premium_quarterly' || planId === 'premium_annual')) return 'current'
     if (currentPlan === 'lifetime' && planId === 'lifetime') return 'current'
     return 'available'
   }
@@ -742,7 +786,7 @@ export function SubscriptionsPage() {
                 </div>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {currentPlan === 'premium'
-                    ? 'Next billing: Mar 15, 2026 · $29.99/month'
+                    ? 'Premium active — manage your plan below'
                     : currentPlan === 'lifetime'
                     ? 'Lifetime access · No recurring payments'
                     : 'Upgrade to unlock all features'}
@@ -784,9 +828,9 @@ export function SubscriptionsPage() {
                   <span className="text-3xl font-bold text-foreground">{plan.price}</span>
                   <span className="text-sm text-muted-foreground ml-1">{plan.period}</span>
                 </CardDescription>
-                {plan.id === 'premium-annual' && (
+                {plan.id === 'premium_annual' && (
                   <p className="text-xs text-emerald-500 font-medium mt-1">
-                    Save $119.89 per year vs monthly
+                    Save $1,467.50 vs daily · best value
                   </p>
                 )}
                 {plan.id === 'lifetime' && (

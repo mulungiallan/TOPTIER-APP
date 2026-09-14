@@ -18,8 +18,11 @@ function getStripe(): Stripe {
 // Map our plan IDs to Stripe Price IDs (configured in Stripe Dashboard)
 function getStripePriceId(planType: string): string {
   const priceMap: Record<string, string> = {
-    premium_monthly: process.env.STRIPE_PRICE_MONTHLY || '',
+    premium_daily: process.env.STRIPE_PRICE_DAILY || '',
+    premium_weekly: process.env.STRIPE_PRICE_WEEKLY || '',
+    premium_quarterly: process.env.STRIPE_PRICE_QUARTERLY || '',
     premium_annual: process.env.STRIPE_PRICE_ANNUAL || '',
+    premium_monthly: process.env.STRIPE_PRICE_MONTHLY || '',
     lifetime: process.env.STRIPE_PRICE_LIFETIME || '',
   }
   return priceMap[planType] || ''
@@ -38,12 +41,12 @@ export const stripeGateway: PaymentGateway = {
     const stripe = getStripe()
 
     // For subscription plans, create a Checkout Session
-    if (params.planType === 'premium_monthly' || params.planType === 'premium_annual') {
+    if (params.planType.startsWith('premium_')) {
       const priceId = getStripePriceId(params.planType)
       if (!priceId) {
         throw new Error(
           `Stripe Price ID for "${params.planType}" is not configured. ` +
-          `Set STRIPE_PRICE_MONTHLY / STRIPE_PRICE_ANNUAL in your environment.`
+          `Set STRIPE_PRICE_DAILY / STRIPE_PRICE_WEEKLY / STRIPE_PRICE_QUARTERLY / STRIPE_PRICE_ANNUAL in your environment.`
         )
       }
 

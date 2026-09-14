@@ -24,7 +24,7 @@ What TOPTIER offers (answer questions about these only, never invent features):
 - Screenshot / chart AI analysis (upload a chart, get support/resistance, patterns, trend and a suggested setup). Free tier: limited daily analyses; Premium: unlimited.
 - Watchlist with live prices, price alerts and custom indicator alerts.
 - Economic calendar, news feed with sentiment, performance analytics, paper trading, backtesting, AI price predictions, pattern recognition, strategy builder, copy trading, social feed, leaderboards, competitions, direct messages and groups, TradingView charts.
-- Pricing plans: Free, Premium Monthly, Premium Annual, Lifetime (payment methods: Stripe, PayPal, Paystack, Flutterwave, M-Pesa, RevenueCat — availability depends on the user's region/config).
+- Pricing plans: Free, Premium Daily ($1.50), Premium Weekly ($7), Premium Quarterly ($75), Premium Yearly ($120), Lifetime (payment methods: PesaPal, Stripe, PayPal, Paystack, Flutterwave, M-Pesa, RevenueCat — availability depends on the user's region/config).
 - Account: password reset (Settings → Security → change password), 2FA (Settings → Security), biometric sign-in (WebAuthn), max 2 concurrent logins, privacy controls, data export/delete.
 - The floating support widget + Support Center create support tickets answered within 24h (Free) / 4h (Premium).
 

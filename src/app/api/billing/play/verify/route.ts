@@ -12,8 +12,11 @@ import { fulfillPendingPayment } from '@/lib/payments/fulfillment'
 const REVENUECAT_BASE_URL = 'https://api.revenuecat.com/v1'
 
 const PRODUCT_TO_PLAN: Record<string, string> = {
-  toptier_premium_monthly: 'premium_monthly',
+  toptier_premium_daily: 'premium_daily',
+  toptier_premium_weekly: 'premium_weekly',
+  toptier_premium_quarterly: 'premium_quarterly',
   toptier_premium_annual: 'premium_annual',
+  toptier_premium_monthly: 'premium_monthly',
   toptier_lifetime: 'lifetime',
 }
 
@@ -22,8 +25,11 @@ function planFromProduct(productId: string): string | null {
   for (const key of Object.keys(process.env)) {
     if (key.startsWith('REVENUECAT_') && process.env[key] === productId) {
       const plan = key.replace('REVENUECAT_', '').toLowerCase()
-      if (plan === 'android_monthly') return 'premium_monthly'
+      if (plan === 'android_daily') return 'premium_daily'
+      if (plan === 'android_weekly') return 'premium_weekly'
+      if (plan === 'android_quarterly') return 'premium_quarterly'
       if (plan === 'android_annual') return 'premium_annual'
+      if (plan === 'android_monthly') return 'premium_monthly'
       if (plan === 'android_lifetime') return 'lifetime'
     }
   }

@@ -12,13 +12,25 @@ export interface PlayPurchaseToken {
 }
 
 const PRODUCT_IDS: Record<string, { android: string; env: string }> = {
-  'premium-monthly': {
-    android: 'toptier_premium_monthly',
-    env: 'REVENUECAT_ANDROID_MONTHLY',
+  premium_daily: {
+    android: 'toptier_premium_daily',
+    env: 'REVENUECAT_ANDROID_DAILY',
   },
-  'premium-annual': {
+  premium_weekly: {
+    android: 'toptier_premium_weekly',
+    env: 'REVENUECAT_ANDROID_WEEKLY',
+  },
+  premium_quarterly: {
+    android: 'toptier_premium_quarterly',
+    env: 'REVENUECAT_ANDROID_QUARTERLY',
+  },
+  premium_annual: {
     android: 'toptier_premium_annual',
     env: 'REVENUECAT_ANDROID_ANNUAL',
+  },
+  premium_monthly: {
+    android: 'toptier_premium_monthly',
+    env: 'REVENUECAT_ANDROID_MONTHLY',
   },
   lifetime: {
     android: 'toptier_lifetime',
@@ -89,7 +101,7 @@ export async function restorePlayPurchases(appUserId?: string): Promise<PlayPurc
   if (!isNativeBillingAvailable()) return []
   const Purchases = await purchases()
   if (!Purchases) return []
-  await configurePlayBilling('premium-monthly', appUserId)
+  await configurePlayBilling('premium_monthly', appUserId)
   const { customerInfo } = await Purchases.restorePurchases()
   return (customerInfo.activeSubscriptions || []).map((pid) => ({
     productId: pid,
@@ -102,7 +114,7 @@ export async function getActivePlayEntitlements(appUserId?: string): Promise<{ p
   if (!isNativeBillingAvailable()) return []
   const Purchases = await purchases()
   if (!Purchases) return []
-  await configurePlayBilling('premium-monthly', appUserId)
+  await configurePlayBilling('premium_monthly', appUserId)
   const { customerInfo } = await Purchases.getCustomerInfo()
   return (customerInfo.activeSubscriptions || []).map((pid) => ({
     productId: pid,

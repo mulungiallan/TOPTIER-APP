@@ -39,8 +39,11 @@ export const paystackGateway: PaymentGateway = {
 
     const planNames: Record<string, string> = {
       trial: 'TOPTIER 7-Day Trial',
+      premium_daily: 'TOPTIER Premium Daily',
+      premium_weekly: 'TOPTIER Premium Weekly',
+      premium_quarterly: 'TOPTIER Premium Quarterly',
+      premium_annual: 'TOPTIER Premium Yearly',
       premium_monthly: 'TOPTIER Premium Monthly',
-      premium_annual: 'TOPTIER Premium Annual',
       lifetime: 'TOPTIER Lifetime Access',
     }
 

@@ -30,7 +30,7 @@ interface Package {
   id: string
   name: string
   description: string | null
-  duration: 'monthly' | 'annual'
+  duration: 'daily' | 'weekly' | 'quarterly' | 'annual'
   price: number
   analyses: number // 0 = unlimited
   splitRatio: number
@@ -101,7 +101,6 @@ export function PricingPage() {
   const [userPlan, setUserPlan] = useState<UserPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [subscribingTo, setSubscribingTo] = useState<string | null>(null)
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
 
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
@@ -196,12 +195,12 @@ export function PricingPage() {
     }
   }
 
-  const filteredPackages = packages.filter((p) => p.duration === billingCycle)
-
-  const analysesText = (n: number) => (n === 0 ? 'Unlimited analyses' : `${n.toLocaleString()} analyses / month`)
-
-  const priceDisplay = (price: number, duration: string) =>
-    duration === 'annual' ? `$${price.toFixed(2)} / year` : `$${price.toFixed(2)} / month`
+  const durationLabel: Record<string, string> = {
+    daily: 'day',
+    weekly: 'week',
+    quarterly: 'quarter',
+    annual: 'year',
+  }
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -261,39 +260,10 @@ export function PricingPage() {
         )}
       </motion.div>
 
-      {/* Billing cycle toggle */}
-      <div className="flex justify-center">
-        <div className="inline-flex rounded-lg border bg-card p-1 shadow-sm">
-          <button
-            onClick={() => setBillingCycle('monthly')}
-            className={cn(
-              'px-5 py-2 text-sm font-medium rounded-md transition',
-              billingCycle === 'monthly'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setBillingCycle('annual')}
-            className={cn(
-              'px-5 py-2 text-sm font-medium rounded-md transition',
-              billingCycle === 'annual'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            Annual
-            <span className="ml-2 text-emerald-500 font-semibold">Save 20%</span>
-          </button>
-        </div>
-      </div>
-
       {/* Pricing cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <AnimatePresence mode="popLayout">
-          {filteredPackages.map((pkg, idx) => {
+          {packages.map((pkg, idx) => {
             const planKey = getPlanKey(pkg.name)
             const meta = planMeta[planKey] || planMeta.premium
             const Icon = meta.icon
@@ -345,7 +315,7 @@ export function PricingPage() {
                         ${pkg.price.toFixed(2)}
                       </span>
                       <span className="text-sm text-muted-foreground ml-1">
-                        / {pkg.duration === 'annual' ? 'year' : 'month'}
+                        / {durationLabel[pkg.duration] || pkg.duration}
                       </span>
                     </div>
 

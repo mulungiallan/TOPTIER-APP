@@ -13,8 +13,10 @@ import { validateBody, paymentInitSchema } from '@/lib/validation'
 
 const PLANS: Record<string, { price: number; currency: string }> = {
   trial: { price: 0, currency: 'USD' },
-  premium_monthly: { price: 29.99, currency: 'USD' },
-  premium_annual: { price: 249.99, currency: 'USD' },
+  premium_daily: { price: 1.5, currency: 'USD' },
+  premium_weekly: { price: 7, currency: 'USD' },
+  premium_quarterly: { price: 75, currency: 'USD' },
+  premium_annual: { price: 120, currency: 'USD' },
   lifetime: { price: 499.99, currency: 'USD' },
 }
 

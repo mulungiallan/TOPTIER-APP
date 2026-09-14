@@ -78,7 +78,7 @@ const faqCategories = [
   {
     name: 'Subscriptions & Billing',
     articles: [
-      { id: 'a10', title: 'What are the subscription plans available?', content: 'We offer Free, Trial (7 days), Premium (monthly/annual), and Lifetime plans. Premium includes unlimited signals, advanced analytics, and priority support. See the Pricing page for current prices.' },
+      { id: 'a10', title: 'What are the subscription plans available?', content: 'We offer Free, Trial (7 days), Premium Daily ($1.50), Premium Weekly ($7), Premium Quarterly ($75), Premium Yearly ($120), and Lifetime plans. Premium includes no ads, trading bot access, TOPTIER signals, copy trading, unlimited signals, and priority support. See the Pricing page for current prices.' },
       { id: 'a11', title: 'How do I cancel my subscription?', content: 'Go to Settings → Subscription → Manage Plan. Your Premium features will remain active until the end of your current billing period. You can re-subscribe at any time without losing your preferences.' },
       { id: 'a12', title: 'Can I get a refund?', content: 'Refunds are handled on a case-by-case basis in line with applicable law and the payment provider\'s policies. Contact support with your payment reference and we\'ll review your request.' },
     ],

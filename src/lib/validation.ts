@@ -62,7 +62,7 @@ export const resetPasswordSchema = z.object({
 // premium_annual | lifetime). Keep this in sync with the route's local schema.
 export const paymentInitSchema = z.object({
   provider: z.enum(["stripe", "paypal", "paystack", "flutterwave", "mpesa", "airtel", "mtn", "revenuecat", "pesapal", "bank"]),
-  planType: z.enum(["trial", "premium_monthly", "premium_annual", "lifetime"]),
+  planType: z.enum(["trial", "premium_daily", "premium_weekly", "premium_quarterly", "premium_annual", "lifetime"]),
   couponCode: z.string().trim().max(64).optional(),
   metadata: z.record(z.string(), z.string()).optional(),
 });

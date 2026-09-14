@@ -65,16 +65,16 @@ describe('reset password schema', () => {
 
 describe('payment init schema', () => {
   it('accepts a valid provider/plan', () => {
-    const r = paymentInitSchema.safeParse({ provider: 'paystack', planType: 'premium_monthly' })
+    const r = paymentInitSchema.safeParse({ provider: 'paystack', planType: 'premium_weekly' })
     expect(r.success).toBe(true)
   })
 
   it('rejects unknown providers', () => {
-    expect(paymentInitSchema.safeParse({ provider: 'bitcoin', planType: 'monthly' }).success).toBe(false)
+    expect(paymentInitSchema.safeParse({ provider: 'bitcoin', planType: 'premium_weekly' }).success).toBe(false)
   })
 
   it('rejects unknown plan types', () => {
-    expect(paymentInitSchema.safeParse({ provider: 'stripe', planType: 'annual' }).success).toBe(false)
+    expect(paymentInitSchema.safeParse({ provider: 'stripe', planType: 'premium_monthly' }).success).toBe(false)
   })
 })
 
