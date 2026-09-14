@@ -284,16 +284,16 @@ export function FloatingSupportWidget() {
             // Respect safe-area (notches/home indicators) and keep clear of
             // bottom-right action buttons by sitting slightly further from the
             // edge on smaller screens.
-            className="fixed bottom-5 right-5 z-40 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+            className="fixed bottom-5 right-5 z-40 flex size-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 transition-all"
             style={{
               bottom: 'max(1.25rem, env(safe-area-inset-bottom))',
               right: 'max(1.25rem, env(safe-area-inset-right))',
             }}
             aria-label="Open customer support"
           >
-            <MessageCircle className="size-6" />
+            <MessageCircle className="size-7" />
             {unread > 0 && (
-              <span className="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
+              <span className="absolute -top-1 -right-1 flex size-6 items-center justify-center rounded-full bg-destructive text-xs font-bold text-white">
                 {unread > 9 ? '9+' : unread}
               </span>
             )}
@@ -311,7 +311,7 @@ export function FloatingSupportWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed z-50 flex h-[600px] max-h-[calc(100vh-2.5rem)] w-[calc(100vw-2.5rem)] max-w-[400px] flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+            className="fixed z-50 flex h-[85vh] max-h-[calc(100vh-2rem)] w-[calc(100vw-1.5rem)] max-w-[520px] flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
             style={{
               bottom: 'max(1.25rem, env(safe-area-inset-bottom))',
               right: 'max(1.25rem, env(safe-area-inset-right))',
@@ -321,17 +321,17 @@ export function FloatingSupportWidget() {
             <div className="flex items-center justify-between p-4 bg-primary text-primary-foreground shrink-0">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <Avatar className="size-9 border-2 border-primary-foreground/30">
+                  <Avatar className="size-11 border-2 border-primary-foreground/30">
                     <AvatarFallback className="bg-primary-foreground/20 text-primary-foreground">
-                      <Bot className="size-4" />
+                      <Bot className="size-5" />
                     </AvatarFallback>
                   </Avatar>
-                  <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-400 border-2 border-primary" />
+                  <span className="absolute bottom-0 right-0 size-3 rounded-full bg-emerald-400 border-2 border-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold leading-tight">BAGMUL Assistant</p>
-                  <p className="text-[10px] opacity-90 leading-tight flex items-center gap-1">
-                    <Clock className="size-2.5" /> Typically replies instantly
+                  <p className="text-base font-bold leading-tight">BAGMUL Assistant</p>
+                  <p className="text-xs opacity-90 leading-tight flex items-center gap-1">
+                    <Clock className="size-3" /> Typically replies instantly
                   </p>
                 </div>
               </div>
@@ -339,19 +339,19 @@ export function FloatingSupportWidget() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  className="size-9 text-primary-foreground hover:bg-primary-foreground/10"
                   onClick={() => setPage('support')}
                   title="Open full Support page"
                 >
-                  <LifeBuoy className="size-4" />
+                  <LifeBuoy className="size-5" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  className="size-9 text-primary-foreground hover:bg-primary-foreground/10"
                   onClick={() => setIsOpen(false)}
                 >
-                  <X className="size-4" />
+                  <X className="size-5" />
                 </Button>
               </div>
             </div>
@@ -361,46 +361,46 @@ export function FloatingSupportWidget() {
               {view === 'main' && (
                 <div className="h-full overflow-y-auto p-4 space-y-4">
                   {/* Greeting */}
-                  <div className="rounded-lg bg-muted/50 p-3 text-sm">
+                  <div className="rounded-lg bg-muted/50 p-4 text-base">
                     <p className="font-medium mb-1">👋 Welcome to TopTier Support!</p>
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-muted-foreground text-sm">
                       Powered by BAGMUL. Choose an option below or ask me anything.
                     </p>
                   </div>
 
                   {/* Quick Actions */}
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => setView('chat')}
-                      className="flex flex-col items-start gap-1 p-3 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                      className="flex flex-col items-start gap-1 p-4 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
                     >
-                      <MessageCircle className="size-5 text-primary" />
-                      <span className="text-sm font-medium">Live Chat</span>
-                      <span className="text-[10px] text-muted-foreground">Ask the AI assistant</span>
+                      <MessageCircle className="size-6 text-primary" />
+                      <span className="text-base font-medium">Live Chat</span>
+                      <span className="text-xs text-muted-foreground">Ask the AI assistant</span>
                     </button>
                     <button
                       onClick={() => setView('faq')}
-                      className="flex flex-col items-start gap-1 p-3 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                      className="flex flex-col items-start gap-1 p-4 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
                     >
-                      <Search className="size-5 text-primary" />
-                      <span className="text-sm font-medium">FAQs</span>
-                      <span className="text-[10px] text-muted-foreground">Browse common questions</span>
+                      <Search className="size-6 text-primary" />
+                      <span className="text-base font-medium">FAQs</span>
+                      <span className="text-xs text-muted-foreground">Browse common questions</span>
                     </button>
                     <button
                       onClick={() => setView('ticket')}
-                      className="flex flex-col items-start gap-1 p-3 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                      className="flex flex-col items-start gap-1 p-4 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
                     >
-                      <Plus className="size-5 text-primary" />
-                      <span className="text-sm font-medium">Create Ticket</span>
-                      <span className="text-[10px] text-muted-foreground">Get human help</span>
+                      <Plus className="size-6 text-primary" />
+                      <span className="text-base font-medium">Create Ticket</span>
+                      <span className="text-xs text-muted-foreground">Get human help</span>
                     </button>
                     <button
                       onClick={() => setPage('support')}
-                      className="flex flex-col items-start gap-1 p-3 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                      className="flex flex-col items-start gap-1 p-4 rounded-lg border bg-card hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
                     >
-                      <LifeBuoy className="size-5 text-primary" />
-                      <span className="text-sm font-medium">Support Center</span>
-                      <span className="text-[10px] text-muted-foreground">Full help center</span>
+                      <LifeBuoy className="size-6 text-primary" />
+                      <span className="text-base font-medium">Support Center</span>
+                      <span className="text-xs text-muted-foreground">Full help center</span>
                     </button>
                   </div>
 
@@ -408,16 +408,16 @@ export function FloatingSupportWidget() {
 
                   {/* Quick FAQ Preview */}
                   <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Popular Questions</p>
-                    <div className="space-y-1">
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Popular Questions</p>
+                    <div className="space-y-1.5">
                       {quickFaqs.slice(0, 3).map((faq) => (
                         <button
                           key={faq.id}
                           onClick={() => handleQuickFaq(faq)}
-                          className="w-full flex items-center justify-between gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors text-left"
+                          className="w-full flex items-center justify-between gap-2 p-2.5 rounded-md hover:bg-muted/50 transition-colors text-left"
                         >
-                          <span className="text-xs">{faq.q}</span>
-                          <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                          <span className="text-sm">{faq.q}</span>
+                          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                         </button>
                       ))}
                     </div>
@@ -426,12 +426,12 @@ export function FloatingSupportWidget() {
                   <Separator />
 
                   {/* Contact info */}
-                  <div className="space-y-1.5 text-xs">
+                  <div className="space-y-1.5 text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Mail className="size-3.5" /> support@toptier.app
+                      <Mail className="size-4" /> support@toptier.app
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Clock className="size-3.5" /> Free: &lt;24h · Premium: &lt;4h
+                      <Clock className="size-4" /> Free: &lt;24h · Premium: &lt;4h
                     </div>
                   </div>
 
@@ -442,69 +442,69 @@ export function FloatingSupportWidget() {
               {view === 'chat' && (
                 <div className="h-full flex flex-col">
                   {/* Chat header */}
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
                     <button
                       onClick={() => setView('main')}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ← Back
                     </button>
-                    <span className="text-xs font-medium flex items-center gap-1">
-                      <Bot className="size-3.5" /> AI Assistant
+                    <span className="text-sm font-medium flex items-center gap-1.5">
+                      <Bot className="size-4" /> AI Assistant
                     </span>
-                    <Badge variant="outline" className="text-[9px] gap-1 text-emerald-500 border-emerald-500/30">
-                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Online
+                    <Badge variant="outline" className="text-[10px] gap-1.5 text-emerald-500 border-emerald-500/30">
+                      <span className="size-2 rounded-full bg-emerald-500 animate-pulse" /> Online
                     </Badge>
                   </div>
 
                   {/* Messages */}
-                  <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+                  <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
                     {messages.map((msg) => (
                       <div
                         key={msg.id}
-                        className={cn('flex gap-2', msg.role === 'user' ? 'justify-end' : 'justify-start')}
+                        className={cn('flex gap-3', msg.role === 'user' ? 'justify-end' : 'justify-start')}
                       >
                         {msg.role === 'bot' && (
-                          <Avatar className="size-7 shrink-0 mt-0.5">
-                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                              <Bot className="size-3.5" />
+                          <Avatar className="size-9 shrink-0 mt-1">
+                            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                              <Bot className="size-5" />
                             </AvatarFallback>
                           </Avatar>
                         )}
                         <div
                           className={cn(
-                            'max-w-[80%] rounded-2xl px-3 py-2 text-sm',
+                            'max-w-[85%] rounded-2xl px-4 py-3 text-base',
                             msg.role === 'user'
                               ? 'bg-primary text-primary-foreground rounded-tr-sm'
                               : 'bg-muted rounded-tl-sm'
                           )}
                         >
                           <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                          <p className={cn('text-[9px] mt-1', msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                          <p className={cn('text-[10px] mt-1.5', msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
                             {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
                         {msg.role === 'user' && (
-                          <Avatar className="size-7 shrink-0 mt-0.5">
-                            <AvatarFallback className="bg-muted text-xs">
-                              <User className="size-3.5" />
+                          <Avatar className="size-9 shrink-0 mt-1">
+                            <AvatarFallback className="bg-muted text-sm">
+                              <User className="size-5" />
                             </AvatarFallback>
                           </Avatar>
                         )}
                       </div>
                     ))}
                     {isBotTyping && (
-                      <div className="flex gap-2 justify-start">
-                        <Avatar className="size-7 shrink-0 mt-0.5">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                            <Bot className="size-3.5" />
+                      <div className="flex gap-3 justify-start">
+                        <Avatar className="size-9 shrink-0 mt-1">
+                          <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                            <Bot className="size-5" />
                           </AvatarFallback>
                         </Avatar>
-                        <div className="max-w-[80%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-tl-sm">
-                          <span className="flex items-center gap-1">
-                            <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce" />
-                            <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce" style={{ animationDelay: '0.15s' }} />
-                            <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce" style={{ animationDelay: '0.3s' }} />
+                        <div className="max-w-[85%] rounded-2xl px-5 py-4 bg-muted rounded-tl-sm">
+                          <span className="flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-muted-foreground/60 animate-bounce" />
+                            <span className="size-2 rounded-full bg-muted-foreground/60 animate-bounce" style={{ animationDelay: '0.15s' }} />
+                            <span className="size-2 rounded-full bg-muted-foreground/60 animate-bounce" style={{ animationDelay: '0.3s' }} />
                           </span>
                         </div>
                       </div>
@@ -513,12 +513,12 @@ export function FloatingSupportWidget() {
 
                   {/* Quick FAQ chips */}
                   {messages.length <= 1 && (
-                    <div className="px-3 pb-2 flex flex-wrap gap-1">
+                    <div className="px-4 pb-3 flex flex-wrap gap-2">
                       {quickFaqs.slice(0, 3).map((faq) => (
                         <button
                           key={faq.id}
                           onClick={() => handleQuickFaq(faq)}
-                          className="text-[10px] px-2 py-1 rounded-full border border-border hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                          className="text-xs px-3 py-1.5 rounded-full border border-border hover:border-primary/40 hover:bg-primary/5 transition-colors"
                         >
                           {faq.q}
                         </button>
@@ -527,27 +527,27 @@ export function FloatingSupportWidget() {
                   )}
 
                   {/* Input */}
-                  <div className="p-3 border-t border-border">
+                  <div className="p-4 border-t border-border">
                     {ticketAttachments.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-2">
+                      <div className="flex flex-wrap gap-2 mb-2">
                         {ticketAttachments.map((att, i) => (
                           <div key={`${att.name}-${i}`} className="relative">
-                            <img src={att.dataUrl} alt={att.name} className="size-10 rounded-md border object-cover" />
+                            <img src={att.dataUrl} alt={att.name} className="size-12 rounded-md border object-cover" />
                             <button
                               type="button"
                               onClick={() => setTicketAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                              className="absolute -top-1 -right-1 size-4 rounded-full bg-destructive text-white flex items-center justify-center"
+                              className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-destructive text-white flex items-center justify-center"
                               title="Remove attachment"
                             >
-                              <X className="size-2.5" />
+                              <X className="size-3" />
                             </button>
                           </div>
                         ))}
                       </div>
                     )}
                     <div className="flex items-end gap-2">
-                      <Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => attachInputRef.current?.click()} title="Attach image">
-                        <Paperclip className="size-4" />
+                      <Button variant="ghost" size="icon" className="size-11 shrink-0" onClick={() => attachInputRef.current?.click()} title="Attach image">
+                        <Paperclip className="size-5" />
                       </Button>
                       <input
                         ref={attachInputRef}
@@ -574,10 +574,10 @@ export function FloatingSupportWidget() {
                         }}
                         placeholder="Type a message..."
                         rows={1}
-                        className="resize-none min-h-[36px] max-h-24 text-sm"
+                        className="resize-none min-h-[44px] max-h-28 text-base"
                       />
-                      <Button size="icon" className="size-9 shrink-0" onClick={handleSend} disabled={!input.trim()}>
-                        <Send className="size-4" />
+                      <Button size="icon" className="size-11 shrink-0" onClick={handleSend} disabled={!input.trim()}>
+                        <Send className="size-5" />
                       </Button>
                     </div>
                   </div>
@@ -586,32 +586,32 @@ export function FloatingSupportWidget() {
 
               {view === 'faq' && (
                 <div className="h-full flex flex-col">
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
                     <button
                       onClick={() => setView('main')}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ← Back
                     </button>
-                    <span className="text-xs font-medium">Frequently Asked Questions</span>
-                    <span className="w-8" />
+                    <span className="text-sm font-medium">Frequently Asked Questions</span>
+                    <span className="w-10" />
                   </div>
                   <ScrollArea className="flex-1">
                     <Accordion type="single" collapsible className="p-3">
                       {quickFaqs.map((faq) => (
-                        <AccordionItem key={faq.id} value={faq.id} className="border rounded-lg mb-2 px-3">
-                          <AccordionTrigger className="text-xs font-medium hover:no-underline py-3">
+                        <AccordionItem key={faq.id} value={faq.id} className="border rounded-lg mb-2 px-4">
+                          <AccordionTrigger className="text-sm font-medium hover:no-underline py-3.5">
                             {faq.q}
                           </AccordionTrigger>
                           <AccordionContent>
-                            <p className="text-xs text-muted-foreground leading-relaxed">{faq.a}</p>
+                            <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="mt-2 h-7 text-xs gap-1"
+                              className="mt-2 h-8 text-sm gap-1.5"
                               onClick={() => handleQuickFaq(faq)}
                             >
-                              Ask in chat <ChevronRight className="size-3" />
+                              Ask in chat <ChevronRight className="size-4" />
                             </Button>
                           </AccordionContent>
                         </AccordionItem>
@@ -623,31 +623,31 @@ export function FloatingSupportWidget() {
 
               {view === 'ticket' && (
                 <div className="h-full flex flex-col">
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
                     <button
                       onClick={() => setView('main')}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ← Back
                     </button>
-                    <span className="text-xs font-medium">Create Support Ticket</span>
-                    <span className="w-8" />
+                    <span className="text-sm font-medium">Create Support Ticket</span>
+                    <span className="w-10" />
                   </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     <div>
-                      <label className="text-xs font-medium mb-1 block">Subject *</label>
+                      <label className="text-sm font-medium mb-1.5 block">Subject *</label>
                       <Input
                         placeholder="Brief description"
                         value={ticket.subject}
                         onChange={(e) => setTicket((t) => ({ ...t, subject: e.target.value }))}
-                        className="text-sm"
+                        className="text-base h-11"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-xs font-medium mb-1 block">Category *</label>
+                        <label className="text-sm font-medium mb-1.5 block">Category *</label>
                         <select
-                          className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                          className="w-full h-11 rounded-md border border-input bg-background px-3 text-base"
                           value={ticket.category}
                           onChange={(e) => setTicket((t) => ({ ...t, category: e.target.value }))}
                         >
@@ -660,9 +660,9 @@ export function FloatingSupportWidget() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-medium mb-1 block">Priority</label>
+                        <label className="text-sm font-medium mb-1.5 block">Priority</label>
                         <select
-                          className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                          className="w-full h-11 rounded-md border border-input bg-background px-3 text-base"
                           value={ticket.priority}
                           onChange={(e) => setTicket((t) => ({ ...t, priority: e.target.value }))}
                         >
@@ -675,18 +675,18 @@ export function FloatingSupportWidget() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-medium mb-1 block">Description *</label>
+                      <label className="text-sm font-medium mb-1.5 block">Description *</label>
                       <Textarea
                         placeholder="Describe your issue in detail..."
-                        rows={4}
+                        rows={5}
                         value={ticket.description}
                         onChange={(e) => setTicket((t) => ({ ...t, description: e.target.value }))}
-                        className="text-sm"
+                        className="text-base"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => attachInputRef.current?.click()}>
-                        <Paperclip className="size-3.5" /> Attach Screenshot
+                      <Button variant="outline" size="sm" className="gap-2 text-sm" onClick={() => attachInputRef.current?.click()}>
+                        <Paperclip className="size-4" /> Attach Screenshot
                       </Button>
                       {ticketAttachments.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
@@ -706,11 +706,11 @@ export function FloatingSupportWidget() {
                         </div>
                       )}
                     </div>
-                    <Button className="w-full gap-2" onClick={handleCreateTicket} disabled={submittingTicket}>
-                      {submittingTicket ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                    <Button className="w-full gap-2 h-11 text-base" onClick={handleCreateTicket} disabled={submittingTicket}>
+                      {submittingTicket ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}
                       {submittingTicket ? 'Creating...' : 'Submit Ticket'}
                     </Button>
-                    <p className="text-[10px] text-muted-foreground text-center">
+                    <p className="text-xs text-muted-foreground text-center">
                       Average response time: &lt;24 hours (Free) · &lt;4 hours (Premium)
                     </p>
                   </div>
@@ -719,8 +719,8 @@ export function FloatingSupportWidget() {
             </div>
 
             {/* Footer */}
-            <div className="border-t border-border bg-muted/30 px-3 py-1.5 flex items-center justify-center">
-              <PoweredBy variant="inline" className="text-[10px]" />
+            <div className="border-t border-border bg-muted/30 px-3 py-2 flex items-center justify-center">
+              <PoweredBy variant="inline" className="text-xs" />
             </div>
           </motion.div>
         )}

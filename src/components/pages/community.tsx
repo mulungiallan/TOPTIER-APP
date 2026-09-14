@@ -459,45 +459,45 @@ function ChatsTab() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageCircle className="h-4 w-4" /> Your Chats
+            <CardTitle className="text-lg flex items-center gap-2">
+              <MessageCircle className="h-5 w-5" /> Your Chats
             </CardTitle>
-            <CardDescription>Private messages with other traders</CardDescription>
+            <CardDescription className="text-sm">Private messages with other traders</CardDescription>
           </div>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setPage('messages')}>
-            Open Messages <ArrowRight className="h-3.5 w-3.5" />
+            Open Messages <ArrowRight className="h-4 w-4" />
           </Button>
         </CardHeader>
         <CardContent>
           {conversations.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <MessageCircle className="h-10 w-10 mx-auto mb-2 opacity-40" />
-              <p className="font-medium">No chats yet</p>
+            <div className="text-center py-12 text-muted-foreground">
+              <MessageCircle className="h-14 w-14 mx-auto mb-2 opacity-40" />
+              <p className="text-base font-medium">No chats yet</p>
               <p className="text-sm">Start a conversation from the Messages page.</p>
               <Button variant="outline" size="sm" className="mt-4 gap-1.5" onClick={() => setPage('messages')}>
-                Open Messages <ArrowRight className="h-3.5 w-3.5" />
+                Open Messages <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
           ) : (
-            <ScrollArea className="max-h-96">
-              <div className="space-y-2">
+            <ScrollArea className="max-h-[28rem] pr-2">
+              <div className="space-y-2.5">
                 {conversations.map((conv) => {
                   const other = otherParticipant(conv)
                   return (
                     <div
                       key={conv.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors cursor-pointer"
+                      className="flex items-center gap-4 p-4 rounded-xl border hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={() => setPage('messages')}
                     >
-                      <Avatar className="size-9 shrink-0">
+                      <Avatar className="size-12 shrink-0">
                         <AvatarImage src={other.profilePicture || undefined} />
-                        <AvatarFallback>{(other.name || 'U').slice(0, 1).toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-base">{(other.name || 'U').slice(0, 1).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{other.name || 'Trader'}</p>
-                        <p className="text-xs text-muted-foreground truncate">{lastMessage(conv)}</p>
+                        <p className="text-base font-semibold truncate">{other.name || 'Trader'}</p>
+                        <p className="text-sm text-muted-foreground truncate">{lastMessage(conv)}</p>
                       </div>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
+                      <span className="text-xs text-muted-foreground shrink-0">
                         {new Date(conv.lastMessageAt).toLocaleDateString()}
                       </span>
                     </div>
@@ -513,46 +513,46 @@ function ChatsTab() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" /> Trading Groups
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5" /> Trading Groups
             </CardTitle>
-            <CardDescription>Public groups you can join and discuss in</CardDescription>
+            <CardDescription className="text-sm">Public groups you can join and discuss in</CardDescription>
           </div>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setPage('groups')}>
-            Open Groups <ArrowRight className="h-3.5 w-3.5" />
+            Open Groups <ArrowRight className="h-4 w-4" />
           </Button>
         </CardHeader>
         <CardContent>
           {groups.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <Users className="h-10 w-10 mx-auto mb-2 opacity-40" />
-              <p className="font-medium">No public groups yet</p>
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-14 w-14 mx-auto mb-2 opacity-40" />
+              <p className="text-base font-medium">No public groups yet</p>
               <p className="text-sm">Create or discover groups from the Groups page.</p>
               <Button variant="outline" size="sm" className="mt-4 gap-1.5" onClick={() => setPage('groups')}>
-                Open Groups <ArrowRight className="h-3.5 w-3.5" />
+                Open Groups <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
           ) : (
-            <ScrollArea className="max-h-96">
-              <div className="space-y-2">
+            <ScrollArea className="max-h-[28rem] pr-2">
+              <div className="space-y-2.5">
                 {groups.map((group) => (
                   <div
                     key={group.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="flex items-center gap-4 p-4 rounded-xl border hover:bg-muted/30 transition-colors cursor-pointer"
                     onClick={() => setPage('groups')}
                   >
-                    <div className="size-9 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Users className="h-4 w-4 text-primary" />
+                    <div className="size-12 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Users className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{group.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">
+                      <p className="text-base font-semibold truncate">{group.name}</p>
+                      <p className="text-sm text-muted-foreground truncate">
                         {group.description || group.category || 'Trading group'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Users className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">{group.memberCount}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">{group.memberCount}</span>
                     </div>
                   </div>
                 ))}
