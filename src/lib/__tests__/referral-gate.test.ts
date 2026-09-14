@@ -25,13 +25,21 @@ describe('referral-gate', () => {
     delete process.env.REFERRAL_LOCK_ENABLED
     delete process.env.REFERRAL_LOCK_CODE
     delete process.env.REFERRAL_LOCK_URL
+    // Most gate behaviour tests exercise invite-only mode explicitly on.
+    process.env.REFERRAL_LOCK_ENABLED = 'true'
   })
 
   afterEach(() => {
     process.env = savedEnv
   })
 
-  it('is enabled by default', () => {
+  it('is disabled (free/open) by default', () => {
+    delete process.env.REFERRAL_LOCK_ENABLED
+    expect(referralLockEnabled()).toBe(false)
+  })
+
+  it('can be enabled via env', () => {
+    process.env.REFERRAL_LOCK_ENABLED = 'true'
     expect(referralLockEnabled()).toBe(true)
   })
 
@@ -63,6 +71,7 @@ describe('referral-gate', () => {
   })
 
   it('unlocks referred users when no lock code is configured', async () => {
+    delete process.env.REFERRAL_LOCK_CODE
     findUnique.mockResolvedValueOnce({ role: 'user', referredBy: 'r1' })
     expect(await isReferralUnlocked('u1')).toBe(true)
   })
