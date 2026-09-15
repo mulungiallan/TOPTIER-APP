@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
+import { Inter, Space_Grotesk, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
@@ -19,6 +19,13 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
 });
 
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  variable: "--font-plex-sans",
+  display: "swap",
+  weight: ["400", "500", "600"],
+});
+
 const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   variable: "--font-plex-mono",
@@ -33,8 +40,8 @@ export const viewport: Viewport = {
   userScalable: false, // set true if you want accessibility zoom allowed
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f2a4a" },
+    { media: "(prefers-color-scheme: light)", color: "#0a0e14" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0e14" },
   ],
 };
 
@@ -113,7 +120,7 @@ export default async function RootLayout({
         <link rel="apple-touch-startup-image" href="/icons/splash-ios-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
       </head>
       <body
-        className={`antialiased bg-background text-foreground ${inter.variable} ${spaceGrotesk.variable} ${plexMono.variable}`}
+        className={`antialiased bg-background text-foreground ${inter.variable} ${spaceGrotesk.variable} ${plexSans.variable} ${plexMono.variable}`}
       >
         <ThemeProvider
           attribute="class"

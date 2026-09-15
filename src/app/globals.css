@@ -6,7 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-sans: var(--font-plex-sans), var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --color-sidebar-ring: var(--sidebar-ring);
@@ -51,85 +51,89 @@
 
 :root {
   --radius: 0.5rem;
-  --background: #ffffff;
-  --foreground: #16202b;
-  --card: #f8f9fb;
-  --card-foreground: #16202b;
-  --popover: #ffffff;
-  --popover-foreground: #16202b;
-  --primary: #1b4f9c;
-  --primary-foreground: #ffffff;
-  --secondary: #f5f7fa;
-  --secondary-foreground: #0f2a4a;
-  --muted: #f5f7fa;
-  --muted-foreground: #5b6774;
-  --accent: #e8eff9;
-  --accent-foreground: #0f2a4a;
-  --destructive: #c23b3b;
-  --border: #e2e6eb;
-  --input: #e2e6eb;
-  --ring: #1b4f9c;
-  --chart-1: #1b4f9c;
-  --chart-2: #0f2a4a;
-  --chart-3: #5b8dd6;
-  --chart-4: #0f8f5f;
-  --chart-5: #c23b3b;
-  --sidebar: #f5f7fa;
-  --sidebar-foreground: #16202b;
-  --sidebar-primary: #1b4f9c;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e8eff9;
-  --sidebar-accent-foreground: #0f2a4a;
-  --sidebar-border: #e2e6eb;
-  --sidebar-ring: #1b4f9c;
-  --profit: #0f8f5f;
-  --loss: #c23b3b;
+  --background: #0a0e14;       /* ink */
+  --foreground: #edf1f5;       /* text */
+  --card: #141b24;             /* slate */
+  --card-foreground: #edf1f5;
+  --popover: #10151d;          /* ink-elevated */
+  --popover-foreground: #edf1f5;
+  --primary: #d6a344;          /* brass */
+  --primary-foreground: #241a08; /* brass-ink */
+  --secondary: #1b232e;        /* slate-hover */
+  --secondary-foreground: #edf1f5;
+  --muted: #141b24;            /* slate */
+  --muted-foreground: #8996a8; /* mist */
+  --accent: #1b232e;           /* slate-hover */
+  --accent-foreground: #edf1f5;
+  --destructive: #e5484d;      /* ember */
+  --destructive-foreground: #ffffff;
+  --border: #232c38;           /* line */
+  --input: #232c38;
+  --ring: #d6a344;             /* brass */
+  --chart-1: #d6a344;          /* brass */
+  --chart-2: #2fbf71;          /* mint */
+  --chart-3: #e5484d;          /* ember */
+  --chart-4: #313d4c;          /* border-strong */
+  --chart-5: #8996a8;          /* mist */
+  --sidebar: #10151d;
+  --sidebar-foreground: #edf1f5;
+  --sidebar-primary: #d6a344;
+  --sidebar-primary-foreground: #241a08;
+  --sidebar-accent: #1b232e;
+  --sidebar-accent-foreground: #edf1f5;
+  --sidebar-border: #232c38;
+  --sidebar-ring: #d6a344;
+  --profit: #2fbf71;           /* mint */
+  --loss: #e5484d;             /* ember */
 }
 
+/* "Terminal Deck" is a dark-only design — dark mode uses the same palette. */
 .dark {
-  --background: #0f2a4a;
-  --foreground: #eaf0f8;
-  --card: #16385e;
-  --card-foreground: #eaf0f8;
-  --popover: #16385e;
-  --popover-foreground: #eaf0f8;
-  --primary: #5b8dd6;
-  --primary-foreground: #0f2a4a;
-  --secondary: #1b4f9c;
-  --secondary-foreground: #eaf0f8;
-  --muted: #1b4f9c;
-  --muted-foreground: #a9c0dc;
-  --accent: #1b4f9c;
-  --accent-foreground: #ffffff;
-  --destructive: #e07b7b;
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.15);
-  --ring: #5b8dd6;
-  --chart-1: #5b8dd6;
-  --chart-2: #e07b7b;
-  --chart-3: #8fb4e8;
-  --chart-4: #3bc98a;
-  --chart-5: #f0b3b3;
-  --sidebar: #16385e;
-  --sidebar-foreground: #eaf0f8;
-  --sidebar-primary: #5b8dd6;
-  --sidebar-primary-foreground: #0f2a4a;
-  --sidebar-accent: #1b4f9c;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.1);
-  --sidebar-ring: #5b8dd6;
-  --profit: #3bc98a;
-  --loss: #e07b7b;
+  --background: #0a0e14;
+  --foreground: #edf1f5;
+  --card: #141b24;
+  --card-foreground: #edf1f5;
+  --popover: #10151d;
+  --popover-foreground: #edf1f5;
+  --primary: #d6a344;
+  --primary-foreground: #241a08;
+  --secondary: #1b232e;
+  --secondary-foreground: #edf1f5;
+  --muted: #141b24;
+  --muted-foreground: #8996a8;
+  --accent: #1b232e;
+  --accent-foreground: #edf1f5;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: #232c38;
+  --input: #232c38;
+  --ring: #d6a344;
+  --chart-1: #d6a344;
+  --chart-2: #2fbf71;
+  --chart-3: #e5484d;
+  --chart-4: #313d4c;
+  --chart-5: #8996a8;
+  --sidebar: #10151d;
+  --sidebar-foreground: #edf1f5;
+  --sidebar-primary: #d6a344;
+  --sidebar-primary-foreground: #241a08;
+  --sidebar-accent: #1b232e;
+  --sidebar-accent-foreground: #edf1f5;
+  --sidebar-border: #232c38;
+  --sidebar-ring: #d6a344;
+  --profit: #2fbf71;
+  --loss: #e5484d;
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 
 /* ─── "Terminal Deck" design tokens (from files (14)) ───────────────────────
-   Added as standalone token names so the two rebuilt pages (and any future
-   page opting into the design system) can use them WITHOUT recolouring the
-   rest of the app's shadcn tokens. The global accent stays untouched. */
+   Named token utilities (bg-ink, bg-slate, text-brass, border-line, ...)
+   used by the rebuilt pages and the shared layout primitives. The global
+   shadcn tokens above are ALSO re-mapped to this palette, so the whole app
+   shares the same ink/brass identity. */
 :root {
   --ink: #0a0e14;
   --ink-elevated: #10151d;
