@@ -120,6 +120,7 @@ model User {
   // ─── Wallet (cash + crypto + double-entry ledger) ──────────────────────
   walletAccounts           WalletAccount[]
   cryptoDepositAddresses   CryptoDepositAddress[]
+  cryptoDeposits           CryptoDeposit[]
 }
 
 model Signal {
@@ -1458,4 +1459,29 @@ model CryptoDepositAddress {
 
   @@unique([userId, asset])
   @@index([address])
+}
+
+// ─── Crypto deposits via NOWPayments ──────────────────────────────────────
+// A real on-chain deposit request. NOWPayments mints a per-payment deposit
+// address; the wallet is credited ONLY once the provider confirms the payment
+// (status `finished`), and never more than once (creditReference is the
+// idempotency key for the double-entry ledger posting).
+model CryptoDeposit {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset           String // BTC | ETH | USDT | SOL
+  amount          Float // credit amount the user requested, in the asset's own units
+  payAddress      String // provider deposit address (one-time)
+  payAmount       Float? // exact amount the user must send (may differ from amount by rounding)
+  paymentId       String    @unique // NOWPayments payment_id
+  status          String    @default("waiting") // waiting | confirming | partially_paid | finished | expired | failed | refunded | cancelled
+  txHash          String? // on-chain tx id if the provider reports it
+  creditReference String    @unique // ledger idempotency key: nowpayments_<paymentId>
+  creditedAt      DateTime?
+  metadata        String? // provider status snapshot (JSON)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId, createdAt])
 }

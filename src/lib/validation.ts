@@ -79,6 +79,12 @@ export const walletFundSchema = z.object({
   reference: z.string().trim().min(1).max(128).optional(),
 });
 
+// Real on-chain wallet deposit via NOWPayments.
+export const cryptoDepositSchema = z.object({
+  asset: z.enum(["BTC", "ETH", "USDT", "SOL"]),
+  amount: z.coerce.number().finite().positive(),
+});
+
 // ─── Admin actions ──────────────────────────────────────────────────────────
 export const adminBanSchema = z.object({
   action: z.enum(["ban_user", "suspend_user", "unban_user"]),

@@ -30,6 +30,7 @@ const PROVIDER_CALLBACKS = [
   "/api/payments/flutterwave/callback",
   "/api/payments/pesapal/callback",
   "/api/payments/pesapal/ipn",
+  "/api/wallet/crypto/ipn",
 ];
 
 // Routes that are publicly accessible without authentication.
@@ -182,6 +183,6 @@ export const config = {
      * Match all request paths except provider callbacks (they sign their own
      * requests), the Socket.IO transport, and static assets.
      */
-    "/((?!api/webhooks/stripe|api/payments/stripe/webhook|api/payments/mpesa/callback|api/payments/paypal/callback|api/payments/paystack/callback|api/payments/flutterwave/callback|api/payments/pesapal/callback|api/payments/pesapal/ipn|api/socket|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/webhooks/stripe|api/payments/stripe/webhook|api/payments/mpesa/callback|api/payments/paypal/callback|api/payments/paystack/callback|api/payments/flutterwave/callback|api/payments/pesapal/callback|api/payments/pesapal/ipn|api/wallet/crypto/ipn|api/socket|_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -53,6 +53,13 @@ export const env = {
   get pesapalConsumerSecret(): string | undefined {
     return process.env.PESAPAL_CONSUMER_SECRET
   },
+  // ─── Crypto deposits (NOWPayments) ───────────────────────────────────────
+  get nowpaymentsApiKey(): string | undefined {
+    return process.env.NOWPAYMENTS_API_KEY
+  },
+  get nowpaymentsIpnSecret(): string | undefined {
+    return process.env.NOWPAYMENTS_IPN_SECRET
+  },
   // ─── In-app bank / manual payments ───────────────────────────────────────
   get bankAccountName(): string | undefined {
     return process.env.BANK_ACCOUNT_NAME

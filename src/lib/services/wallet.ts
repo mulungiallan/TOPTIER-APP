@@ -234,16 +234,17 @@ export async function creditCryptoDeposit(opts: {
   userId: string
   asset: Asset
   amount: number
-  txHash: string
+  reference?: string | null
   memo?: string | null
 }): Promise<{ status: string; newBalance: number; id?: string }> {
-  const { userId, asset, amount, txHash, memo = null } = opts
+  const { userId, asset, amount, reference = null, memo = null } = opts
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid deposit amount')
-  if (!txHash) throw new Error('Missing tx hash')
-  // txType 'transfer' + txHash as reference keeps network deposits idempotent.
+  if (!reference) throw new Error('Missing reference')
+  // txType 'transfer' + the external reference (on-chain tx hash, or the
+  // provider payment key) keeps network deposits idempotent.
   const { id, doubled } = await postTransaction({
     txType: 'transfer',
-    reference: txHash,
+    reference,
     memo: memo || `Crypto deposit ${asset}`,
     posting: [
       { accountId: (await getOrCreateAccount(userId, asset, 'user')).id, amount },
@@ -353,9 +354,5 @@ export async function getTransactionHistory(userId: string, asset?: Asset, limit
 // Consolidated bundle for the header chip + wallet page.
 export async function getWalletOverview(userId: string) {
   const balances = await getAllBalances(userId)
-  const addresses: Record<string, string> = {}
-  for (const asset of CRYPTO_ASSETS) {
-    addresses[asset] = await getDepositAddress(userId, asset)
-  }
-  return { balances, addresses, ledger: await verifyBooksBalance() }
+  return { balances, ledger: await verifyBooksBalance() }
 }

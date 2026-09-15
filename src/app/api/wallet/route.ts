@@ -5,7 +5,6 @@ import {
   CRYPTO_ASSETS,
   depositCash,
   withdrawCash,
-  getDepositAddress,
   creditCryptoDeposit,
   withdrawCrypto,
   settleTrade,
@@ -13,11 +12,11 @@ import {
   getTransactionHistory,
   getBalance,
 } from '@/lib/services/wallet'
+import { nowpaymentsConfigured } from '@/lib/payments/nowpayments'
 
 // GET /api/wallet
-// Full wallet overview: balances, mock deposit addresses, ledger health and the
-// user's recent posting history. Lightweight enough for both the header chip
-// and the Wallet page.
+// Full wallet overview: balances, ledger health and the user's recent posting
+// history. Lightweight enough for both the header chip and the Wallet page.
 export async function GET(request: NextRequest) {
   try {
     const auth = await authenticateRequest(request, { id: true })
@@ -31,12 +30,12 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       balances: overview.balances,
-      addresses: overview.addresses,
       ledger: overview.ledger,
       assets: {
         cash: CASH_ASSETS,
         crypto: CRYPTO_ASSETS,
       },
+      cryptoDepositsEnabled: nowpaymentsConfigured(),
       transactions: transactions.map((tx) => ({
         id: tx.id,
         txType: tx.txType,
@@ -65,13 +64,14 @@ export async function GET(request: NextRequest) {
 // Body: { action, ...params }
 //   deposit:  { asset, amount, memo? }
 //   withdraw: { asset, amount, memo? }
-//   crypto-deposit-address: { asset }
-//   crypto-credit:  { asset, amount, txHash }   (on-chain deposit callback)
+//   crypto-credit:  { asset, amount, txHash }   (ADMIN ONLY — manual on-chain
+//                    deposit callback. Regular users deposit through the
+//                    NOWPayments flow instead.)
 //   crypto-withdraw: { asset, amount, toAddress }
 //   trade-settle:    { buyAsset, buyQty, sellAsset, sellCost, fee? }
 export async function POST(request: NextRequest) {
   try {
-    const auth = await authenticateRequest(request, { id: true })
+    const auth = await authenticateRequest(request, { id: true, role: true })
     if (!auth.user) return errorResponse(auth.error || 'Unauthorized', 401)
     const userId = auth.user.id
 
@@ -100,16 +100,14 @@ export async function POST(request: NextRequest) {
         })
         break
       }
-      case 'crypto-deposit-address': {
-        result = { address: await getDepositAddress(userId, String(asset || 'BTC')) }
-        break
-      }
       case 'crypto-credit': {
+        const isAdmin = auth.user.role === 'admin' || auth.user.role === 'super_admin' || auth.user.role === 'owner'
+        if (!isAdmin) return errorResponse('Forbidden', 403)
         result = await creditCryptoDeposit({
           userId,
           asset: String(asset || 'BTC'),
           amount,
-          txHash: String(txHash || ''),
+          reference: String(txHash || ''),
           memo: memo && typeof memo === 'string' ? memo : null,
         })
         break

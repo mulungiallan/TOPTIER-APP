@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Loader2,
   ClipboardCheck,
-  Eye,
   X,
 } from 'lucide-react'
 import { useStore } from '@/lib/store'
@@ -49,14 +48,31 @@ interface WalletTx {
 
 interface WalletData {
   balances: Record<string, number>
-  addresses: Record<string, string>
   ledger: { balanced: boolean; unbalancedTransactions: string[] }
   assets: { cash: string[]; crypto: string[] }
+  cryptoDepositsEnabled: boolean
   transactions: WalletTx[]
+}
+
+interface CryptoDeposit {
+  id: string
+  asset: string
+  amount: number
+  payAddress: string
+  payAmount: number | null
+  paymentId: string
+  status: string
+  creditedAt: string | null
+  createdAt: string
 }
 
 const CASH_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP']
 const CRYPTO_ASSETS = ['BTC', 'ETH', 'USDT', 'SOL']
+
+const DEPOSIT_TERMINAL = ['finished', 'expired', 'failed', 'refunded', 'cancelled']
+function isOpenDeposit(status?: string): boolean {
+  return !!status && !DEPOSIT_TERMINAL.includes(status)
+}
 
 const TX_LABELS: Record<string, string> = {
   deposit: 'Deposit',
@@ -113,7 +129,8 @@ export function WalletPage() {
 
   const [cryptoAsset, setCryptoAsset] = useState('BTC')
   const [cryptoWithdraw, setCryptoWithdraw] = useState({ amount: '', toAddress: '' })
-  const [cryptoRef, setCryptoRef] = useState({ txHash: '', amount: '' })
+  const [depositCrypto, setDepositCrypto] = useState({ asset: 'BTC', amount: '' })
+  const [activeDeposit, setActiveDeposit] = useState<CryptoDeposit | null>(null)
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -179,10 +196,8 @@ export function WalletPage() {
     setBusy(key)
     try {
       await api.post('/wallet', body)
-      toast.success(`${key === 'deposit' ? 'Deposit' : key === 'withdraw' ? 'Withdrawal' : key === 'crypto-credit' ? 'Crypto credit' : 'Withdrawal'} recorded`)
-      setDeposit({ asset: body.asset as string, amount: '' })
+      toast.success(`${key === 'withdraw' ? 'Withdrawal' : 'Action'} recorded`)
       setWithdraw({ asset: body.asset as string, amount: '' })
-      setCryptoRef({ txHash: '', amount: '' })
       await fetchData()
     } catch (e) {
       const msg = e instanceof Error ? e.message.replace(/_/g, ' ') : 'Action failed'
@@ -196,6 +211,55 @@ export function WalletPage() {
     if (navigator.clipboard) await navigator.clipboard.writeText(address).catch(() => {})
     toast.success('Address copied')
   }
+
+  const startCryptoDeposit = async () => {
+    if (!depositCrypto.amount || Number(depositCrypto.amount) <= 0) {
+      toast.error('Enter a valid amount')
+      return
+    }
+    setBusy('crypto-deposit')
+    try {
+      const res = await api.post<{ success: boolean; data: { deposit: CryptoDeposit } }>('/wallet/crypto-deposit', {
+        asset: depositCrypto.asset,
+        amount: Number(depositCrypto.amount),
+      })
+      const deposit = res?.data?.deposit
+      if (deposit) {
+        setActiveDeposit(deposit)
+        setDepositCrypto((p) => ({ ...p, amount: '' }))
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message.replace(/_/g, ' ') : 'Failed to create crypto deposit'
+      toast.error(msg)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // While a deposit is open, poll its status so a completed payment credits
+  // the wallet even if the provider webhook was missed.
+  useEffect(() => {
+    if (!activeDeposit || !isOpenDeposit(activeDeposit.status) || activeDeposit.creditedAt) return
+    let active = true
+    const poll = async () => {
+      try {
+        const res = await api.get<{ success: boolean; data: { deposit: CryptoDeposit } }>(
+          `/wallet/crypto-deposit/${activeDeposit.id}`
+        )
+        const fresh = res?.data?.deposit
+        if (!active || !fresh) return
+        setActiveDeposit((prev) => (prev ? { ...prev, ...fresh } : fresh))
+        if (fresh.status === 'finished') {
+          toast.success(`${fresh.amount} ${fresh.asset} deposited!`)
+          fetchData()
+        }
+      } catch {
+        /* keep polling */
+      }
+    }
+    const id = setInterval(poll, 5000)
+    return () => { active = false; clearInterval(id) }
+  }, [activeDeposit, fetchData])
 
 const handleTopup = async () => {
     if (!deposit.amount || Number(deposit.amount) <= 0) {
@@ -440,15 +504,106 @@ const handleTopup = async () => {
         {/* ─── Crypto tab ───────────────────────────────────────────── */}
         <TabsContent value="crypto" className="space-y-4 pt-4">
           <div className="grid gap-4 lg:grid-cols-2">
-            {/* Deposit address */}
+            {/* Deposit crypto */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><Bitcoin className="size-4 text-emerald-500" /> Deposit address</CardTitle>
-                <CardDescription>Deterministic mock custody address for your asset.</CardDescription>
+                <CardTitle className="flex items-center gap-2 text-base"><ArrowDownToLine className="size-4 text-emerald-500" /> Deposit crypto</CardTitle>
+                <CardDescription>Send crypto to the generated address — your wallet is credited automatically once the network confirms.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {data && !data.cryptoDepositsEnabled ? (
+                  <p className="text-sm text-muted-foreground">
+                    Crypto deposits aren't available yet — use the cash top-up above.
+                  </p>
+                ) : !activeDeposit ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Asset</Label>
+                        <select
+                          className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                          value={depositCrypto.asset}
+                          onChange={(e) => setDepositCrypto({ ...depositCrypto, asset: e.target.value })}
+                        >
+                          {CRYPTO_ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Amount</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder="0.0"
+                          value={depositCrypto.amount}
+                          onChange={(e) => setDepositCrypto({ ...depositCrypto, amount: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {depositCrypto.asset === 'USDT' ? 'Received on TRON (TRC-20).' : `${depositCrypto.asset} on its native network.`} Only send the network's own asset to the address.
+                    </p>
+                    <Button
+                      className="w-full gap-1.5"
+                      disabled={busy === 'crypto-deposit' || !depositCrypto.amount || Number(depositCrypto.amount) <= 0}
+                      onClick={startCryptoDeposit}
+                    >
+                      {busy === 'crypto-deposit' ? <Loader2 className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
+                      Start crypto deposit
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-2 rounded-lg border p-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Send to this address</Label>
+                        <Badge variant={activeDeposit.status === 'finished' ? 'outline' : 'secondary'} className="capitalize">
+                          {activeDeposit.creditedAt ? 'credited' : activeDeposit.status.replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3">
+                        <code className="flex-1 break-all text-xs text-muted-foreground">{activeDeposit.payAddress}</code>
+                        <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => copyAddress(activeDeposit.payAddress)}>
+                          <Copy className="size-3.5" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Send exactly{' '}
+                        <span className="font-semibold text-foreground">
+                          {activeDeposit.payAmount != null ? activeDeposit.payAmount : activeDeposit.amount} {activeDeposit.asset}
+                        </span>
+                        {activeDeposit.asset === 'USDT' ? ' on TRON (TRC-20)' : ` on the ${activeDeposit.asset} network`}.
+                      </p>
+                    </div>
+
+                    {isOpenDeposit(activeDeposit.status) && !activeDeposit.creditedAt ? (
+                      <p className="text-center text-xs text-muted-foreground">
+                        Waiting for your payment to be confirmed — this refreshes automatically.
+                      </p>
+                    ) : activeDeposit.creditedAt ? (
+                      <p className="text-center text-xs text-emerald-500">Deposit credited ✓</p>
+                    ) : (
+                      <p className="text-center text-xs text-rose-500">Deposit {activeDeposit.status.replace(/_/g, ' ')}.</p>
+                    )}
+
+                    <Button variant="outline" className="w-full gap-1.5" onClick={() => setActiveDeposit(null)}>
+                      <ArrowDownToLine className="size-4" /> Make another deposit
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Withdraw crypto */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base"><ArrowUpFromLine className="size-4 text-rose-500" /> Withdraw crypto</CardTitle>
+                <CardDescription>Send to any address — rejected if the balance is insufficient.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-end">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="col-span-2 space-y-1.5">
+                    <Label>Asset</Label>
                     <select
                       className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
                       value={cryptoAsset}
@@ -457,109 +612,35 @@ const handleTopup = async () => {
                       {CRYPTO_ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>Balance</Label>
-                    <p className="h-9 flex items-center text-lg font-bold">
-                      {assetSymbol(cryptoAsset)}{fmt(data?.balances[cryptoAsset], cryptoAsset)}
-                    </p>
+                  <div className="col-span-2 space-y-1.5">
+                    <Label>Amount</Label>
+                    <Input type="number" min="0" step="any" placeholder="0.0" value={cryptoWithdraw.amount}
+                      onChange={(e) => setCryptoWithdraw({ ...cryptoWithdraw, amount: e.target.value })} />
                   </div>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3">
-                  <code className="flex-1 truncate text-xs text-muted-foreground">
-                    {loading ? 'generating…' : data?.addresses[cryptoAsset] || '—'}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    disabled={!data?.addresses[cryptoAsset]}
-                    onClick={() => copyAddress(data?.addresses[cryptoAsset] || '')}
-                  >
-                    <Copy className="size-3.5" />
-                  </Button>
+                <div className="space-y-1.5">
+                  <Label>Destination address</Label>
+                  <Input placeholder="bc1q… / 0x… / keybase…" value={cryptoWithdraw.toAddress}
+                    onChange={(e) => setCryptoWithdraw({ ...cryptoWithdraw, toAddress: e.target.value })} />
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Crypto credit / withdraw */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><Eye className="size-4" /> Balance actions</CardTitle>
-                <CardDescription>Credit a confirmed on-chain deposit, or withdraw to any address.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="grid grid-cols-4 gap-3">
-                    <div className="col-span-2 space-y-1.5">
-                      <Label>Asset</Label>
-                      <select
-                        className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                        value={cryptoAsset}
-                        onChange={(e) => setCryptoAsset(e.target.value)}
-                      >
-                        {CRYPTO_ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
-                      </select>
-                    </div>
-                    <div className="col-span-2 space-y-1.5">
-                      <Label>Amount</Label>
-                      <Input type="number" min="0" step="any" placeholder="0.0" value={cryptoWithdraw.amount}
-                        onChange={(e) => setCryptoWithdraw({ ...cryptoWithdraw, amount: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Destination address</Label>
-                    <Input placeholder="bc1q… / 0x… / mock_…" value={cryptoWithdraw.toAddress}
-                      onChange={(e) => setCryptoWithdraw({ ...cryptoWithdraw, toAddress: e.target.value })} />
-                  </div>
-                  <Button
-                    className="w-full gap-1.5"
-                    disabled={busy === 'crypto-withdraw' || !cryptoWithdraw.amount || Number(cryptoWithdraw.amount) <= 0 || !cryptoWithdraw.toAddress}
-                    onClick={() =>
-                      runAction('crypto-withdraw', {
-                        action: 'crypto-withdraw',
-                        asset: cryptoAsset,
-                        amount: Number(cryptoWithdraw.amount),
-                        toAddress: cryptoWithdraw.toAddress,
-                      })
-                    }
-                  >
-                    {busy === 'crypto-withdraw' ? <Loader2 className="size-4 animate-spin" /> : <ArrowUpFromLine className="size-4" />}
-                    Withdraw crypto
-                  </Button>
-                </div>
-
-                <div className="border-t pt-4">
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">Credit confirmed on-chain deposit</p>
-                  <div className="grid grid-cols-[1fr_auto] gap-3">
-                    <Input placeholder="tx hash / reference" value={cryptoRef.txHash}
-                      onChange={(e) => setCryptoRef({ ...cryptoRef, txHash: e.target.value })} />
-                    <Input
-                      className="w-28"
-                      type="number"
-                      step="any"
-                      placeholder="amount"
-                      value={cryptoRef.amount}
-                      onChange={(e) => setCryptoRef({ ...cryptoRef, amount: e.target.value })}
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2 w-full gap-1.5"
-                    disabled={busy === 'crypto-credit' || !cryptoRef.txHash || !cryptoRef.amount}
-                    onClick={() =>
-                      runAction('crypto-credit', {
-                        action: 'crypto-credit',
-                        asset: cryptoAsset,
-                        amount: Number(cryptoRef.amount),
-                        txHash: cryptoRef.txHash,
-                      })
-                    }
-                  >
-                    {busy === 'crypto-credit' ? <Loader2 className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
-                    Credit deposit
-                  </Button>
-                </div>
+                <Button
+                  className="w-full gap-1.5"
+                  disabled={busy === 'crypto-withdraw' || !cryptoWithdraw.amount || Number(cryptoWithdraw.amount) <= 0 || !cryptoWithdraw.toAddress}
+                  onClick={() =>
+                    runAction('crypto-withdraw', {
+                      action: 'crypto-withdraw',
+                      asset: cryptoAsset,
+                      amount: Number(cryptoWithdraw.amount),
+                      toAddress: cryptoWithdraw.toAddress,
+                    })
+                  }
+                >
+                  {busy === 'crypto-withdraw' ? <Loader2 className="size-4 animate-spin" /> : <ArrowUpFromLine className="size-4" />}
+                  Withdraw crypto
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Balance: {assetSymbol(cryptoAsset)}{fmt(data?.balances[cryptoAsset], cryptoAsset)}
+                </p>
               </CardContent>
             </Card>
           </div>
