@@ -40,9 +40,13 @@ export function PageContainer({ children, maxWidth = '5xl', className, fullHeigh
       className={cn(
         'w-full mx-auto',
         'px-3 sm:px-4 md:px-6',
-        'pt-[max(0.75rem,var(--safe-top))] md:pt-6',
+        // Status bar space is now reserved natively by Android
+        // (StatusBar overlaysWebView: false) — no safe-area-inset-top padding
+        // needed. Bottom/left/right safe areas stay for the gesture bar and
+        // landscape notch cutouts, which aren't affected by that overlay bug.
+        'pt-3 md:pt-6',
         fullHeight
-          ? 'h-[calc(100dvh-var(--bottom-nav-height)-var(--safe-top))]'
+          ? 'h-[calc(100dvh-var(--bottom-nav-height))]'
           : 'pb-[calc(var(--bottom-nav-height)+var(--safe-bottom)+1rem)] md:pb-8',
         MAX_WIDTH_MAP[maxWidth],
         className

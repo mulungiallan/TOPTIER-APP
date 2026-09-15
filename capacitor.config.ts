@@ -28,8 +28,9 @@ const config: CapacitorConfig = {
       androidScaleType: 'CENTER_CROP',
     },
     StatusBar: {
+      overlaysWebView: false,
       style: 'DARK',
-      backgroundColor: '#0a0a0a',
+      backgroundColor: '#0a0e14', // matches the `ink` design token
     },
     LocalNotifications: {
       smallIcon: 'ic_stat_signal',
