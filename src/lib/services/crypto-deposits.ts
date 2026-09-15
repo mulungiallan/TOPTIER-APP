@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto'
 import { db } from '@/lib/db'
 import { CRYPTO_ASSETS, creditCryptoDeposit } from '@/lib/services/wallet'
 import {
+  binancePayoutAddress,
   createCryptoPayment,
   getMinAmount,
   getPaymentStatus,
@@ -97,11 +98,13 @@ export async function createCryptoDepositRequest(opts: {
   }
 
   const orderId = `crpt_${randomBytes(10).toString('hex')}` // <= 40 chars
+  const payoutAddress = binancePayoutAddress(asset)
   const payment = await createCryptoPayment({
     asset,
     amount,
     orderId,
     ipnCallbackUrl: `${env.appUrl}/api/wallet/crypto/ipn`,
+    payoutAddress,
   })
 
   const deposit = await db.cryptoDeposit.create({
@@ -118,6 +121,7 @@ export async function createCryptoDepositRequest(opts: {
         priceAmount: payment.priceAmount,
         priceCurrency: payment.priceCurrency,
         payCurrency: payment.payCurrency,
+        ...(payoutAddress ? { settlement: 'binance' } : {}),
       }),
     },
   })

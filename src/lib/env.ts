@@ -60,6 +60,21 @@ export const env = {
   get nowpaymentsIpnSecret(): string | undefined {
     return process.env.NOWPAYMENTS_IPN_SECRET
   },
+  // Where incoming deposits settle: your Binance deposit addresses. When set,
+  // every crypto deposit is paid out straight to Binance instead of sitting in
+  // a NOWPayments balance.
+  get binanceBtcAddress(): string | undefined {
+    return process.env.BINANCE_BTC_ADDRESS
+  },
+  get binanceEthAddress(): string | undefined {
+    return process.env.BINANCE_ETH_ADDRESS
+  },
+  get binanceUsdtAddress(): string | undefined {
+    return process.env.BINANCE_USDT_ADDRESS
+  },
+  get binanceSolAddress(): string | undefined {
+    return process.env.BINANCE_SOL_ADDRESS
+  },
   // ─── In-app bank / manual payments ───────────────────────────────────────
   get bankAccountName(): string | undefined {
     return process.env.BANK_ACCOUNT_NAME

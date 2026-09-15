@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHmac } from 'crypto'
 import {
+  binancePayoutAddress,
   nowpaymentsConfigured,
   toNowpaymentsCurrency,
   verifyIpnSignature,
@@ -39,6 +40,22 @@ describe('nowpayments module', () => {
     expect(toNowpaymentsCurrency('ETH')).toBe('eth')
     expect(toNowpaymentsCurrency('USDT')).toBe('usdttrc20')
     expect(toNowpaymentsCurrency('SOL')).toBe('sol')
+  })
+
+  it('returns the configured Binance address per asset for settlement', () => {
+    delete process.env.BINANCE_BTC_ADDRESS
+    delete process.env.BINANCE_ETH_ADDRESS
+    delete process.env.BINANCE_USDT_ADDRESS
+    delete process.env.BINANCE_SOL_ADDRESS
+    expect(binancePayoutAddress('BTC')).toBeUndefined()
+
+    process.env.BINANCE_BTC_ADDRESS = 'bc1q-binance'
+    process.env.BINANCE_USDT_ADDRESS = 'TRC20-binance'
+    expect(binancePayoutAddress('BTC')).toBe('bc1q-binance')
+    expect(binancePayoutAddress('ETH')).toBeUndefined()
+    expect(binancePayoutAddress('USDT')).toBe('TRC20-binance')
+    expect(binancePayoutAddress('SOL')).toBeUndefined()
+    expect(binancePayoutAddress('DOGE')).toBeUndefined()
   })
 
   it('verifies a well-formed IPN signature', () => {

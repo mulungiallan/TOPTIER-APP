@@ -44,6 +44,25 @@ export function toNowpaymentsCurrency(asset: string): string {
 }
 
 /**
+ * Optional Binance destination for received funds, if the operator configured
+ * deposit addresses. Funds settle straight into your Binance wallet.
+ */
+export function binancePayoutAddress(asset: string): string | undefined {
+  switch (asset) {
+    case 'BTC':
+      return env.binanceBtcAddress
+    case 'ETH':
+      return env.binanceEthAddress
+    case 'USDT':
+      return env.binanceUsdtAddress
+    case 'SOL':
+      return env.binanceSolAddress
+    default:
+      return undefined
+  }
+}
+
+/**
  * Crypto deposits are available only when both credentials exist — the API key
  * creates payments and the IPN secret is what lets us trust confirmation
  * webhooks (polling alone cannot be relied on for real money).
@@ -95,18 +114,26 @@ export async function createCryptoPayment(opts: {
   amount: number
   orderId: string
   ipnCallbackUrl: string
+  payoutAddress?: string
 }): Promise<NowpaymentsPayment> {
   const currency = toNowpaymentsCurrency(opts.asset)
+  const body: Record<string, unknown> = {
+    price_amount: opts.amount,
+    price_currency: currency,
+    pay_currency: currency,
+    order_id: opts.orderId,
+    order_description: `TOPTIER wallet crypto deposit (${opts.asset})`,
+    ipn_callback_url: opts.ipnCallbackUrl,
+  }
+  // Settle straight to the operator's Binance address for this asset when
+  // configured, instead of holding funds in a NOWPayments balance.
+  if (opts.payoutAddress) {
+    body.payout_address = opts.payoutAddress
+    body.payout_currency = currency
+  }
   const { ok, status, data } = await request<Record<string, unknown>>('/payment', {
     method: 'POST',
-    body: JSON.stringify({
-      price_amount: opts.amount,
-      price_currency: currency,
-      pay_currency: currency,
-      order_id: opts.orderId,
-      order_description: `TOPTIER wallet crypto deposit (${opts.asset})`,
-      ipn_callback_url: opts.ipnCallbackUrl,
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!ok) {
