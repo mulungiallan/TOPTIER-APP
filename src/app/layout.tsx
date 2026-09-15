@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Inter, Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
@@ -19,10 +19,11 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
+  variable: "--font-plex-mono",
   display: "swap",
+  weight: ["400", "500"],
 });
 
 export const viewport: Viewport = {
@@ -112,7 +113,7 @@ export default async function RootLayout({
         <link rel="apple-touch-startup-image" href="/icons/splash-ios-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
       </head>
       <body
-        className={`antialiased bg-background text-foreground ${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+        className={`antialiased bg-background text-foreground ${inter.variable} ${spaceGrotesk.variable} ${plexMono.variable}`}
       >
         <ThemeProvider
           attribute="class"
