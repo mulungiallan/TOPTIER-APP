@@ -4,7 +4,7 @@ export default defineRailway(() => {
   const toptierVolume = volume("toptier-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "ams", sizeMB: 500 });
   const toptier = service("toptier", {
     build: "npm install --include=dev --no-audit --no-fund && npx prisma generate && npm run build",
-    start: "mkdir -p /data/db && npx prisma db push --skip-generate && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node .next/standalone/server.js",
+    start: "mkdir -p /data/db && npx prisma db push --skip-generate --accept-data-loss && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node .next/standalone/server.js",
     healthcheck: "/api/health",
     replicas: { "ams": 1 },
     deploy: { restartPolicyMaxRetries: 5 },
