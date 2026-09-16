@@ -46,10 +46,17 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "TOPTIER — Powered by BAGMUL",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier.in"),
+  title: {
+    default: "TOPTIER — AI Trading Signals & Screenshot Analysis",
+    template: "%s — TOPTIER",
+  },
   description: "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER, powered by BAGMUL.",
   keywords: ["trading", "signals", "analyzer", "forex", "crypto", "stocks", "AI", "screenshot", "BAGMUL"],
   authors: [{ name: "BAGMUL" }],
+  alternates: {
+    canonical: "/",
+  },
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -76,6 +83,8 @@ export const metadata: Metadata = {
     title: "TOPTIER — AI Trading Signals",
     description: "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER.",
     siteName: "TOPTIER",
+    url: (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier.in") + "/",
+    locale: "en",
   },
   twitter: {
     card: "summary",
@@ -100,9 +109,35 @@ export default async function RootLayout({
     // fall through — nonce unavailable during static generation
   }
 
+  const siteUrl = (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier.in") + "/";
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": `${siteUrl}#organization`,
+        name: "TOPTIER",
+        url: siteUrl,
+        logo: `${siteUrl}icons/icon-512x512.png`,
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${siteUrl}#website`,
+        name: "TOPTIER",
+        url: siteUrl,
+        publisher: { "@id": `${siteUrl}#organization` },
+      },
+    ],
+  };
+
   return (
     <html lang="en" suppressHydrationWarning nonce={cspNonce}>
       <head>
+        <script
+          nonce={cspNonce || undefined}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+          type="application/ld+json"
+        />
         <script
           nonce={cspNonce || undefined}
           dangerouslySetInnerHTML={{
