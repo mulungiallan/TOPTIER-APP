@@ -1,12 +1,17 @@
 import { NextRequest } from 'next/server'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
 
 // GET /api/bot/trades?connectionId=&limit=&symbol= — closed trades for the user
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+
+    if (!(await isPremiumActive(userId))) {
+      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+    }
 
     const { searchParams } = new URL(request.url)
     const connectionId = searchParams.get('connectionId')

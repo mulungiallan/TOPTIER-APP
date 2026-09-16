@@ -108,6 +108,7 @@ interface RateLimitConfig {
 const ROUTE_LIMITS: Record<string, RateLimitConfig> = {
   // Auth (single /api/auth route handles login + register via `action`)
   "/api/auth": { windowMs: 15 * 60 * 1000, max: 10, blockDurationMs: 30 * 60 * 1000 },
+  "/api/auth/social": { windowMs: 15 * 60 * 1000, max: 20, blockDurationMs: 30 * 60 * 1000 },
   "/api/auth/forgot-password": { windowMs: 15 * 60 * 1000, max: 5, blockDurationMs: 30 * 60 * 1000 },
   "/api/auth/reset-password": { windowMs: 15 * 60 * 1000, max: 5, blockDurationMs: 30 * 60 * 1000 },
   // Paid / sensitive operations

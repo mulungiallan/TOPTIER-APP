@@ -126,4 +126,11 @@ export const env = {
   get botCredentialsSecret(): string | undefined {
     return process.env.BOT_CREDENTIALS_SECRET
   },
+  // ─── Social login (Google / Apple) ─────────────────────────────────────────
+  get googleClientId(): string | undefined {
+    return process.env.GOOGLE_CLIENT_ID
+  },
+  get appleClientId(): string | undefined {
+    return process.env.APPLE_CLIENT_ID
+  },
 }

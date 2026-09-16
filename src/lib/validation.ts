@@ -57,6 +57,12 @@ export const resetPasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+export const socialAuthSchema = z.object({
+  provider: z.enum(['google', 'apple']),
+  token: z.string().min(20, 'Invalid social token').max(8192),
+  name: z.string().trim().max(100).nullable().optional(),
+});
+
 // ─── Payments ───────────────────────────────────────────────────────────────
 // The payment-init route uses `planType` (trial | premium_monthly |
 // premium_annual | lifetime). Keep this in sync with the route's local schema.

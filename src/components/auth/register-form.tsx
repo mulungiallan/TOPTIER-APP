@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { PoweredBy } from '@/components/branding/powered-by'
+import { SocialButtons } from '@/components/auth/social-buttons'
 import {
   Select,
   SelectContent,
@@ -37,6 +38,10 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const [acknowledgeRisk, setAcknowledgeRisk] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const login = useStore((s) => s.login)
+
+  const handleSocialSuccess = (user: any, token: string) => {
+    login(user, token)
+  }
 
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get('ref')
@@ -286,6 +291,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 I acknowledge the risk disclaimer: Trading involves substantial risk of loss and is not suitable for all investors. Past performance is not indicative of future results.
               </Label>
             </div>
+            <SocialButtons onSuccess={handleSocialSuccess} disabled={isLoading} />
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button

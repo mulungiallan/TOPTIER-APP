@@ -2,8 +2,9 @@ import { NextRequest } from 'next/server'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { summarizeConnection } from '@/lib/services/bot-profit-share'
-import { botService, BotServiceOfflineError } from '@/lib/services/bot-service'
+import { botService } from '@/lib/services/bot-service'
 import { classifyAccountTier } from '@/lib/account-tiers'
+import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
 
 function parseSettings(raw: string): Record<string, unknown> {
   try {
@@ -30,6 +31,10 @@ export async function GET(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+
+    if (!(await isPremiumActive(userId))) {
+      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+    }
 
     const connections = await db.botConnection.findMany({
       where: { userId, isActive: true },

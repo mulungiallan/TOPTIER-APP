@@ -3,6 +3,7 @@ import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth
 import { db } from '@/lib/db'
 import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
 import { botService, BotServiceOfflineError } from '@/lib/services/bot-service'
+import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
 
 async function ownedInstanceOrNull(userId: string, instanceId: string) {
   return db.botInstance.findFirst({ where: { id: instanceId, userId }, include: { connection: true } })
@@ -13,6 +14,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+    if (!(await isPremiumActive(userId))) {
+      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+    }
     const { id } = await params
 
     const instance = await ownedInstanceOrNull(userId, id)

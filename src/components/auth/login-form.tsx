@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { PoweredBy } from '@/components/branding/powered-by'
 import { BiometricService, getStoredCredentialIds } from '@/lib/security/biometric'
+import { SocialButtons } from '@/components/auth/social-buttons'
 import { toast } from 'sonner'
 
 interface LoginFormProps {
@@ -104,6 +105,10 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     } finally {
       setSendingReset(false)
     }
+  }
+
+  const handleSocialSuccess = (user: any, token: string) => {
+    login(user, token)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -220,6 +225,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
                 </button>
               </div>
             </div>
+            <SocialButtons onSuccess={handleSocialSuccess} disabled={isLoading} />
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button

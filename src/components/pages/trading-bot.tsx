@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ReferralLockBanner } from '@/components/referral-lock'
+import { PremiumLockBanner } from '@/components/premium-lock'
 import type { AccountTierInfo } from '@/lib/account-tiers'
 
 interface BotConnection {
@@ -121,7 +122,7 @@ export function TradingBotPage() {
   const [trades, setTrades] = useState<BotTrade[]>([])
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [loading, setLoading] = useState(true)
-  const [refStatus, setRefStatus] = useState<{ lockEnabled: boolean; unlocked: boolean; referralUrl?: string | null; message?: string | null } | null>(null)
+  const [refStatus, setRefStatus] = useState<{ lockEnabled: boolean; unlocked: boolean; premium: boolean; referralUrl?: string | null; message?: string | null; premiumMessage?: string | null } | null>(null)
   const [showLink, setShowLink] = useState(false)
   const [linking, setLinking] = useState(false)
   const [busyConnection, setBusyConnection] = useState<string | null>(null)
@@ -177,6 +178,7 @@ export function TradingBotPage() {
   }, [])
 
   const refLocked = !!refStatus && refStatus.lockEnabled && !refStatus.unlocked
+  const premiumLocked = !!refStatus && !refStatus.premium
 
   // Light auto-refresh while a bot is running
   const hasRunning = overview?.connections?.some((c) => c.runningInstance) ?? false
@@ -302,6 +304,20 @@ export function TradingBotPage() {
           </h1>
         </motion.div>
         <ReferralLockBanner message={refStatus?.message} referralUrl={refStatus?.referralUrl} />
+      </div>
+    )
+  }
+
+  if (premiumLocked) {
+    return (
+      <div className="space-y-5 p-3 md:p-4 max-w-6xl mx-auto">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Bot className="h-7 w-7 text-[#1b4f9c]" />
+            Trading Bot
+          </h1>
+        </motion.div>
+        <PremiumLockBanner message={refStatus?.premiumMessage} />
       </div>
     )
   }

@@ -3,6 +3,14 @@ import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/bot-crypto'
 import { botService } from '@/lib/services/bot-service'
+import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
+
+async function assertPremium(userId: string) {
+  if (!(await isPremiumActive(userId))) {
+    return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+  }
+  return null
+}
 
 function ownedConnectionOrNull(userId: string, connection: any) {
   return connection && connection.userId === userId ? connection : null
@@ -13,6 +21,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+    const premiumError = await assertPremium(userId)
+    if (premiumError) return premiumError
     const { id } = await params
 
     const existing = await db.botConnection.findUnique({ where: { id } })
@@ -44,6 +54,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+    const premiumError = await assertPremium(userId)
+    if (premiumError) return premiumError
     const { id } = await params
 
     const existing = await db.botConnection.findUnique({ where: { id } })

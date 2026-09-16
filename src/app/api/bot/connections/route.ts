@@ -3,6 +3,7 @@ import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/bot-crypto'
 import { isReferralUnlocked, REFERRAL_LOCK_MESSAGE } from '@/lib/referral-gate'
+import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
 
 const DEFAULT_SETTINGS = {
   FOREX_BASE_LOT_PER_100: 0.08,
@@ -37,6 +38,10 @@ export async function GET(request: NextRequest) {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
 
+    if (!(await isPremiumActive(userId))) {
+      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+    }
+
     const connections = await db.botConnection.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -61,6 +66,10 @@ export async function POST(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+
+    if (!(await isPremiumActive(userId))) {
+      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+    }
 
     if (!(await isReferralUnlocked(userId))) {
       return errorResponse(REFERRAL_LOCK_MESSAGE, 403)

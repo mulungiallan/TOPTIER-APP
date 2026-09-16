@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
 import { BotServiceOfflineError } from '@/lib/services/bot-service'
 import { isReferralUnlocked, REFERRAL_LOCK_MESSAGE } from '@/lib/referral-gate'
+import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
 
 // POST /api/bot/instances — start the bot for a linked connection.
 // Body: { connectionId }
@@ -11,6 +12,7 @@ export async function POST(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
+    if (!(await isPremiumActive(userId))) return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
     if (!(await isReferralUnlocked(userId))) return errorResponse(REFERRAL_LOCK_MESSAGE, 403)
 
     const body = await request.json()
