@@ -5,7 +5,7 @@
   "description": "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER.",
   "start_url": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "display_override": ["standalone", "minimal-ui"],
   "handle_links": "preferred",
   "orientation": "any",
   "background_color": "#0f2a4a",

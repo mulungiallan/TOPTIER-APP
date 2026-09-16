@@ -68,8 +68,10 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePwaInstall } from '@/hooks/use-pwa-install'
 import { t, isRTL, locales } from '@/lib/i18n/config'
 import { toast } from 'sonner'
+import { Download } from 'lucide-react'
 
 interface NavItem {
   id: Page
@@ -481,6 +483,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const collapsed = !isMobile && sidebarCollapsed
 
+  // Desktop PWA install prompt (Chrome/Edge). Hidden when already installed or
+  // in a browser that doesn't fire beforeinstallprompt (e.g. Safari).
+  const { isInstallable, promptInstall } = usePwaInstall()
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
@@ -621,6 +627,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Wallet Balance (top of app) */}
             <WalletBalanceChip />
+
+            {/* Install App (desktop PWA) */}
+            {isInstallable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="hidden gap-2 sm:inline-flex"
+                onClick={promptInstall}
+              >
+                <Download className="size-4" />
+                {t('common.installApp', locale)}
+              </Button>
+            )}
 
             {/* Notification Bell */}
             <Button

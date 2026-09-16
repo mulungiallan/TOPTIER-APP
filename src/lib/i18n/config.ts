@@ -129,6 +129,7 @@ const en: Dict = {
   'common.analyzeScreenshot': 'Analyze Screenshot',
   'common.searchPlaceholder': 'Search signals, assets, news...',
   'common.loggedOut': 'Logged out successfully',
+  'common.installApp': 'Install App',
   'common.user': 'User',
   'common.welcome': 'Welcome back',
   'common.upgrade': 'Upgrade Now',
