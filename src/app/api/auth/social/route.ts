@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
     let isNewUser = false
 
     if (provider === 'google') {
-      user = await db.user.findUnique({ where: { googleId: socialUser.providerId } })
+      user = await db.user.findFirst({ where: { googleId: socialUser.providerId } })
     } else {
-      user = await db.user.findUnique({ where: { appleId: socialUser.providerId } })
+      user = await db.user.findFirst({ where: { appleId: socialUser.providerId } })
     }
 
     if (!user) {
