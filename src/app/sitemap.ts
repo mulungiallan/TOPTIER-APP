@@ -5,7 +5,7 @@ import type { MetadataRoute } from "next";
 // placeholder pages into the index. The domain is the live production URL so
 // the sitemap stays correct on any deployment environment.
 const base =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://app.toptier.app";
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier-production.up.railway.app";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
