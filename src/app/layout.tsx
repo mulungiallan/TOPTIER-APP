@@ -46,7 +46,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier.in"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://app.toptier.app"),
   title: {
     default: "TOPTIER — AI Trading Signals & Screenshot Analysis",
     template: "%s — TOPTIER",
@@ -83,7 +83,7 @@ export const metadata: Metadata = {
     title: "TOPTIER — AI Trading Signals",
     description: "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER.",
     siteName: "TOPTIER",
-    url: (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier.in") + "/",
+    url: (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://app.toptier.app") + "/",
     locale: "en",
   },
   twitter: {
@@ -109,7 +109,7 @@ export default async function RootLayout({
     // fall through — nonce unavailable during static generation
   }
 
-  const siteUrl = (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier.in") + "/";
+  const siteUrl = (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://app.toptier.app") + "/";
   const structuredData = {
     "@context": "https://schema.org",
     "@graph": [
