@@ -1,7 +1,7 @@
-// One-off seed script for TickerSymbol table (used by Ticker Tape component)
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+// Boot-time sync of the TickerSymbol catalog (used by the Ticker Tape).
+// Idempotent upsert so restarting the service never creates duplicates and
+// newly added symbols (e.g. VIX) appear without a manual seed.
+const { PrismaClient } = require('@prisma/client')
 
 const TICKERS = [
   // Forex
@@ -37,21 +37,23 @@ const TICKERS = [
 ]
 
 async function main() {
-  console.log(`Seeding ${TICKERS.length} ticker symbols...`)
-  for (const t of TICKERS) {
-    await prisma.tickerSymbol.upsert({
-      where: { symbol: t.symbol },
-      create: t,
-      update: { ...t, isActive: true },
-    })
+  const prisma = new PrismaClient()
+  try {
+    for (const t of TICKERS) {
+      await prisma.tickerSymbol.upsert({
+        where: { symbol: t.symbol },
+        create: t,
+        update: { ...t, isActive: true },
+      })
+    }
+    const count = await prisma.tickerSymbol.count()
+    console.log(`[ensure-tickers] ${TICKERS.length} tickers synced (${count} total in DB).`)
+  } finally {
+    await prisma.$disconnect()
   }
-  const count = await prisma.tickerSymbol.count()
-  console.log(`Done. ${count} ticker symbols in DB.`)
 }
 
-main()
-  .catch((e) => {
-    console.error(e)
-    process.exit(1)
-  })
-  .finally(() => prisma.$disconnect())
+main().catch((e) => {
+  console.error('[ensure-tickers] failed:', e)
+  process.exit(1)
+})

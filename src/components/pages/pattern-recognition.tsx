@@ -20,7 +20,7 @@ interface Pattern {
   description: string
 }
 
-const SYMBOLS = ['BTC/USD', 'ETH/USD', 'EUR/USD', 'GBP/USD', 'GOLD', 'AAPL', 'TSLA', 'NVDA', 'SPX500']
+const SYMBOLS = ['BTC/USD', 'ETH/USD', 'EUR/USD', 'GBP/USD', 'GOLD', 'AAPL', 'TSLA', 'NVDA', 'SPX500', 'VIX']
 const TIMEFRAMES = ['1h', '4h', '1d']
 
 const DIR_STYLES = {

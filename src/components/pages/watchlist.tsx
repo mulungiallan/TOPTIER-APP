@@ -103,6 +103,7 @@ const ASSET_CATALOG: AssetDef[] = [
   // Indices
   { symbol: 'NAS100', name: 'NASDAQ 100', market: 'Indices' },
   { symbol: 'SPX500', name: 'S&P 500', market: 'Indices' },
+  { symbol: 'VIX', name: 'CBOE Volatility Index', market: 'Indices' },
   // Commodities
   { symbol: 'XAU/USD', name: 'Gold', market: 'Commodities' },
   { symbol: 'XAG/USD', name: 'Silver', market: 'Commodities' },

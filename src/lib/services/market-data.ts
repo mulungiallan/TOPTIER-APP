@@ -136,6 +136,7 @@ const SYMBOL_MAP: Record<string, string> = {
   'DAX': '^GDAXI',
   'FTSE': '^FTSE',
   'NIKKEI': '^N225',
+  'VIX': '^VIX',
 }
 
 function resolveYahooSymbol(symbol: string): string {

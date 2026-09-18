@@ -27,7 +27,7 @@ interface Prediction {
   dataSource?: string
 }
 
-const SYMBOLS = ['BTC/USD', 'ETH/USD', 'EUR/USD', 'GBP/USD', 'GOLD', 'AAPL', 'TSLA', 'NVDA', 'SPX500']
+const SYMBOLS = ['BTC/USD', 'ETH/USD', 'EUR/USD', 'GBP/USD', 'GOLD', 'AAPL', 'TSLA', 'NVDA', 'SPX500', 'VIX']
 
 export function AIPredictionsPage() {
   const [symbol, setSymbol] = useState('BTC/USD')

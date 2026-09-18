@@ -627,7 +627,7 @@ export class ChartAnalyzer {
     const s = (symbol || '').toUpperCase()
     const HIGH: RegExp[] = [
       /BTC/, /ETH/, /SOL/, /XRP/, /DOGE/, /ADA/, /DOT/, /LINK/, /AVAX/,
-      /FTSE/, /NAS/, /SP500/, /SPX/, /GER/, /DAX/, /NDX/, /US30/, /UK100/,
+      /FTSE/, /NAS/, /SP500/, /SPX/, /GER/, /DAX/, /NDX/, /US30/, /UK100/, /VIX/,
       /XAU/, /XAG/, /USOIL/, /WTI/, /BITCOIN/, /ETHEREUM/,
     ]
     if (HIGH.some((r) => r.test(s))) return 1.15

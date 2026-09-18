@@ -19,6 +19,7 @@ const CHART_SYMBOLS = [
   { label: 'SPX500', tv: 'SP:SPX' },
   { label: 'NAS100', tv: 'NASDAQ:NDX' },
   { label: 'DOW', tv: 'DJ:DJI' },
+  { label: 'VIX', tv: 'CBOE:VIX' },
 ];
 
 const INTERVALS = [

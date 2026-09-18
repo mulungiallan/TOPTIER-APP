@@ -109,6 +109,7 @@ const INDEX_TARGETS: SignalTarget[] = [
   { symbol: 'DAX', marketType: 'indices', style: 'swing' },
   { symbol: 'FTSE', marketType: 'indices', style: 'swing' },
   { symbol: 'NIKKEI', marketType: 'indices', style: 'swing' },
+  { symbol: 'VIX', marketType: 'indices', style: 'swing' },
 ]
 
 const COMMODITY_TARGETS: SignalTarget[] = [

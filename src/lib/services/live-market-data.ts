@@ -137,6 +137,7 @@ const FINNHUB_UNSUPPORTED = new Set([
   'DAX',
   'FTSE',
   'NIKKEI',
+  'VIX',
   // Commodities — Yahoo returns the futures spot price (GC=F, SI=F, CL=F)
   // which matches the actual commodity price. ETF proxies (GLD/SLV/USO)
   // return ~1/10 (GLD) or 1/100 (USO) the value.
@@ -576,6 +577,7 @@ export class LiveMarketData {
       'DAX': '^GDAXI',
       'FTSE': '^FTSE',
       'NIKKEI': '^N225',
+      'VIX': '^VIX',
     }
     const upper = symbol.toUpperCase()
     return map[upper] ?? null
@@ -594,6 +596,7 @@ export class LiveMarketData {
       'ETH/USD',
       'SPX500',
       'GOLD',
+      'VIX',
     ]
     const map = await this.getMultiplePrices(symbols)
     return symbols
