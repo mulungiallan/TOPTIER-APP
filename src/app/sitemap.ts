@@ -11,10 +11,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
   const lastModified = now.toISOString();
   return [
-    { url: `${base}/`, lastModified },
-    { url: `${base}/privacy`, lastModified },
-    { url: `${base}/terms`, lastModified },
-    { url: `${base}/ugc`, lastModified },
-    { url: `${base}/account-deletion`, lastModified },
+    { url: `${base}/`, lastModified, changeFrequency: "weekly", priority: 1 },
+    { url: `${base}/ugc`, lastModified, changeFrequency: "monthly", priority: 0.4 },
+    { url: `${base}/privacy`, lastModified, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${base}/terms`, lastModified, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${base}/account-deletion`, lastModified, changeFrequency: "yearly", priority: 0.2 },
   ];
 }
