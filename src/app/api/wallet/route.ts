@@ -9,7 +9,6 @@ import {
   getTransactionHistory,
   getBalance,
 } from '@/lib/services/wallet'
-import { submitUserCashWithdrawal, submitMpesaWithdrawal, submitMomoWithdrawal, payoutSupportedFor } from '@/lib/services/user-payouts'
 import { nowpaymentsConfigured } from '@/lib/payments/nowpayments'
 
 // GET /api/wallet
@@ -78,21 +77,13 @@ export async function GET(request: NextRequest) {
 // row (user leg + house clearing leg). Network-side references are idempotent.
 //
 // Body: { action, ...params }
-//   withdraw:        { asset, amount, ... }
-//                    AUTOMATIC real payouts, reserve-then-settle (the ledger is
-//                    debited first — hard balance cap, never exceeded — then the
-//                    rail fires; failures auto-refund the reserve):
-//                      KES  → M-Pesa B2C, phone required
-//                      UGX  → MTN MoMo, phone required
-//                      USD  → USDT 1:1 / USDT as-is via Binance, toAddress +
-//                             network required
-//                    Any other asset is rejected (no more mock "successful"
-//                    withdrawals).
 //   crypto-credit:   { asset, amount, txHash }   (ADMIN ONLY — manual on-chain
 //                    deposit callback. Regular users deposit through the
 //                    NOWPayments flow instead.)
-//   crypto-withdraw: { asset, amount, toAddress, network }
-//                    USDT only — an alias for withdraw. BTC/ETH/SOL reject.
+//
+// Withdrawals (user-facing) are intentionally disabled — the platform is
+// premium-membership funded and wallet funds are spendable in-app only.
+//   withdraw / crypto-withdraw → 400 "Withdrawals are not available."
 export async function POST(request: NextRequest) {
   try {
     const auth = await authenticateRequest(request, { id: true, role: true })
@@ -102,35 +93,14 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({} as Record<string, unknown>))) as Record<string, unknown>
     const action = String(body.action || '')
     const amount = Number(body.amount ?? 0)
-    const { asset, toAddress, network, txHash, memo } = body
-    const phone = typeof body.phone === 'string' ? body.phone.trim() : ''
+    const { asset, txHash, memo } = body
 
     let result: unknown
     switch (action) {
-      case 'withdraw': {
-        const wAsset = String(asset || 'USD').toUpperCase()
-        if (wAsset === 'KES') {
-          if (!phone) return errorResponse('An M-Pesa phone number is required to withdraw KES.', 400)
-          result = await submitMpesaWithdrawal({ userId, amount, phone })
-          break
-        }
-        if (wAsset === 'UGX') {
-          if (!phone) return errorResponse('An MTN MoMo phone number is required to withdraw UGX.', 400)
-          result = await submitMomoWithdrawal({ userId, amount, phone })
-          break
-        }
-        if (!payoutSupportedFor(wAsset)) {
-          return errorResponse(
-            `Automatic withdrawal from ${wAsset} is not supported. Withdrawable: KES (M-Pesa), UGX (MTN MoMo), USD (paid as USDT 1:1) and USDT.`,
-            400
-          )
-        }
-        if (!toAddress || typeof toAddress !== 'string') {
-          return errorResponse('A USDT receiving address is required to withdraw.', 400)
-        }
-        result = await submitUserCashWithdrawal({ userId, asset: wAsset, amount, toAddress, network: String(network || 'TRC20') })
-        break
-      }
+      case 'withdraw':
+      case 'crypto-withdraw':
+        // User withdrawals are off by design — funds are in-app credit only.
+        return errorResponse('Withdrawals are not available. Wallet funds are spendable in-app only.', 400)
       case 'crypto-credit': {
         const isAdmin = auth.user.role === 'admin' || auth.user.role === 'super_admin' || auth.user.role === 'owner'
         if (!isAdmin) return errorResponse('Forbidden', 403)
@@ -141,20 +111,6 @@ export async function POST(request: NextRequest) {
           reference: String(txHash || ''),
           memo: memo && typeof memo === 'string' ? memo : null,
         })
-        break
-      }
-      case 'crypto-withdraw': {
-        const cAsset = String(asset || 'USDT').toUpperCase()
-        if (cAsset !== 'USDT') {
-          return errorResponse(
-            `Automatic on-chain withdrawal for ${cAsset} is not available. Withdraw USDT only (paid automatically to your address).`,
-            400
-          )
-        }
-        if (!toAddress || typeof toAddress !== 'string') {
-          return errorResponse('A USDT receiving address is required to withdraw.', 400)
-        }
-        result = await submitUserCashWithdrawal({ userId, asset: cAsset, amount, toAddress, network: String(network || 'TRC20') })
         break
       }
       default: {
