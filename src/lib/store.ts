@@ -167,7 +167,11 @@ export const useStore = create<AppState>()(
           isAuthenticated: true,
           user,
           authToken: token,
-          currentPage: user.onboardingCompleted ? 'dashboard' : 'onboarding',
+          // Privileged roles land directly on the admin panel; everyone else
+          // goes to the dashboard (or onboarding when not yet completed).
+          currentPage: ['admin', 'super_admin', 'owner'].includes((user as { role?: string })?.role || '')
+            ? 'admin'
+            : user.onboardingCompleted ? 'dashboard' : 'onboarding',
           navHistory: [],
         }),
 
@@ -231,7 +235,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'toptier-store',
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         user: state.user,
