@@ -204,6 +204,7 @@ export async function PUT(request: NextRequest) {
         where: { id: userId },
         data: {
           ...(twoFactorEnabled !== undefined && { twoFactorEnabled }),
+          ...(twoFactorEnabled === false && { twoFactorSecret: null }),
         },
       })
 
