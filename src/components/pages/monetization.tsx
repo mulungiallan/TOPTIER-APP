@@ -59,7 +59,8 @@ interface PayoutRequest {
   txHash?: string | null
   failureReason?: string | null
   createdAt: string
-  account: { method: string }
+  account: { method: string } | null
+  user?: { name: string | null; email: string | null } | null
 }
 
 interface EarningsBySource {
@@ -489,6 +490,7 @@ export function MonetizationPage() {
                         <TableHead>Date</TableHead>
                         <TableHead>Method</TableHead>
                         <TableHead>Destination</TableHead>
+                        <TableHead>User</TableHead>
                         <TableHead>Amount</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
@@ -500,6 +502,7 @@ export function MonetizationPage() {
                           <TableCell className="text-xs">{new Date(r.createdAt).toLocaleDateString()}</TableCell>
                           <TableCell className="capitalize">{r.method}</TableCell>
                           <TableCell className="text-xs font-mono">{r.destination}</TableCell>
+                          <TableCell className="text-xs">{r.user ? <span>{r.user.name || ''} <span className="text-muted-foreground">({r.user.email || '—'})</span></span> : <span className="text-muted-foreground">Platform</span>}</TableCell>
                           <TableCell className="font-mono">${r.amount.toFixed(2)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={statusBadge[r.status] || ''}>

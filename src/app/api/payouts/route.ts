@@ -2,12 +2,16 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { successResponse, errorResponse } from '@/lib/auth'
 import { requireAdmin } from '@/lib/admin-guard'
-import { getAvailableBalance, getEarningsBySource } from '@/lib/payouts'
+import { getAvailableBalance, getEarningsBySource, syncPayoutStatuses, syncUserPayoutStatuses } from '@/lib/payouts'
 
 export async function GET(request: NextRequest) {
   try {
     const { error } = await requireAdmin(request)
     if (error) return error
+
+    // Reconcile both admin and user payouts against Binance history before
+    // rendering, so 'processing' rows reflect their real on-chain outcome.
+    await Promise.all([syncPayoutStatuses(), syncUserPayoutStatuses()])
 
     const [balance, summaryBySource] = await Promise.all([
       getAvailableBalance(),
@@ -24,8 +28,11 @@ export async function GET(request: NextRequest) {
       }),
       db.payoutRequest.findMany({
         orderBy: { createdAt: 'desc' },
-        take: 50,
-        include: { account: { select: { method: true } } },
+        take: 100,
+        include: {
+          account: { select: { method: true } },
+          user: { select: { name: true, email: true } },
+        },
       }),
     ])
 

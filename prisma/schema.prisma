@@ -105,6 +105,7 @@ model User {
   strategies           Strategy[]
   pushSubscriptions    PushSubscription[]
   biometricCredentials BiometricCredential[]
+  payoutRequests       PayoutRequest[]
 
   // ─── Auto-trading bot (MT5/MT4) ────────────────────────────────────────
   botConnections BotConnection[]
@@ -1230,12 +1231,15 @@ model PayoutAccount {
 
 model PayoutRequest {
   id            String        @id @default(cuid())
-  accountId     String
-  account       PayoutAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  accountId     String?
+  account       PayoutAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   method        String // binance | bank (snapshot)
   destination   String // snapshot: USDT address or masked bank account
   amount        Float
   currency      String        @default("USD")
+  asset         String        @default("USDT") // asset actually sent on the payout rail
   fee           Float         @default(0)
   netAmount     Float
   status        String        @default("pending") // pending | processing | paid | failed | cancelled
@@ -1246,6 +1250,7 @@ model PayoutRequest {
 
   @@index([status])
   @@index([createdAt])
+  @@index([userId, status])
 }
 
 model AdConfig {

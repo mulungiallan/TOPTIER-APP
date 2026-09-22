@@ -4,13 +4,12 @@ import { db } from '@/lib/db'
 import {
   CASH_ASSETS,
   CRYPTO_ASSETS,
-  withdrawCash,
   creditCryptoDeposit,
-  withdrawCrypto,
   getWalletOverview,
   getTransactionHistory,
   getBalance,
 } from '@/lib/services/wallet'
+import { submitUserCashWithdrawal, payoutSupportedFor } from '@/lib/services/user-payouts'
 import { nowpaymentsConfigured } from '@/lib/payments/nowpayments'
 
 // GET /api/wallet
@@ -79,11 +78,18 @@ export async function GET(request: NextRequest) {
 // row (user leg + house clearing leg). Network-side references are idempotent.
 //
 // Body: { action, ...params }
-//   withdraw:        { asset, amount, memo? }
+//   withdraw:        { asset, amount, toAddress, network }
+//                    AUTOMATIC real payout: USD is paid as USDT 1:1, USDT is
+//                    sent as-is — both via Binance to the user's address. The
+//                    ledger is reserved first (hard balance cap — never exceed)
+//                    and the Binance send is attempted immediately; a failed
+//                    send auto-refunds the reserve. Any other asset is rejected
+//                    (no more mock "successful" withdrawals).
 //   crypto-credit:   { asset, amount, txHash }   (ADMIN ONLY — manual on-chain
 //                    deposit callback. Regular users deposit through the
 //                    NOWPayments flow instead.)
-//   crypto-withdraw: { asset, amount, toAddress }
+//   crypto-withdraw: { asset, amount, toAddress, network }
+//                    USDT only — an alias for withdraw. BTC/ETH/SOL reject.
 export async function POST(request: NextRequest) {
   try {
     const auth = await authenticateRequest(request, { id: true, role: true })
@@ -93,17 +99,22 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({} as Record<string, unknown>))) as Record<string, unknown>
     const action = String(body.action || '')
     const amount = Number(body.amount ?? 0)
-    const { asset, toAddress, txHash, memo } = body
+    const { asset, toAddress, network, txHash, memo } = body
 
     let result: unknown
     switch (action) {
       case 'withdraw': {
-        result = await withdrawCash({
-          userId,
-          asset: String(asset || 'USD'),
-          amount,
-          memo: memo && typeof memo === 'string' ? memo : null,
-        })
+        const wAsset = String(asset || 'USD').toUpperCase()
+        if (!payoutSupportedFor(wAsset)) {
+          return errorResponse(
+            `Automatic withdrawal from ${wAsset} is not supported. Available: USD (paid as USDT 1:1) and USDT.`,
+            400
+          )
+        }
+        if (!toAddress || typeof toAddress !== 'string') {
+          return errorResponse('A USDT receiving address is required to withdraw.', 400)
+        }
+        result = await submitUserCashWithdrawal({ userId, asset: wAsset, amount, toAddress, network: String(network || 'TRC20') })
         break
       }
       case 'crypto-credit': {
@@ -119,13 +130,17 @@ export async function POST(request: NextRequest) {
         break
       }
       case 'crypto-withdraw': {
-        result = await withdrawCrypto({
-          userId,
-          asset: String(asset || 'BTC'),
-          amount,
-          toAddress: String(toAddress || ''),
-          memo: memo && typeof memo === 'string' ? memo : null,
-        })
+        const cAsset = String(asset || 'USDT').toUpperCase()
+        if (cAsset !== 'USDT') {
+          return errorResponse(
+            `Automatic on-chain withdrawal for ${cAsset} is not available. Withdraw USDT only (paid automatically to your address).`,
+            400
+          )
+        }
+        if (!toAddress || typeof toAddress !== 'string') {
+          return errorResponse('A USDT receiving address is required to withdraw.', 400)
+        }
+        result = await submitUserCashWithdrawal({ userId, asset: cAsset, amount, toAddress, network: String(network || 'TRC20') })
         break
       }
       default: {

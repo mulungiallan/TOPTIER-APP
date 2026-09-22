@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { successResponse, errorResponse } from '@/lib/auth'
 import { requireAdmin } from '@/lib/admin-guard'
+import { getAllBalances, getTransactionHistory } from '@/lib/services/wallet'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
     if (!target) return errorResponse('User not found', 404)
 
-    const [payments, activity, notifications, botConnections, analyses, badges, referrals] = await Promise.all([
+    const [payments, activity, notifications, botConnections, analyses, badges, referrals, balances, walletTx, usage, featureUsage, recentEvents, ads, recentAds] = await Promise.all([
       db.paymentTransaction.findMany({
         where: { userId: id },
         orderBy: { createdAt: 'desc' },
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       db.activityLog.findMany({
         where: { userId: id },
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        take: 300,
       }),
       db.notification.findMany({
         where: { userId: id },
@@ -57,6 +58,39 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       db.screenshotAnalysis.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 30 }),
       db.userBadge.findMany({ where: { userId: id }, orderBy: { earnedAt: 'desc' } }),
       db.referralReward.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      getAllBalances(id),
+      getTransactionHistory(id, undefined, 25),
+      db.usageSession.aggregate({
+        where: { userId: id },
+        _count: true,
+        _sum: { durationSec: true },
+        _avg: { durationSec: true },
+        _max: { startedAt: true },
+        _min: { startedAt: true },
+      }),
+      db.usageEvent.groupBy({
+        by: ['feature'],
+        where: { userId: id },
+        _count: { _all: true },
+        orderBy: { _count: { feature: 'desc' } },
+        take: 25,
+      }),
+      db.usageEvent.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      db.usageEvent.groupBy({
+        by: ['action'],
+        where: { userId: id, feature: 'ad' },
+        _count: { _all: true },
+        orderBy: { _count: { action: 'desc' } },
+      }),
+      db.usageEvent.findMany({
+        where: { userId: id, feature: 'ad' },
+        orderBy: { createdAt: 'desc' },
+        take: 25,
+      }),
     ])
 
     return successResponse({
@@ -68,6 +102,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       analyses,
       badges,
       referrals,
+      wallet: { balances, transactions: walletTx },
+      usage: {
+        sessions: usage._count,
+        totalDurationSec: usage._sum.durationSec || 0,
+        avgDurationSec: usage._avg.durationSec || 0,
+        firstActiveAt: usage._min.startedAt,
+        lastActiveAt: usage._max.startedAt,
+      },
+      featureUsage,
+      recentEvents,
+      ads: { byAction: ads, recent: recentAds },
     })
   } catch (error) {
     console.error('Admin user detail GET error:', error)

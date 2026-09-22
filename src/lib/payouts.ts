@@ -1,5 +1,32 @@
 import { db } from '@/lib/db'
 import { binanceWithdrawHistory } from '@/lib/payments/binance-payout'
+import { depositCash } from '@/lib/services/wallet'
+
+// ─── User payout reserve handling ──────────────────────────────────────────
+// User cash withdrawals reserve the user's wallet at submit time (ledger
+// reference payout_<id>). If an admin cancels/rejects a user payout before the
+// Binance send is confirmed, that reserve must go back to the user's wallet.
+// Admin payouts (userId: null) consume platform earnings instead, never this.
+export async function refundReservedUserPayout(payout: {
+  id: string
+  userId: string | null
+  currency: string
+  amount: number
+}): Promise<void> {
+  if (!payout.userId) return
+  const reserve = await db.walletTransaction.findFirst({
+    where: { txType: 'withdrawal', reference: `payout_${payout.id}` },
+    select: { id: true },
+  })
+  if (!reserve) return
+  await depositCash({
+    userId: payout.userId,
+    asset: payout.currency,
+    amount: payout.amount,
+    reference: `refund_${payout.id}`,
+    memo: 'Cancelled user payout — reserve returned',
+  })
+}
 
 // ─── Platform payout ledger helpers ─────────────────────────────────────────
 
@@ -119,7 +146,7 @@ export async function getAvailableBalance(): Promise<{ available: number; paid: 
       _sum: { amount: true },
     }),
     db.payoutRequest.aggregate({
-      where: { status: { in: ['pending', 'processing'] }, currency: 'USD' },
+      where: { status: { in: ['pending', 'processing'] }, currency: 'USD', userId: null },
       _sum: { amount: true },
     }),
   ])
@@ -187,9 +214,14 @@ const BINANCE_STATUS_FAILED = [1, 3, 5]
 // Completed withdrawals flip to 'paid' (and mark the covered earnings paid);
 // rejected/cancelled/failed ones flip to 'failed' and release their reserve.
 // Best-effort and idempotent — safe to call on every balance load.
+//
+// Admin payouts (userId: null) consume the platform-earnings pool, so they mark
+// earnings paid on completion. User cash withdrawals are reconciled separately
+// in syncUserPayoutStatuses — they are funded from the platform's Binance
+// balance and their ledger was already reserved at submit time.
 export async function syncPayoutStatuses(): Promise<number> {
   const processing = await db.payoutRequest.findMany({
-    where: { method: 'binance', status: 'processing', txHash: { not: null } },
+    where: { method: 'binance', status: 'processing', txHash: { not: null }, userId: null },
     select: { id: true, txHash: true, netAmount: true },
   })
   if (processing.length === 0) return 0
@@ -224,6 +256,55 @@ export async function syncPayoutStatuses(): Promise<number> {
         }),
         ...(await buildPaidEarningsUpdates(payout.netAmount)),
       ])
+      synced++
+    } else if (BINANCE_STATUS_FAILED.includes(rec.status)) {
+      await db.payoutRequest.update({
+        where: { id: payout.id },
+        data: { status: 'failed', failureReason: `Binance: ${rec.statusDesc || `status ${rec.status}`}` },
+      })
+      synced++
+    }
+  }
+  return synced
+}
+
+// Reconcile 'processing' USER cash withdrawals against Binance's withdrawal
+// history. Completed sends flip to 'paid' (with the Binance tx id); failed ones
+// flip to 'failed'. The user's wallet entry is NOT touched here — it was
+// reserved at submit time and, if the send ultimately failed, already refunded
+// by the submit flow. This only keeps the admin's payout records truthful.
+export async function syncUserPayoutStatuses(): Promise<number> {
+  const processing = await db.payoutRequest.findMany({
+    where: { method: 'binance', status: 'processing', txHash: { not: null }, userId: { not: null } },
+    select: { id: true, txHash: true },
+  })
+  if (processing.length === 0) return 0
+
+  const byId = new Map<string, { status: number; statusDesc?: string; txId?: string }>()
+  try {
+    const records = await binanceWithdrawHistory(processing.length === 1 ? (processing[0].txHash as string) : undefined)
+    for (const r of records) {
+      if (r.id) byId.set(r.id, { status: r.status, statusDesc: r.statusDesc, txId: r.txId })
+    }
+    if (byId.size === 0) {
+      for (const r of await binanceWithdrawHistory()) {
+        if (r.id) byId.set(r.id, { status: r.status, statusDesc: r.statusDesc, txId: r.txId })
+      }
+    }
+  } catch {
+    return 0
+  }
+
+  let synced = 0
+  for (const payout of processing) {
+    const rec = byId.get(payout.txHash as string)
+    if (!rec) continue
+
+    if (rec.status === BINANCE_STATUS_COMPLETED) {
+      await db.payoutRequest.update({
+        where: { id: payout.id },
+        data: { status: 'paid', paidAt: new Date(), txHash: rec.txId || payout.txHash },
+      })
       synced++
     } else if (BINANCE_STATUS_FAILED.includes(rec.status)) {
       await db.payoutRequest.update({

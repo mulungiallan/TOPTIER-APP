@@ -25,6 +25,7 @@ import { verifyTotp } from '@/lib/totp'
 import { ManagedCopyService } from '@/lib/services/managed-copy'
 import { escapeHtml } from '@/lib/security'
 import { fireOps } from '@/lib/ops-notify'
+import { refundReservedUserPayout } from '@/lib/payouts'
 
 // NOTE: The JWT secret comes from the shared auth module. There is no
 // hardcoded fallback — missing secret is a fatal misconfiguration.
@@ -1209,6 +1210,7 @@ async function handleApprovePayout(adminId: string, body: any) {
   if (!payoutId) return errorResponse('payoutId required', 400)
   const req = await db.payoutRequest.findUnique({ where: { id: payoutId } })
   if (!req) return errorResponse('Payout request not found', 404)
+  if (req.userId) return errorResponse('User payouts are automatic — reconciled directly with Binance.', 400)
 
   const updated = await db.payoutRequest.update({ where: { id: payoutId }, data: { status: 'processing' } })
   await logAdminAction(adminId, 'APPROVE_PAYOUT', { payoutId, amount: req.amount, reason: reason || null })
@@ -1223,6 +1225,14 @@ async function handleRejectPayout(adminId: string, body: any) {
   const req = await db.payoutRequest.findUnique({ where: { id: payoutId } })
   if (!req) return errorResponse('Payout request not found', 404)
   if (req.status === 'paid') return errorResponse('Cannot reject an already-paid payout', 400)
+  if (req.userId && req.status !== 'pending') {
+    return errorResponse('This user payout was already submitted to Binance — it cannot be rejected.', 400)
+  }
+
+  // A rejected user payout (crash-window pending) must return its reserve.
+  if (req.userId) {
+    await refundReservedUserPayout(req)
+  }
 
   const updated = await db.payoutRequest.update({ where: { id: payoutId }, data: { status: 'failed', failureReason: reason || 'Rejected by admin' } })
   await logAdminAction(adminId, 'REJECT_PAYOUT', { payoutId, amount: req.amount, reason: reason || null })

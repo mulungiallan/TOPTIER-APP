@@ -54,6 +54,9 @@ import {
   ExternalLink,
   ShieldCheck,
   AlertCircle,
+  Wallet,
+  Timer,
+  Megaphone,
 } from 'lucide-react'
 import {
   LineChart,
@@ -238,6 +241,16 @@ const fmtDate = (d: string | Date | null | undefined) => {
   } catch {
     return String(d)
   }
+}
+
+const fmtDuration = (sec: number | null | undefined) => {
+  if (!sec || sec <= 0) return '—'
+  const s = Math.round(sec)
+  if (s < 60) return `${s}s`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  return `${h}h ${m % 60}m`
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -850,6 +863,126 @@ function UserDetailDialog({ user, onChanged }: { user: ReturnType<typeof toRow>;
                   ))}
                 </div>
               </ScrollArea>
+            </div>
+
+<div>
+              <h4 className="font-medium text-sm mb-2 flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5 text-muted-foreground" /> Wallet balances (real ledger)</h4>
+              {detail.wallet && Object.keys(detail.wallet.balances || {}).length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {Object.entries(detail.wallet.balances || {}).map(([asset, val]) => (
+                    <div key={asset} className={`rounded-lg border p-2 ${['BTC', 'ETH', 'USDT', 'SOL'].includes(asset) ? 'border-violet-500/30 bg-violet-500/5' : 'border-emerald-500/30 bg-emerald-500/5'}`}>
+                      <p className="text-xs text-muted-foreground">{asset}</p>
+                      <p className="text-sm font-semibold">{Number(val).toLocaleString(undefined, { maximumFractionDigits: 6 })}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No wallet balances.</p>
+              )}
+
+              {detail.wallet?.transactions?.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {detail.wallet.transactions.slice(0, 12).map((t: any) => {
+                    const userLeg = (t.entries || []).find((e: any) => e.account?.accountType === 'user')
+                    return (
+                      <div key={t.id} className="flex items-center justify-between text-sm p-2 rounded bg-muted/30">
+                        <span className="capitalize">{t.txType?.replace(/_/g, ' ')}</span>
+                        <span className="text-muted-foreground text-xs truncate max-w-[10rem]">{t.memo || t.reference || ''}</span>
+                        <span className="font-medium">{userLeg ? `${userLeg.amount >= 0 ? '+' : ''}${userLeg.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${userLeg.account?.asset}` : '—'}</span>
+                        <span className="text-muted-foreground text-xs">{fmtDate(t.createdAt)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h4 className="font-medium text-sm mb-2 flex items-center gap-1.5"><Timer className="h-3.5 w-3.5 text-muted-foreground" /> Time & usage (real)</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="rounded-lg border p-2">
+                  <p className="text-xs text-muted-foreground">Sessions</p>
+                  <p className="text-sm font-medium">{detail.usage?.sessions ?? 0}</p>
+                </div>
+                <div className="rounded-lg border p-2">
+                  <p className="text-xs text-muted-foreground">Total time</p>
+                  <p className="text-sm font-medium">{fmtDuration(detail.usage?.totalDurationSec)}</p>
+                </div>
+                <div className="rounded-lg border p-2">
+                  <p className="text-xs text-muted-foreground">Avg / session</p>
+                  <p className="text-sm font-medium">{fmtDuration(detail.usage?.avgDurationSec)}</p>
+                </div>
+                <div className="rounded-lg border p-2">
+                  <p className="text-xs text-muted-foreground">Last active</p>
+                  <p className="text-sm font-medium">{fmtDate(detail.usage?.lastActiveAt)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-medium text-sm mb-2 flex items-center gap-1.5"><Activity className="h-3.5 w-3.5 text-muted-foreground" /> Areas of interaction (real)</h4>
+              {detail.featureUsage?.length ? (
+                <div className="space-y-1.5">
+                  {detail.featureUsage.slice(0, 12).map((f: any) => {
+                    const max = detail.featureUsage[0]?._count?._all || 1
+                    return (
+                      <div key={f.feature} className="space-y-0.5">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="capitalize">{f.feature}</span>
+                          <span className="text-muted-foreground">{f._count._all}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted">
+                          <div className="h-1.5 rounded-full bg-primary" style={{ width: `${Math.round((f._count._all / max) * 100)}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {detail.recentEvents?.length > 0 && (
+                    <ScrollArea className="max-h-36 mt-2 pr-2">
+                      <div className="space-y-1">
+                        {detail.recentEvents.slice(0, 20).map((e: any) => (
+                          <div key={e.id} className="flex items-center gap-2 text-xs p-1.5 rounded bg-muted/30">
+                            <span className="font-medium capitalize">{e.feature}</span>
+                            <span className="text-muted-foreground truncate">{e.action}{e.durationSec ? ` (${fmtDuration(e.durationSec)})` : ''}</span>
+                            <span className="ml-auto text-muted-foreground shrink-0">{fmtDate(e.createdAt)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No interaction events tracked.</p>
+              )}
+            </div>
+
+            <div>
+              <h4 className="font-medium text-sm mb-2 flex items-center gap-1.5"><Megaphone className="h-3.5 w-3.5 text-muted-foreground" /> Ads watched (real)</h4>
+              {detail.ads?.byAction?.length ? (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {detail.ads.byAction.map((a: any) => (
+                    <Badge key={a.action} variant="outline" className="text-xs">
+                      {a.action.replace(/_/g, ' ')} × {a._count._all}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mb-2">No ad events recorded.</p>
+              )}
+              {detail.ads?.recent?.length > 0 && (
+                <ScrollArea className="max-h-36 pr-2">
+                  <div className="space-y-1">
+                    {detail.ads.recent.slice(0, 20).map((e: any) => (
+                      <div key={e.id} className="flex items-center gap-2 text-xs p-1.5 rounded bg-muted/30">
+                        <Megaphone className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span>{e.action.replace(/_/g, ' ')}</span>
+                        <span className="text-muted-foreground truncate">{e.meta}</span>
+                        <span className="ml-auto text-muted-foreground shrink-0">{fmtDate(e.createdAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
             </div>
 
             <Separator />

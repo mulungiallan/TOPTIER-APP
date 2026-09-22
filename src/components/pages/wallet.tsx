@@ -161,13 +161,12 @@ export function WalletPage() {
   const [loading, setLoading] = useState(true)
 
   const [deposit, setDeposit] = useState({ asset: 'KES', amount: '' })
-  const [withdraw, setWithdraw] = useState({ asset: 'USD', amount: '' })
+  const [withdraw, setWithdraw] = useState({ asset: 'USD', amount: '', toAddress: '', network: 'TRC20' })
   const [busy, setBusy] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  const [cryptoAsset, setCryptoAsset] = useState('BTC')
-  const [cryptoWithdraw, setCryptoWithdraw] = useState({ amount: '', toAddress: '' })
+  const [cryptoWithdraw, setCryptoWithdraw] = useState({ amount: '', toAddress: '', network: 'TRC20' })
   const [depositCrypto, setDepositCrypto] = useState({ asset: 'BTC', amount: '' })
   const [activeDeposit, setActiveDeposit] = useState<CryptoDeposit | null>(null)
 
@@ -235,8 +234,13 @@ export function WalletPage() {
     setBusy(key)
     try {
       await api.post('/wallet', body)
-      toast.success(`${key === 'withdraw' ? 'Withdrawal' : 'Action'} recorded`)
-      setWithdraw({ asset: body.asset as string, amount: '' })
+      if (key === 'withdraw' || key === 'crypto-withdraw') {
+        toast.success('USDT payout submitted — funds are on their way via Binance.')
+        setWithdraw({ asset: 'USD', amount: '', toAddress: '', network: 'TRC20' })
+        setCryptoWithdraw({ amount: '', toAddress: '', network: 'TRC20' })
+      } else {
+        toast.success(`${key === 'withdraw' ? 'Withdrawal' : 'Action'} recorded`)
+      }
       await fetchData()
     } catch (e) {
       const msg = e instanceof Error ? e.message.replace(/_/g, ' ') : 'Action failed'
@@ -398,7 +402,7 @@ const handleTopup = async () => {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Total Cash', value: fmt(totalCash, 'USD'), icon: <Landmark className="size-5" />, hint: 'USD + EUR + KES + GBP' },
-          { label: 'Bitcoin', value: cryptoAsset === 'BTC' ? fmt(data?.balances.BTC, 'BTC') : '—', icon: <Bitcoin className="size-5" />, hint: '₿ equivalent' },
+          { label: 'Bitcoin', value: fmt(data?.balances.BTC, 'BTC'), icon: <Bitcoin className="size-5" />, hint: '₿ equivalent' },
           { label: 'Ethereum', value: fmt(data?.balances.ETH, 'ETH'), icon: <Bitcoin className="size-5" />, hint: 'Ξ equivalent' },
           { label: 'Stable + Sol', value: fmt((data?.balances.USDT || 0) + (data?.balances.SOL || 0), 'USDT'), icon: <WalletIcon className="size-5" />, hint: 'USDT + SOL' },
         ].map((s, i) => (
@@ -500,22 +504,28 @@ const handleTopup = async () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base"><ArrowUpFromLine className="size-4 text-rose-500" /> Withdraw cash</CardTitle>
-                <CardDescription>Payout back to your bank — rejected if the balance is insufficient.</CardDescription>
+                <CardDescription>Paid automatically as USDT (1 USDT = $1) to your wallet address via Binance. You can only withdraw up to your USD balance.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>USDT receiving address (TRC20 or BEP20)</Label>
+                  <Input placeholder="T… or 0x…" value={withdraw.toAddress}
+                    onChange={(e) => setWithdraw({ ...withdraw, toAddress: e.target.value })} />
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label>Asset</Label>
+                    <Label>Network</Label>
                     <select
                       className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                      value={withdraw.asset}
-                      onChange={(e) => setWithdraw({ ...withdraw, asset: e.target.value })}
+                      value={withdraw.network}
+                      onChange={(e) => setWithdraw({ ...withdraw, network: e.target.value })}
                     >
-                      {CASH_ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
+                      <option value="TRC20">TRC20 (TRON)</option>
+                      <option value="BEP20">BEP20 (BSC)</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Amount</Label>
+                    <Label>Amount (USD)</Label>
                     <Input
                       type="number"
                       min="0"
@@ -529,12 +539,15 @@ const handleTopup = async () => {
                 <Button
                   variant="outline"
                   className="w-full gap-1.5"
-                  disabled={busy === 'withdraw' || !withdraw.amount || Number(withdraw.amount) <= 0}
-                  onClick={() => runAction('withdraw', { action: 'withdraw', asset: withdraw.asset, amount: Number(withdraw.amount) })}
+                  disabled={busy === 'withdraw' || !withdraw.amount || Number(withdraw.amount) <= 0 || !withdraw.toAddress}
+                  onClick={() => runAction('withdraw', { action: 'withdraw', asset: 'USD', amount: Number(withdraw.amount), toAddress: withdraw.toAddress, network: withdraw.network })}
                 >
                   {busy === 'withdraw' ? <Loader2 className="size-4 animate-spin" /> : <ArrowUpFromLine className="size-4" />}
-                  Withdraw
+                  Withdraw as USDT
                 </Button>
+                <p className="text-xs text-muted-foreground">
+                  Balance: {fmt(data?.balances.USD, 'USD')} — the full amount is paid, the network fee is covered by the platform.
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -682,30 +695,31 @@ const handleTopup = async () => {
             {/* Withdraw crypto */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><ArrowUpFromLine className="size-4 text-rose-500" /> Withdraw crypto</CardTitle>
-                <CardDescription>Send to any address — rejected if the balance is insufficient.</CardDescription>
+                <CardTitle className="flex items-center gap-2 text-base"><ArrowUpFromLine className="size-4 text-rose-500" /> Withdraw USDT</CardTitle>
+                <CardDescription>Sent automatically to your address via Binance. BTC/ETH/SOL withdrawals are not available yet.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-4 gap-3">
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Asset</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Network</Label>
                     <select
                       className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                      value={cryptoAsset}
-                      onChange={(e) => setCryptoAsset(e.target.value)}
+                      value={cryptoWithdraw.network}
+                      onChange={(e) => setCryptoWithdraw({ ...cryptoWithdraw, network: e.target.value })}
                     >
-                      {CRYPTO_ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
+                      <option value="TRC20">TRC20 (TRON)</option>
+                      <option value="BEP20">BEP20 (BSC)</option>
                     </select>
                   </div>
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Amount</Label>
+                  <div className="space-y-1.5">
+                    <Label>Amount (USDT)</Label>
                     <Input type="number" min="0" step="any" placeholder="0.0" value={cryptoWithdraw.amount}
                       onChange={(e) => setCryptoWithdraw({ ...cryptoWithdraw, amount: e.target.value })} />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Destination address</Label>
-                  <Input placeholder="bc1q… / 0x… / keybase…" value={cryptoWithdraw.toAddress}
+                  <Input placeholder="T… or 0x…" value={cryptoWithdraw.toAddress}
                     onChange={(e) => setCryptoWithdraw({ ...cryptoWithdraw, toAddress: e.target.value })} />
                 </div>
                 <Button
@@ -714,17 +728,18 @@ const handleTopup = async () => {
                   onClick={() =>
                     runAction('crypto-withdraw', {
                       action: 'crypto-withdraw',
-                      asset: cryptoAsset,
+                      asset: 'USDT',
                       amount: Number(cryptoWithdraw.amount),
                       toAddress: cryptoWithdraw.toAddress,
+                      network: cryptoWithdraw.network,
                     })
                   }
                 >
                   {busy === 'crypto-withdraw' ? <Loader2 className="size-4 animate-spin" /> : <ArrowUpFromLine className="size-4" />}
-                  Withdraw crypto
+                  Withdraw USDT
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Balance: {assetSymbol(cryptoAsset)}{fmt(data?.balances[cryptoAsset], cryptoAsset)}
+                  Balance: {fmt(data?.balances.USDT, 'USDT')} — send the full balance or less, the network fee is covered by the platform.
                 </p>
               </CardContent>
             </Card>

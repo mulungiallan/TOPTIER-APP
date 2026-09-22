@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { successResponse, errorResponse } from '@/lib/auth'
 import { requireAdmin } from '@/lib/admin-guard'
-import { buildPaidEarningsUpdates } from '@/lib/payouts'
+import { buildPaidEarningsUpdates, refundReservedUserPayout } from '@/lib/payouts'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +25,10 @@ export async function POST(request: NextRequest) {
       if (payout.status !== 'pending') {
         return errorResponse('Only pending requests can be cancelled', 400)
       }
+      // User payout: return any ledger reserve to the user's wallet first.
+      if (payout.userId) {
+        await refundReservedUserPayout(payout)
+      }
       await db.payoutRequest.update({
         where: { id: payout.id },
         data: { status: 'cancelled' },
@@ -38,6 +42,16 @@ export async function POST(request: NextRequest) {
       }
       if (payout.status === 'cancelled') {
         return errorResponse('Cancelled requests cannot be marked paid', 400)
+      }
+
+      if (payout.userId) {
+        // User payouts are funded from the platform's Binance balance and the
+        // user's ledger was already reserved — never consume platform earnings.
+        await db.payoutRequest.update({
+          where: { id: payout.id },
+          data: { status: 'paid', paidAt: new Date() },
+        })
+        return successResponse({ status: 'paid' })
       }
 
       await db.$transaction([
