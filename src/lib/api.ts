@@ -33,8 +33,10 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = 
   })
   
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: 'Request failed' }))
-    throw new Error(error.error || `API error: ${res.status}`)
+    const payload = await res.json().catch(() => ({ error: 'Request failed' }))
+    const err = new Error(payload.error || `API error: ${res.status}`) as Error & { code?: string }
+    if (typeof payload.code === 'string') err.code = payload.code
+    throw err
   }
   
   return res.json()

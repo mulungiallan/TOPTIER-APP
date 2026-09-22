@@ -73,9 +73,48 @@ import { toast } from 'sonner'
 
 // ─── Admin API helpers ────────────────────────────────────────────────────────
 
+// 2FA step-up plumbing. On a server-side AUTH_2FA_REQUIRED response the action
+// is retried once with a code the user enters in the panel dialog.
+let adminOtpResolver: ((code: string | null) => void) | null = null
+let adminOtpNotifier: (() => void) | null = null
+
+function promptForOtp(): Promise<string | null> {
+  adminOtpNotifier?.()
+  return new Promise((resolve) => {
+    adminOtpResolver = resolve
+  })
+}
+
+function respondToAdminOtp(code: string | null) {
+  adminOtpResolver?.(code)
+  adminOtpResolver = null
+}
+
+export function setAdminOtpNotifier(fn: (() => void) | null) {
+  adminOtpNotifier = fn
+}
+
 async function runAdminAction(action: string, body: Record<string, unknown>) {
-  const res = await api.post<{ success: boolean; data?: unknown }>('/admin-actions', { action, ...body })
-  return res?.data
+  let otp = ''
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await api.post<{ success: boolean; data?: unknown }>('/admin-actions', {
+        action,
+        ...body,
+        ...(otp ? { otp } : {}),
+      })
+      return res?.data
+    } catch (e) {
+      const code = (e as any)?.code
+      if (code === 'AUTH_2FA_REQUIRED' && attempt < 2) {
+        const entered = await promptForOtp()
+        if (!entered) throw new Error('Action cancelled — authenticator code not provided')
+        otp = entered
+        continue
+      }
+      throw e
+    }
+  }
 }
 
 // ─── Types (mirror /api/admin/overview) ───────────────────────────────────────
@@ -1074,6 +1113,20 @@ export default function AdminPage() {
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [securityError, setSecurityError] = useState('')
 
+  // 2FA step-up dialog (sensitive admin actions)
+  const [otpPromptOpen, setOtpPromptOpen] = useState(false)
+  const [otpPromptCode, setOtpPromptCode] = useState('')
+  const [otpPromptError, setOtpPromptError] = useState('')
+
+  useEffect(() => {
+    setAdminOtpNotifier(() => {
+      setOtpPromptCode('')
+      setOtpPromptError('')
+      setOtpPromptOpen(true)
+    })
+    return () => setAdminOtpNotifier(null)
+  }, [])
+
   // Global ⌘K search
   const [cmdOpen, setCmdOpen] = useState(false)
   const [cmdQ, setCmdQ] = useState('')
@@ -1368,6 +1421,30 @@ export default function AdminPage() {
         className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted transition-colors cursor-pointer w-full max-w-sm">
         <Search className="h-3.5 w-3.5" /> Search users, signals, tickets… <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
       </button>
+
+      {/* ─── 2FA step-up dialog ─────────────────────────────────── */}
+      <Dialog open={otpPromptOpen} onOpenChange={(open) => { if (!open) respondToAdminOtp(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">Authenticator code required</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2">This action moves money or changes sensitive account state. Enter your current 6-digit code to confirm.</p>
+          <Input
+            className="font-mono tracking-widest"
+            placeholder="6-digit code"
+            value={otpPromptCode}
+            onChange={(e) => setOtpPromptCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            maxLength={6}
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter' && otpPromptCode.length === 6) { const c = otpPromptCode; setOtpPromptOpen(false); respondToAdminOtp(c) } }}
+          />
+          {otpPromptError && <p className="text-xs text-destructive">{otpPromptError}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setOtpPromptOpen(false); respondToAdminOtp(null) }}>Cancel</Button>
+            <Button size="sm" disabled={otpPromptCode.length < 6} onClick={() => { const c = otpPromptCode; setOtpPromptOpen(false); respondToAdminOtp(c) }}>Confirm</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Command palette modal ──────────────────────────────── */}
       {cmdOpen && (

@@ -21,6 +21,7 @@ import { fulfillWalletFunding } from '@/lib/services/wallet'
 import { verifyPayment } from '@/lib/payments/registry'
 import { requireAdmin } from '@/lib/admin-guard'
 import { requirePermission, ADMIN_ROLES, adminCan } from '@/lib/admin-permissions'
+import { verifyTotp } from '@/lib/totp'
 import { ManagedCopyService } from '@/lib/services/managed-copy'
 import { escapeHtml } from '@/lib/security'
 import { fireOps } from '@/lib/ops-notify'
@@ -99,6 +100,32 @@ function permForAction(action: string): string | null {
   return map[action] ?? null
 }
 
+// Admin 2FA step-up: when the acting admin has 2FA set up, these actions move
+// money or change sensitive account state and require a fresh authenticator
+// code on every request. Read-only / content actions do not require step-up.
+const STEP_UP_ACTIONS = new Set<string>([
+  'impersonate',
+  'approve_payout',
+  'reject_payout',
+  'mark_payout_paid',
+  'refund_transaction',
+  'record_earning',
+  'settle_broker_copy',
+  'confirm_payment',
+  'reject_payment',
+  'reconcile_pesapal',
+  'set_user_role',
+  'reset_user_2fa',
+  'force_logout',
+  'delete_user',
+  'set_subscription',
+  'process_data_deletion',
+])
+
+function stepUpRequiredFor(action: string): boolean {
+  return STEP_UP_ACTIONS.has(action)
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { error, user } = await requireAdmin(request)
@@ -113,6 +140,26 @@ export async function POST(request: NextRequest) {
     const actionPerm = permForAction(action)
     if (actionPerm && !adminCan(user.role, actionPerm as any)) {
       return errorResponse(`Forbidden: role "${user.role}" lacks permission "${actionPerm}"`, 403)
+    }
+
+    // 2FA step-up for sensitive actions: if this admin has 2FA configured, a
+    // valid TOTP must accompany the request. This is enforced server-side so
+    // client-local "verified" flags cannot be bypassed by a stolen token.
+    if (stepUpRequiredFor(action)) {
+      const adminAccount = await db.user.findUnique({
+        where: { id: adminId },
+        select: { twoFactorSecret: true },
+      })
+      if (adminAccount?.twoFactorSecret) {
+        const otp = typeof body.otp === 'string' ? body.otp.trim() : ''
+        if (!otp || !verifyTotp(adminAccount.twoFactorSecret, otp)) {
+          return errorResponse(
+            'Authenticator code required — enter your 6-digit code',
+            401,
+            { code: 'AUTH_2FA_REQUIRED' }
+          )
+        }
+      }
     }
 
     switch (action) {
