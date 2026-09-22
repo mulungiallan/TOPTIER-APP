@@ -52,6 +52,19 @@ interface WalletData {
   assets: { cash: string[]; crypto: string[] }
   cryptoDepositsEnabled: boolean
   transactions: WalletTx[]
+  payments: PaymentRecord[]
+}
+
+interface PaymentRecord {
+  id: string
+  amount: number
+  currency: string
+  planType: string
+  paymentMethod: string | null
+  paymentProvider: string | null
+  status: string
+  description: string | null
+  createdAt: string
 }
 
 interface CryptoDeposit {
@@ -114,6 +127,32 @@ function txSummary(tx: WalletTx): { label: string; color: string; amount: number
 function iconFor(asset: string, className = 'size-5') {
   if (CRYPTO_ASSETS.includes(asset)) return <Bitcoin className={className} />
   return <Landmark className={className} />
+}
+
+function paymentLabel(tx: PaymentRecord): string {
+  const m = (tx.description || '').match(/^WALLET_FUND\|([A-Z]{3})\|([\d.]+)/)
+  if (m) {
+    const asset = m[1]
+    const tokens = Number(m[2])
+    return `Wallet top-up · ${fmt(tokens, asset)} ${asset}`
+  }
+  const plan = (tx.planType || 'payment').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  return plan === 'Payment' ? `Payment${tx.paymentProvider ? ` (${tx.paymentProvider})` : ''}` : plan
+}
+
+function paymentBadge(status: string) {
+  switch (status) {
+    case 'completed':
+      return <Badge className="bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/15">Completed</Badge>
+    case 'pending':
+      return <Badge className="bg-amber-500/15 text-amber-600 hover:bg-amber-500/15">Pending</Badge>
+    case 'failed':
+      return <Badge variant="destructive">Failed</Badge>
+    case 'refunded':
+      return <Badge variant="secondary">Refunded</Badge>
+    default:
+      return <Badge variant="secondary" className="capitalize">{status}</Badge>
+  }
 }
 
 export function WalletPage() {
@@ -499,6 +538,52 @@ const handleTopup = async () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Top-up & payment history */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top-up &amp; payment history</CardTitle>
+              <CardDescription>Your recent wallet top-ups and payments. Funds reflect once the provider confirms them.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : !data?.payments?.length ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No payments yet — your first top-up will appear here.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs text-muted-foreground">
+                        <th className="pb-2 pr-4 font-medium">Description</th>
+                        <th className="pb-2 pr-4 text-right font-medium">Charged</th>
+                        <th className="pb-2 pr-4 font-medium">Status</th>
+                        <th className="pb-2 font-medium">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {data.payments.map((p) => (
+                        <tr key={p.id} className="hover:bg-muted/30">
+                          <td className="py-2.5 pr-4 font-medium">{paymentLabel(p)}</td>
+                          <td className="py-2.5 pr-4 text-right">
+                            {assetSymbol(p.currency)}{fmt(p.amount, p.currency)}
+                          </td>
+                          <td className="py-2.5 pr-4">{paymentBadge(p.status)}</td>
+                          <td className="py-2.5 text-xs text-muted-foreground">
+                            {new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ─── Crypto tab ───────────────────────────────────────────── */}

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { authenticateRequest, successResponse, errorResponse } from '@/lib/auth'
+import { db } from '@/lib/db'
 import {
   CASH_ASSETS,
   CRYPTO_ASSETS,
@@ -23,9 +24,26 @@ export async function GET(request: NextRequest) {
     if (!auth.user) return errorResponse(auth.error || 'Unauthorized', 401)
     const userId = auth.user.id
 
-    const [overview, transactions] = await Promise.all([
+    const [overview, transactions, payments] = await Promise.all([
       getWalletOverview(userId),
       getTransactionHistory(userId),
+      // User-facing payment/top-up history (PesaPal, bank, manual methods).
+      db.paymentTransaction.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 25,
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          planType: true,
+          paymentMethod: true,
+          paymentProvider: true,
+          status: true,
+          description: true,
+          createdAt: true,
+        },
+      }),
     ])
 
     return successResponse({
@@ -36,6 +54,7 @@ export async function GET(request: NextRequest) {
         crypto: CRYPTO_ASSETS,
       },
       cryptoDepositsEnabled: nowpaymentsConfigured(),
+      payments,
       transactions: transactions.map((tx) => ({
         id: tx.id,
         txType: tx.txType,

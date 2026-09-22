@@ -18,6 +18,7 @@ import { emailService } from '@/lib/services/email'
 import { notifyUser, notifyUsers } from '@/lib/services/notifications'
 import { fulfillPendingPayment } from '@/lib/payments/fulfillment'
 import { fulfillWalletFunding } from '@/lib/services/wallet'
+import { verifyPayment } from '@/lib/payments/registry'
 import { requireAdmin } from '@/lib/admin-guard'
 import { requirePermission, ADMIN_ROLES, adminCan } from '@/lib/admin-permissions'
 import { ManagedCopyService } from '@/lib/services/managed-copy'
@@ -93,6 +94,7 @@ function permForAction(action: string): string | null {
     settle_broker_copy: 'payments.write',
     confirm_payment: 'payments.write',
     reject_payment: 'payments.write',
+    reconcile_pesapal: 'payments.write',
   }
   return map[action] ?? null
 }
@@ -174,6 +176,8 @@ export async function POST(request: NextRequest) {
         return await handleConfirmPayment(adminId, body)
       case 'reject_payment':
         return await handleRejectPayment(adminId, body)
+      case 'reconcile_pesapal':
+        return await handleReconcilePesapal(adminId, body)
       // ── Trading ops ──
       case 'expire_signals':
         return await handleExpireSignals(adminId, body)
@@ -1292,6 +1296,96 @@ async function handleRejectPayment(adminId: string, body: any) {
 
   await logAdminAction(adminId, 'REJECT_PAYMENT', { transactionId, userId: tx.userId, amount: tx.amount, reason: reason || null })
   return successResponse({ approved: false, transactionId, updated })
+}
+
+// ─── PesaPal reconciliation ─────────────────────────────────────────────────
+
+// Reconcile stranded PesaPal wallet top-ups: query the provider for every
+// pending/failed WALLET_FUND order and credit the ones PesaPal reports as
+// COMPLETED. Prior to the currency-aware amount fix, cross-currency/mobile-
+// money payments were force-marked failed (AMOUNT_MISMATCH) even though the
+// money was collected — this recovers those deposits. Only provider-verified
+// orders are credited; abandoned/unpaid ones stay as-is. Idempotent.
+async function handleReconcilePesapal(adminId: string, body: any) {
+  const limit = Math.min(Number(body?.limit ?? 100) || 100, 200)
+
+  const txs = await db.paymentTransaction.findMany({
+    where: {
+      paymentProvider: 'pesapal',
+      planType: 'wallet_fund',
+      status: { in: ['pending', 'failed'] },
+      stripeSessionId: { not: null },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: limit,
+    select: {
+      id: true,
+      userId: true,
+      amount: true,
+      currency: true,
+      planType: true,
+      status: true,
+      description: true,
+      stripeSessionId: true,
+    },
+  })
+
+  const checked: string[] = []
+  const credited: string[] = []
+  const stillPending: string[] = []
+  const errors: { id: string; error: string }[] = []
+
+  for (const tx of txs) {
+    checked.push(tx.id)
+    const orderTrackingId = tx.stripeSessionId as string
+    try {
+      const result = await verifyPayment('pesapal', {
+        provider: 'pesapal',
+        providerTransactionId: orderTrackingId,
+        metadata: { planType: tx.planType },
+      })
+
+      if (result.status === 'completed') {
+        if (tx.status === 'failed') {
+          await db.paymentTransaction.update({ where: { id: tx.id }, data: { status: 'pending' } })
+        }
+        const res = await fulfillWalletFunding(
+          { id: tx.id, userId: tx.userId, description: tx.description, orderTrackingId },
+          { paymentMethod: result.metadata?.payment_method || undefined }
+        )
+        if (res.fulfilled) {
+          credited.push(tx.id)
+          await notifyUser(tx.userId, {
+            type: 'subscription',
+            title: 'Wallet top-up confirmed',
+            message: 'Your wallet top-up was confirmed and credited.',
+            actionUrl: '/wallet',
+          }).catch(() => {})
+        } else {
+          stillPending.push(tx.id)
+        }
+      }
+      // Pause between provider calls to stay inside PesaPal's rate limits.
+      await new Promise((r) => setTimeout(r, 250))
+    } catch (e) {
+      errors.push({ id: tx.id, error: e instanceof Error ? e.message : 'error' })
+    }
+  }
+
+  await logAdminAction(adminId, 'RECONCILE_PESAPAL', {
+    checked: checked.length,
+    credited: credited.length,
+    stillPending: stillPending.length,
+    errors: errors.length,
+  })
+
+  return successResponse({
+    checked: checked.length,
+    credited,
+    stillPending,
+    errors,
+    remaining: Math.max(0, txs.length > 0 ? txs.length - checked.length : 0),
+  })
 }
 
 // ─── Trading ops ─────────────────────────────────────────────────────────────
