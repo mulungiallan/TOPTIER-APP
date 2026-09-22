@@ -12,11 +12,12 @@ export type Asset = string
 // The platform takes a charge out of every cash wallet top-up. The credited
 // "available balance" is therefore the top-up amount MINUS this charge, and the
 // charge is posted to the ledger as a visible Fee row (income for the house
-// leg). Configurable via TOP_UP_CHARGE_PCT, defaults to 2%.
+// leg). Configurable via TOP_UP_CHARGE_PCT, defaults to 3% (2% covers the
+// payment provider, ~1% is platform income).
 export function getTopUpChargePct(): number {
   const raw = Number(process.env.TOP_UP_CHARGE_PCT)
   if (Number.isFinite(raw) && raw >= 0 && raw <= 100) return raw
-  return 2
+  return 3
 }
 
 export function roundMoney(n: number): number {
