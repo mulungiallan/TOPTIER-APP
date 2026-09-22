@@ -7,22 +7,29 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { fulfillPendingPayment } from '@/lib/payments/fulfillment'
 import { fulfillWalletFunding } from '@/lib/services/wallet'
-import { pesapalGateway } from '@/lib/payments/pesapal'
+import { pesapalGateway, pesapalAmountAccepted } from '@/lib/payments/pesapal'
 
 async function readIpnParams(request: NextRequest): Promise<{ orderTrackingId: string; merchantReference: string }> {
   const searchParams = request.nextUrl.searchParams
+  const fromQuery = (p: URLSearchParams) => ({
+    orderTrackingId: p.get('OrderTrackingId') || '',
+    merchantReference: p.get('OrderMerchantReference') || '',
+  })
   if (searchParams.get('OrderTrackingId')) {
-    return {
-      orderTrackingId: searchParams.get('OrderTrackingId') || '',
-      merchantReference: searchParams.get('OrderMerchantReference') || '',
-    }
+    return fromQuery(searchParams)
   }
   try {
-    const body = await request.json()
-    return {
-      orderTrackingId: body?.OrderTrackingId || '',
-      merchantReference: body?.OrderMerchantReference || '',
+    const raw = await request.text()
+    if (!raw) return { orderTrackingId: '', merchantReference: '' }
+    if (raw.trim().startsWith('{')) {
+      const body = JSON.parse(raw)
+      return {
+        orderTrackingId: body?.OrderTrackingId || '',
+        merchantReference: body?.OrderMerchantReference || '',
+      }
     }
+    // PesaPal also delivers POST IPNs as application/x-www-form-urlencoded.
+    return fromQuery(new URLSearchParams(raw))
   } catch {
     return { orderTrackingId: '', merchantReference: '' }
   }
@@ -46,18 +53,20 @@ async function processPesapalNotification(orderTrackingId: string, merchantRefer
   })
 
   if (result.status === 'completed') {
-    // Amount integrity check: the amount reported by PesaPal must match what
-    // we charged, otherwise flag for manual review instead of fulfilling.
-    const paidAmount = Number(result.amount)
-    if (Number.isFinite(paidAmount) && paidAmount > 0 && Math.abs(paidAmount - transaction.amount) > 0.01) {
-      console.error(
-        `[pesapal ipn] Amount mismatch: expected ${transaction.amount}, PesaPal reported ${paidAmount} for transaction ${transaction.id}`
-      )
-      await db.paymentTransaction.update({
-        where: { id: transaction.id },
-        data: { status: 'failed', description: `${transaction.description || ''} | AMOUNT_MISMATCH` },
-      })
-      return
+    // Amount check: currency-aware and non-fatal. PesaPal reports cross-
+    // currency/mobile-money payments in a different currency than the order
+    // was submitted in (e.g. a 329 KES order paid via AirtelUG returns
+    // amount=9980). The wallet credits the user-approved amount from the
+    // WALLET_FUND marker, never the reported value, so a mismatch must never
+    // strand a paid order — log it and fulfill.
+    const amountCheck = pesapalAmountAccepted({
+      expectedAmount: transaction.amount,
+      expectedCurrency: transaction.currency,
+      reportedAmount: result.amount,
+      reportedCurrency: result.currency,
+    })
+    if (!amountCheck.accepted) {
+      console.error(`[pesapal ipn] Amount discrepancy for transaction ${transaction.id}: ${amountCheck.reason}`)
     }
 
     const paymentMethod = result.metadata?.payment_method || undefined

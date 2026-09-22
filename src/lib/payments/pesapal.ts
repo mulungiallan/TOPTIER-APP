@@ -134,6 +134,53 @@ function splitName(name: string): { first: string; last: string } {
   }
 }
 
+/**
+ * Decide whether the amount PesaPal reports for an order is acceptable.
+ *
+ * PesaPal reports the paid amount in its own reporting currency, which for
+ * cross-currency / mobile-money payouts is NOT the currency the order was
+ * submitted in. Example seen in production: a 329 KES order (10,000 UGX
+ * top-up) paid via Airtel Uganda comes back from GetTransactionStatus as
+ * amount=9980 in a non-KES currency while status_code=1 (COMPLETED). A strict
+ * numeric comparison against the charged KES amount therefore misflags every
+ * such payment.
+ *
+ * - Reported currency matches the order currency (KES) → strict equality is
+ *   kept, so genuine anomalies are still surfaced.
+ * - Reported currency differs → the amount is informational. The wallet
+ *   always credits the amount the user agreed to (the WALLET_FUND marker),
+ *   never this value, so a reporting-currency difference must never strand a
+ *   paid order. The COMPLETED status + merchant_reference binding (TOPTIER-<id>)
+ *   are the real authorization checks.
+ */
+export function pesapalAmountAccepted(opts: {
+  expectedAmount: number
+  expectedCurrency: string | null
+  reportedAmount?: number | null
+  reportedCurrency?: string | null
+}): { accepted: boolean; reason?: string } {
+  const { expectedAmount, expectedCurrency, reportedAmount, reportedCurrency } = opts
+  const expected = Number(expectedAmount)
+  const paid = Number(reportedAmount)
+
+  if (!Number.isFinite(paid) || paid <= 0) {
+    return { accepted: true, reason: 'PesaPal did not report a comparable amount — treated as informational' }
+  }
+
+  const sameCurrency = (reportedCurrency || '').toUpperCase() === (expectedCurrency || 'KES').toUpperCase()
+  if (!sameCurrency) {
+    return {
+      accepted: true,
+      reason: `amount reported in ${reportedCurrency} (order in ${expectedCurrency}) — informational`,
+    }
+  }
+
+  if (Math.abs(paid - expected) > 0.01) {
+    return { accepted: false, reason: `expected ${expected} ${expectedCurrency}, PesaPal reported ${paid} ${reportedCurrency}` }
+  }
+  return { accepted: true }
+}
+
 export const pesapalGateway: PaymentGateway = {
   provider: 'pesapal',
   name: 'pesapal',

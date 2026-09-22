@@ -1234,7 +1234,17 @@ async function handleConfirmPayment(adminId: string, body: any) {
   if (!transactionId) return errorResponse('transactionId required', 400)
   const tx = await db.paymentTransaction.findUnique({ where: { id: transactionId } })
   if (!tx) return errorResponse('Transaction not found', 404)
-  if (tx.status !== 'pending') return errorResponse('Transaction is not pending', 400)
+  if (tx.status !== 'pending') {
+    // Allow recovery of orders a previous strict amount check stranded by
+    // marking them failed with AMOUNT_MISMATCH even though PesaPal confirmed
+    // them paid (cross-currency payments report a converted amount/currency).
+    const strandedMismatch = tx.status === 'failed' && (tx.description || '').includes('AMOUNT_MISMATCH')
+    if (!strandedMismatch) return errorResponse('Transaction is not pending', 400)
+    await db.paymentTransaction.update({
+      where: { id: tx.id },
+      data: { status: 'pending' },
+    })
+  }
 
   let fulfilled: boolean
   const paymentMethod = tx.paymentProvider === 'bank' ? 'Bank transfer' : 'Mobile Money'
