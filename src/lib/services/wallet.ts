@@ -8,6 +8,21 @@ export const TRADABLE_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP', 'BTC', 'ETH',
 
 export type Asset = string
 
+// ─── Top-up charge ───────────────────────────────────────────────────────────
+// The platform takes a charge out of every cash wallet top-up. The credited
+// "available balance" is therefore the top-up amount MINUS this charge, and the
+// charge is posted to the ledger as a visible Fee row (income for the house
+// leg). Configurable via TOP_UP_CHARGE_PCT, defaults to 2%.
+export function getTopUpChargePct(): number {
+  const raw = Number(process.env.TOP_UP_CHARGE_PCT)
+  if (Number.isFinite(raw) && raw >= 0 && raw <= 100) return raw
+  return 2
+}
+
+export function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 // ─── Account helpers ───────────────────────────────────────────────────────────
 async function findAccount(userId: string, asset: Asset, accountType: string) {
   return db.walletAccount.findUnique({
@@ -174,6 +189,27 @@ export async function fulfillWalletFunding(
     reference: transaction.orderTrackingId,
     memo: `Wallet top-up${extra?.paymentMethod ? ` via ${extra.paymentMethod}` : ''}`,
   })
+
+  // Apply the top-up charge: user balance becomes gross − charge, booked as a
+  // Fee row so the "minus charges" net is explicit and auditable.
+  const chargePct = getTopUpChargePct()
+  if (chargePct > 0 && transaction.orderTrackingId) {
+    const fee = roundMoney((creditAmount * chargePct) / 100)
+    if (fee > 0 && fee < creditAmount) {
+      const user = await getOrCreateAccount(transaction.userId, asset, 'user')
+      const house = await getOrCreateAccount(transaction.userId, asset, 'house')
+      await postTransaction({
+        txType: 'fee',
+        reference: `${transaction.orderTrackingId}_fee`,
+        memo: `Top-up charge (${chargePct}%)`,
+        posting: [
+          { accountId: user.id, amount: -fee },
+          { accountId: house.id, amount: fee },
+        ],
+      })
+    }
+  }
+
   await db.paymentTransaction.updateMany({
     where: { id: transaction.id, status: 'pending' },
     data: {
