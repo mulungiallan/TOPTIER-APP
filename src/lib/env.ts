@@ -47,6 +47,62 @@ export const env = {
   get mpesaConsumerSecret(): string | undefined {
     return process.env.MPESA_CONSUMER_SECRET
   },
+  // ─── M-Pesa B2C (Daraja disbursements, KES payouts) ──────────────────────
+  // The B2C product needs its own InitiatorName + SecurityCredential (RSA-
+  // encrypted initiator password, generated once with Safaricom's utility)
+  // plus a B2C-approved shortcode. Consumer key/secret are shared with STK.
+  get mpesaB2cInitiator(): string | undefined {
+    return process.env.MPESA_B2C_INITIATOR
+  },
+  get mpesaB2cSecurityCredential(): string | undefined {
+    return process.env.MPESA_B2C_SECURITY_CREDENTIAL
+  },
+  get mpesaB2cShortcode(): string | undefined {
+    return process.env.MPESA_B2C_SHORTCODE || process.env.MPESA_SHORTCODE
+  },
+  get mpesaB2cCommandId(): string {
+    return process.env.MPESA_B2C_COMMAND_ID || 'BusinessPayment'
+  },
+  get mpesaB2cMin(): number {
+    return Number(process.env.MPESA_B2C_MIN ?? 50)
+  },
+  get mpesaB2cMax(): number {
+    return Number(process.env.MPESA_B2C_MAX ?? 150000)
+  },
+  get mpesaB2cResultUrl(): string {
+    return process.env.MPESA_B2C_RESULT_URL || `${this.appUrl}/api/payments/mpesa/b2c-callback`
+  },
+  get mpesaB2cTimeoutUrl(): string {
+    return process.env.MPESA_B2C_TIMEOUT_URL || `${this.appUrl}/api/payments/mpesa/b2c-callback`
+  },
+  // ─── MTN MoMo Disbursement (Uganda, UGX payouts) ─────────────────────────
+  get momoApiUser(): string | undefined {
+    return process.env.MTN_MOMO_API_USER
+  },
+  get momoApiKey(): string | undefined {
+    return process.env.MTN_MOMO_API_KEY
+  },
+  get momoSubscriptionKey(): string | undefined {
+    return process.env.MTN_MOMO_SUBSCRIPTION_KEY
+  },
+  get momoTargetEnv(): string {
+    return process.env.MTN_MOMO_TARGET_ENV || 'sandbox'
+  },
+  get momoBaseUrl(): string {
+    return (
+      process.env.MTN_MOMO_BASE_URL ||
+      (this.momoTargetEnv === 'sandbox' ? 'https://sandbox.momodeveloper.mtn.com' : 'https://api.mtn.com')
+    )
+  },
+  get momoCurrency(): string {
+    return process.env.MTN_MOMO_CURRENCY || 'UGX'
+  },
+  get momoMin(): number {
+    return Number(process.env.MTN_MOMO_MIN ?? 1000)
+  },
+  get momoMax(): number {
+    return Number(process.env.MTN_MOMO_MAX ?? 2000000)
+  },
   get pesapalConsumerKey(): string | undefined {
     return process.env.PESAPAL_CONSUMER_KEY
   },

@@ -20,7 +20,7 @@ function requireMpesaConfig(): { shortcode: string; passkey: string } {
   return { shortcode, passkey }
 }
 
-async function getMpesaAccessToken(): Promise<string> {
+export async function getMpesaAccessToken(): Promise<string> {
   const consumerKey = process.env.MPESA_CONSUMER_KEY
   const consumerSecret = process.env.MPESA_CONSUMER_SECRET
 

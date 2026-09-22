@@ -2886,12 +2886,15 @@ export default function AdminPage() {
                       {payouts.map((p: any) => (
                         <TableRow key={p.id}>
                           <TableCell className="text-sm font-mono text-xs">{p.id?.slice(0, 10)}</TableCell>
-                          <TableCell className="text-sm font-mono">${p.amount?.toFixed(2)}</TableCell>
+                          <TableCell className="text-sm font-mono">{p.currency === 'USD' ? '$' : `${p.currency} `}{p.amount?.toFixed(2)}</TableCell>
                           <TableCell><Badge variant="outline" className="text-[10px]">{p.method}</Badge></TableCell>
                           <TableCell className="text-xs font-mono max-w-[120px] truncate">{p.destination}</TableCell>
                           <TableCell><Badge variant={p.status === 'pending' ? 'secondary' : 'outline'} className="text-[10px]">{p.status}</Badge></TableCell>
                           <TableCell className="text-xs">{new Date(p.createdAt).toLocaleDateString()}</TableCell>
                           <TableCell>
+                            {/* User-initiated payouts settle automatically on the rail (Binance/M-Pesa/MTN MoMo)
+                                and are never manually approved. Manual actions are for platform earnings payouts only. */}
+                            {!p.userId && (
                             <div className="flex gap-1">
                               {p.status === 'pending' && (
                                 <Button size="sm" variant="ghost" className="h-7 text-xs text-green-600" onClick={async () => {
@@ -2911,6 +2914,7 @@ export default function AdminPage() {
                                 }}>Reject</Button>
                               )}
                             </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

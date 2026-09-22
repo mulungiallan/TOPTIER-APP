@@ -161,7 +161,7 @@ export function WalletPage() {
   const [loading, setLoading] = useState(true)
 
   const [deposit, setDeposit] = useState({ asset: 'KES', amount: '' })
-  const [withdraw, setWithdraw] = useState({ asset: 'USD', amount: '', toAddress: '', network: 'TRC20' })
+  const [withdraw, setWithdraw] = useState({ currency: 'USD', amount: '', toAddress: '', network: 'TRC20', phone: '' })
   const [busy, setBusy] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -235,8 +235,15 @@ export function WalletPage() {
     try {
       await api.post('/wallet', body)
       if (key === 'withdraw' || key === 'crypto-withdraw') {
-        toast.success('USDT payout submitted — funds are on their way via Binance.')
-        setWithdraw({ asset: 'USD', amount: '', toAddress: '', network: 'TRC20' })
+        const cur = key === 'withdraw' ? withdraw.currency : 'USDT'
+        if (cur === 'KES') {
+          toast.success('M-Pesa payout submitted — money arrives on your M-Pesa within minutes.')
+        } else if (cur === 'UGX') {
+          toast.success('MTN MoMo payout submitted — money arrives on your MoMo within minutes.')
+        } else {
+          toast.success('USDT payout submitted — funds are on their way via Binance.')
+        }
+        setWithdraw({ currency: withdraw.currency, amount: '', toAddress: '', network: 'TRC20', phone: '' })
         setCryptoWithdraw({ amount: '', toAddress: '', network: 'TRC20' })
       } else {
         toast.success(`${key === 'withdraw' ? 'Withdrawal' : 'Action'} recorded`)
@@ -504,49 +511,109 @@ const handleTopup = async () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base"><ArrowUpFromLine className="size-4 text-rose-500" /> Withdraw cash</CardTitle>
-                <CardDescription>Paid automatically as USDT (1 USDT = $1) to your wallet address via Binance. You can only withdraw up to your USD balance.</CardDescription>
+                <CardDescription>
+                  {withdraw.currency === 'KES' && 'Paid automatically to your M-Pesa (Kenya). You can only withdraw up to your balance.'}
+                  {withdraw.currency === 'UGX' && 'Paid automatically to your MTN MoMo (Uganda). You can only withdraw up to your balance.'}
+                  {withdraw.currency === 'USD' && 'Paid automatically as USDT (1 USDT = $1) to your wallet address via Binance. You can only withdraw up to your USD balance.'}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label>USDT receiving address (TRC20 or BEP20)</Label>
-                  <Input placeholder="T… or 0x…" value={withdraw.toAddress}
-                    onChange={(e) => setWithdraw({ ...withdraw, toAddress: e.target.value })} />
+                  <Label>Wallet currency</Label>
+                  <select
+                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                    value={withdraw.currency}
+                    onChange={(e) => setWithdraw({ ...withdraw, currency: e.target.value })}
+                  >
+                    <option value="USD">USD → USDT (Binance)</option>
+                    <option value="KES">KES → M-Pesa</option>
+                    <option value="UGX">UGX → MTN MoMo</option>
+                  </select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Network</Label>
-                    <select
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                      value={withdraw.network}
-                      onChange={(e) => setWithdraw({ ...withdraw, network: e.target.value })}
-                    >
-                      <option value="TRC20">TRC20 (TRON)</option>
-                      <option value="BEP20">BEP20 (BSC)</option>
-                    </select>
+
+                {withdraw.currency === 'USD' ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label>USDT receiving address (TRC20 or BEP20)</Label>
+                      <Input placeholder="T… or 0x…" value={withdraw.toAddress}
+                        onChange={(e) => setWithdraw({ ...withdraw, toAddress: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Network</Label>
+                        <select
+                          className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                          value={withdraw.network}
+                          onChange={(e) => setWithdraw({ ...withdraw, network: e.target.value })}
+                        >
+                          <option value="TRC20">TRC20 (TRON)</option>
+                          <option value="BEP20">BEP20 (BSC)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Amount (USD)</Label>
+                        <Input
+                          type="number" min="0" step="any" placeholder="0.00"
+                          value={withdraw.amount}
+                          onChange={(e) => setWithdraw({ ...withdraw, amount: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>{withdraw.currency === 'KES' ? 'M-Pesa phone' : 'MTN MoMo phone'}</Label>
+                      <Input
+                        placeholder={withdraw.currency === 'KES' ? '0712 345 678' : '0772 345 678'}
+                        inputMode="tel"
+                        value={withdraw.phone}
+                        onChange={(e) => setWithdraw({ ...withdraw, phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Amount ({withdraw.currency})</Label>
+                      <Input
+                        type="number" min="0" step="any" placeholder="0.00"
+                        value={withdraw.amount}
+                        onChange={(e) => setWithdraw({ ...withdraw, amount: e.target.value })}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>Amount (USD)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="any"
-                      placeholder="0.00"
-                      value={withdraw.amount}
-                      onChange={(e) => setWithdraw({ ...withdraw, amount: e.target.value })}
-                    />
-                  </div>
-                </div>
+                )}
+
                 <Button
                   variant="outline"
                   className="w-full gap-1.5"
-                  disabled={busy === 'withdraw' || !withdraw.amount || Number(withdraw.amount) <= 0 || !withdraw.toAddress}
-                  onClick={() => runAction('withdraw', { action: 'withdraw', asset: 'USD', amount: Number(withdraw.amount), toAddress: withdraw.toAddress, network: withdraw.network })}
+                  disabled={
+                    busy === 'withdraw' ||
+                    !withdraw.amount ||
+                    Number(withdraw.amount) <= 0 ||
+                    (withdraw.currency === 'USD' ? !withdraw.toAddress : !withdraw.phone)
+                  }
+                  onClick={() =>
+                    withdraw.currency === 'USD'
+                      ? runAction('withdraw', {
+                          action: 'withdraw',
+                          asset: 'USD',
+                          amount: Number(withdraw.amount),
+                          toAddress: withdraw.toAddress,
+                          network: withdraw.network,
+                        })
+                      : runAction('withdraw', {
+                          action: 'withdraw',
+                          asset: withdraw.currency,
+                          amount: Number(withdraw.amount),
+                          phone: withdraw.phone,
+                        })
+                  }
                 >
                   {busy === 'withdraw' ? <Loader2 className="size-4 animate-spin" /> : <ArrowUpFromLine className="size-4" />}
-                  Withdraw as USDT
+                  Withdraw {withdraw.currency === 'USD' ? 'as USDT' : withdraw.currency}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Balance: {fmt(data?.balances.USD, 'USD')} — the full amount is paid, the network fee is covered by the platform.
+                  Balance: {fmt(data?.balances[withdraw.currency], withdraw.currency)} {withdraw.currency}
+                  {withdraw.currency === 'USD' ? ' — the full amount is paid, the network fee is covered by the platform.' : ' — the transfer fee is covered by the platform.'}
                 </p>
               </CardContent>
             </Card>

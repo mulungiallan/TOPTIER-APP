@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { binanceWithdrawHistory } from '@/lib/payments/binance-payout'
+import { momoTransferStatus } from '@/lib/payments/momo'
 import { depositCash } from '@/lib/services/wallet'
 
 // ─── User payout reserve handling ──────────────────────────────────────────
@@ -268,52 +269,101 @@ export async function syncPayoutStatuses(): Promise<number> {
   return synced
 }
 
-// Reconcile 'processing' USER cash withdrawals against Binance's withdrawal
-// history. Completed sends flip to 'paid' (with the Binance tx id); failed ones
-// flip to 'failed'. The user's wallet entry is NOT touched here — it was
-// reserved at submit time and, if the send ultimately failed, already refunded
-// by the submit flow. This only keeps the admin's payout records truthful.
+// Reconcile 'processing' USER cash withdrawals against the payout rails:
+//   - Binance sends are checked against Binance's withdrawal history.
+//   - MTN MoMo sends are polled (GET /disbursement/v1_0/transfer/{referenceId}).
+// Completed sends flip to 'paid' (with the provider tx id); failed ones flip to
+// 'failed'. The user's wallet entry is NOT touched here — it was reserved at
+// submit time and, if the send ultimately failed, already refunded by the
+// original submission or callback. This only keeps the admin's payout records
+// truthful and catches a missed callback.
+// M-Pesa B2C has no public status query — the ResultURL callback settles it.
 export async function syncUserPayoutStatuses(): Promise<number> {
-  const processing = await db.payoutRequest.findMany({
-    where: { method: 'binance', status: 'processing', txHash: { not: null }, userId: { not: null } },
-    select: { id: true, txHash: true },
-  })
-  if (processing.length === 0) return 0
-
-  const byId = new Map<string, { status: number; statusDesc?: string; txId?: string }>()
-  try {
-    const records = await binanceWithdrawHistory(processing.length === 1 ? (processing[0].txHash as string) : undefined)
-    for (const r of records) {
-      if (r.id) byId.set(r.id, { status: r.status, statusDesc: r.statusDesc, txId: r.txId })
-    }
-    if (byId.size === 0) {
-      for (const r of await binanceWithdrawHistory()) {
-        if (r.id) byId.set(r.id, { status: r.status, statusDesc: r.statusDesc, txId: r.txId })
-      }
-    }
-  } catch {
-    return 0
-  }
+  const [binanceProcessing, momoProcessing] = await Promise.all([
+    db.payoutRequest.findMany({
+      where: { method: 'binance', status: 'processing', txHash: { not: null }, userId: { not: null } },
+      select: { id: true, txHash: true },
+    }),
+    db.payoutRequest.findMany({
+      where: { method: 'mtn_momo', status: 'processing', txHash: { not: null }, userId: { not: null } },
+      select: { id: true, userId: true, txHash: true, amount: true },
+    }),
+  ])
 
   let synced = 0
-  for (const payout of processing) {
-    const rec = byId.get(payout.txHash as string)
-    if (!rec) continue
 
-    if (rec.status === BINANCE_STATUS_COMPLETED) {
+  // ---- Binance ----
+  if (binanceProcessing.length > 0) {
+    const byId = new Map<string, { status: number; statusDesc?: string; txId?: string }>()
+    try {
+      const records = await binanceWithdrawHistory(binanceProcessing.length === 1 ? (binanceProcessing[0].txHash as string) : undefined)
+      for (const r of records) {
+        if (r.id) byId.set(r.id, { status: r.status, statusDesc: r.statusDesc, txId: r.txId })
+      }
+      if (byId.size === 0) {
+        for (const r of await binanceWithdrawHistory()) {
+          if (r.id) byId.set(r.id, { status: r.status, statusDesc: r.statusDesc, txId: r.txId })
+        }
+      }
+    } catch {
+      // skip — the next balance load retries
+    }
+
+    for (const payout of binanceProcessing) {
+      const rec = byId.get(payout.txHash as string)
+      if (!rec) continue
+
+      if (rec.status === BINANCE_STATUS_COMPLETED) {
+        await db.payoutRequest.update({
+          where: { id: payout.id },
+          data: { status: 'paid', paidAt: new Date(), txHash: rec.txId || payout.txHash },
+        })
+        synced++
+      } else if (BINANCE_STATUS_FAILED.includes(rec.status)) {
+        await db.payoutRequest.update({
+          where: { id: payout.id },
+          data: { status: 'failed', failureReason: `Binance: ${rec.statusDesc || `status ${rec.status}`}` },
+        })
+        synced++
+      }
+    }
+  }
+
+  // ---- MTN MoMo ----
+  for (const payout of momoProcessing) {
+    let status: Awaited<ReturnType<typeof momoTransferStatus>>
+    try {
+      status = await momoTransferStatus(payout.txHash as string)
+    } catch {
+      continue
+    }
+
+    if (status.status === 'SUCCESSFUL') {
       await db.payoutRequest.update({
         where: { id: payout.id },
-        data: { status: 'paid', paidAt: new Date(), txHash: rec.txId || payout.txHash },
+        data: { status: 'paid', paidAt: new Date(), txHash: status.financialTransactionId || payout.txHash },
       })
       synced++
-    } else if (BINANCE_STATUS_FAILED.includes(rec.status)) {
+    } else if (status.status === 'FAILED' || status.status === 'REJECTED' || status.status === 'ERROR') {
+      const reason = status.reasonMessage || status.reasonCode || status.status
       await db.payoutRequest.update({
         where: { id: payout.id },
-        data: { status: 'failed', failureReason: `Binance: ${rec.statusDesc || `status ${rec.status}`}` },
+        data: { status: 'failed', failureReason: `MTN MoMo: ${reason}` },
       })
+      // Return the reserved UGX to the user (idempotent by reference).
+      if (payout.userId) {
+        await depositCash({
+          userId: payout.userId,
+          asset: 'UGX',
+          amount: payout.amount,
+          reference: `refund_${payout.id}`,
+          memo: `Refund — MTN MoMo payout failed (${reason})`,
+        })
+      }
       synced++
     }
   }
+
   return synced
 }
 
