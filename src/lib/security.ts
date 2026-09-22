@@ -173,11 +173,17 @@ export function checkRateLimit(
 
 export function getClientIP(req: NextRequest): string {
   // Only trust forwarded headers when behind a verified reverse proxy.
-  // Use x-real-ip first (set by Caddy/nginx), then x-forwarded-for as fallback.
+  // x-real-ip (set by Caddy/nginx) is the most trustworthy; otherwise take the
+  // LAST entry of x-forwarded-for — the value appended by the edge proxy we
+  // are immediately behind — so clients cannot spoof an earlier entry to evade
+  // rate limits.
   const real = req.headers.get("x-real-ip")
   if (real) return real
   const forwarded = req.headers.get("x-forwarded-for")
-  if (forwarded) return forwarded.split(",")[0].trim()
+  if (forwarded) {
+    const parts = forwarded.split(",").map((s) => s.trim()).filter(Boolean)
+    if (parts.length) return parts[parts.length - 1]
+  }
   return "unknown"
 }
 

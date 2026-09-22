@@ -65,7 +65,7 @@ function permForAction(action: string): string | null {
     unban_user: 'users.write',
     bulk_action: 'users.write',
     set_user_role: 'users.admin',
-    reset_user_2fa: 'users.write',
+    reset_user_2fa: 'users.admin',
     force_logout: 'users.admin',
     delete_user: 'users.gdpr',
     set_subscription: 'users.admin',
@@ -1011,7 +1011,16 @@ async function handleSetUserRole(adminId: string, body: any) {
 async function handleResetUser2fa(adminId: string, body: any) {
   const { userId, reason } = body
   if (!userId) return errorResponse('userId required', 400)
-  const target = await db.user.update({
+  const target = await db.user.findUnique({ where: { id: userId }, select: { id: true, email: true, role: true } })
+  if (!target) return errorResponse('User not found', 404)
+  if (target.role === 'owner' || target.role === 'super_admin') {
+    return errorResponse('Cannot reset 2FA on a top-level account', 403)
+  }
+  const requester = await db.user.findUnique({ where: { id: adminId }, select: { role: true } })
+  if (adminCan(target.role, 'panel.access') && requester?.role !== 'super_admin' && requester?.role !== 'owner') {
+    return errorResponse('Only super_admin or owner can reset 2FA on staff accounts', 403)
+  }
+  const updated = await db.user.update({
     where: { id: userId },
     data: { twoFactorSecret: null, twoFactorEnabled: false },
     select: { id: true, email: true, twoFactorEnabled: true },
@@ -1023,7 +1032,7 @@ async function handleResetUser2fa(adminId: string, body: any) {
     actionUrl: '/settings',
   })
   await logAdminAction(adminId, 'RESET_USER_2FA', { targetUserId: userId, reason: reason || null })
-  return successResponse(target)
+  return successResponse(updated)
 }
 
 async function handleForceLogout(adminId: string, body: any) {

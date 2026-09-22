@@ -4,11 +4,9 @@ import { db } from '@/lib/db'
 import {
   CASH_ASSETS,
   CRYPTO_ASSETS,
-  depositCash,
   withdrawCash,
   creditCryptoDeposit,
   withdrawCrypto,
-  settleTrade,
   getWalletOverview,
   getTransactionHistory,
   getBalance,
@@ -81,13 +79,11 @@ export async function GET(request: NextRequest) {
 // row (user leg + house clearing leg). Network-side references are idempotent.
 //
 // Body: { action, ...params }
-//   deposit:  { asset, amount, memo? }
-//   withdraw: { asset, amount, memo? }
-//   crypto-credit:  { asset, amount, txHash }   (ADMIN ONLY — manual on-chain
+//   withdraw:        { asset, amount, memo? }
+//   crypto-credit:   { asset, amount, txHash }   (ADMIN ONLY — manual on-chain
 //                    deposit callback. Regular users deposit through the
 //                    NOWPayments flow instead.)
 //   crypto-withdraw: { asset, amount, toAddress }
-//   trade-settle:    { buyAsset, buyQty, sellAsset, sellCost, fee? }
 export async function POST(request: NextRequest) {
   try {
     const auth = await authenticateRequest(request, { id: true, role: true })
@@ -101,15 +97,6 @@ export async function POST(request: NextRequest) {
 
     let result: unknown
     switch (action) {
-      case 'deposit': {
-        result = await depositCash({
-          userId,
-          asset: String(asset || 'USD'),
-          amount,
-          memo: memo && typeof memo === 'string' ? memo : null,
-        })
-        break
-      }
       case 'withdraw': {
         result = await withdrawCash({
           userId,
@@ -138,17 +125,6 @@ export async function POST(request: NextRequest) {
           amount,
           toAddress: String(toAddress || ''),
           memo: memo && typeof memo === 'string' ? memo : null,
-        })
-        break
-      }
-      case 'trade-settle': {
-        result = await settleTrade({
-          userId,
-          buyAsset: String(body.buyAsset || ''),
-          buyQty: Number(body.buyQty || 0),
-          sellAsset: String(body.sellAsset || ''),
-          sellCost: Number(body.sellCost || 0),
-          fee: Number(body.fee || 0),
         })
         break
       }

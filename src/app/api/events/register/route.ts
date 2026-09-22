@@ -1,10 +1,13 @@
 import { NextRequest } from 'next/server'
-import { errorResponse, successResponse } from '@/lib/auth'
+import { getUserIdFromRequest, errorResponse, successResponse } from '@/lib/auth'
 import { EventService } from '@/lib/services/event-hub'
 
 // POST /api/events/register — register for an upcoming/live event
 export async function POST(request: NextRequest) {
   try {
+    const userId = getUserIdFromRequest(request)
+    if (!userId) return errorResponse('Unauthorized', 401)
+
     const body = await request.json()
     const { eventId } = body
     if (!eventId) return errorResponse('eventId is required', 400)

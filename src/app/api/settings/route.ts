@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
+import { verifyTotp } from '@/lib/totp'
 
 export async function GET(request: NextRequest) {
   try {
@@ -182,7 +183,22 @@ export async function PUT(request: NextRequest) {
     }
 
     if (section === 'security') {
-      const { twoFactorEnabled } = body
+      const { twoFactorEnabled, otp } = body
+
+      // Disabling 2FA is a sensitive downgrade — require a valid TOTP when the
+      // account actually has a secret. This stops a token theft from silently
+      // turning off the account's 2FA.
+      if (twoFactorEnabled === false) {
+        const user = await db.user.findUnique({
+          where: { id: userId },
+          select: { twoFactorSecret: true },
+        })
+        if (user?.twoFactorSecret) {
+          if (typeof otp !== 'string' || !verifyTotp(user.twoFactorSecret, otp)) {
+            return errorResponse('A valid authenticator code is required to disable 2FA', 400)
+          }
+        }
+      }
 
       const updatedUser = await db.user.update({
         where: { id: userId },

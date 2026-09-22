@@ -120,7 +120,7 @@ export function verifyToken(token: string): TokenPayload | null {
   try {
     if (!token || typeof token !== 'string') return null
     const secret = getJwtSecret()
-    const decoded = jwt.verify(token, secret) as jwt.JwtPayload
+    const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as jwt.JwtPayload
     if (!decoded || typeof decoded.userId !== 'string') return null
     return {
       userId: decoded.userId,

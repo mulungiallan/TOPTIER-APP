@@ -56,12 +56,3 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, error: 'Processing failed' }, { status: 500 })
   }
 }
-
-// GET is not part of the NOWPayments protocol but helps manual testing of the
-// webhook plumbing (security headers + middleware exemptions).
-export async function GET(request: NextRequest) {
-  const paymentId = request.nextUrl.searchParams.get('payment_id') || ''
-  if (!paymentId) return new Response('Missing payment_id', { status: 400 })
-  await reconcileCryptoDeposit(paymentId, null).catch(() => null)
-  return new Response('ok')
-}

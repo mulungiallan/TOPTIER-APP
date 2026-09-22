@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     let payload: { purpose?: string; email?: string }
     try {
-      payload = jwt.verify(token, getJwtSecret()) as { purpose?: string; email?: string }
+      payload = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as { purpose?: string; email?: string }
     } catch {
       return errorResponse('Invalid or expired reset token', 400)
     }
