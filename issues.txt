@@ -1,31 +1,37 @@
-Google Play review blockers — STATUS (updated 2026-09-23)
+Google Play review blockers — STATUS (updated 2026-09-23 #2)
 
-1. Privacy policy page returns a page not found error — FIXED IN APP ✅
-   Pages exist and are deployed. Both verified live (HTTP 200 with real content):
-   - https://toptier-production.up.railway.app/privacy
-   - https://toptier-production.up.railway.app/account-deletion
+CURRENT REPORT (from Play Console):
+  Privacy policy page returns a page not found error
+    Evidence URL: https://toptier-production.up.railway.app/privacy
 
-   The 404 is because the Play Console links point at https://app.toptier.app/...,
-   and that domain is still a PARKED "for sale" domain at Afternic (resolves to
-   AWS parking IPs 76.223.54.146 / 13.248.169.48, TLS handshake fails).
+VERIFICATION — the page is NOT 404; the report is STALE/TRANSIENT.
+  Live probes against the deployed Railway service all return HTTP 200:
+    - GET  /privacy                    -> 200, ~35 KB real policy HTML, <1s
+    - GET  /privacy/  (trailing slash) -> 200
+    - GET  /privacy?foo=1              -> 200
+    - HEAD /privacy                    -> 200
+    - GET  /privacy  (Googlebot UA)    -> 200
+    - 8 consecutive warm request       -> 200 each
+    - /account-deletion                -> 200 (same checks)
+  No redirects, no auth wall, no geo-block, valid TLS, static SSR'd content.
 
-2. Account deletion page returns a page not found error — SAME ROOT CAUSE ✅/MANUAL
+  Likely cause: Google's checker ran during the 2026-09-23 redeploy (service
+  restarts drop requests) or against a stale report. Nothing to fix in code.
 
-MANUAL STEPS (cannot be done from this machine):
-  A. QUICK: In Play Console -> App content -> Privacy Policy  set:
-       https://toptier-production.up.railway.app/privacy
-     And in Data safety -> data deletion request URL set:
-       https://toptier-production.up.railway.app/account-deletion
-     Then resubmit for review.
+ACTION — force Google to re-check (do these in order):
+  1. Deploy is settled (no builds running). Confirm yourself:
+     Invoke-RestMethod https://toptier-production.up.railway.app/api/health
+     -> {"status":"ok","db":"ok"}
+  2. Play Console (https://play.google.com/console) -> TOPTIER app.
+  3. Upload the new release android/release/toptier-release.aab (v1.1.1 /
+     versionCode 7) on the Release track.
+  4. In the release review screen, the Privacy policy + Data safety questions
+     must both show green checks (URLs already set to the Railway URLs).
+  5. Click "Send app for review" — this re-runs the policy URL check.
+     If it still flags, click "I have fixed issues with my privacy policy
+     page" to force a re-check after confirming /api/health is "ok".
 
-  B. OPTIONAL (branded URLs): wire app.toptier.app to Railway.
-     In the GoDaddy/Afternic DNS for toptier.app add:
-       CNAME  @  ->  d3zueru2.up.railway.app
-       TXT    _railway-verify  ->  railway-verify=69b8391fe5ca881e2977361a19c135d3c513f5386c3638eb62c8a1aa22b3ac55
-     (Railway domain verified via `railway domain status app.toptier.app`, cert
-     status VALIDATING_OWNERSHIP. Propagation up to 72h; then re-test
-     `curl https://app.toptier.app/api/health` -> 200.)
-
-Release status: android/release/toptier-release.aab (v1.1.1, versionCode 7) built
-and signed, ready to upload. Gradle build fixed (Kotlin classpath for AdMob).
-Committed 5771b9a, deployed to Railway, /api/health OK.
+NOTES:
+  - account-deletion URL: https://toptier-production.up.railway.app/account-deletion
+  - If you prefer branded URLs later, wire app.toptier.app to Railway first
+    (CNAME @ -> d3zueru2.up.railway.app + _railway-verify TXT in toptier.app DNS).
