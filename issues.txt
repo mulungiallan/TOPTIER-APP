@@ -1,0 +1,31 @@
+Google Play review blockers — STATUS (updated 2026-09-23)
+
+1. Privacy policy page returns a page not found error — FIXED IN APP ✅
+   Pages exist and are deployed. Both verified live (HTTP 200 with real content):
+   - https://toptier-production.up.railway.app/privacy
+   - https://toptier-production.up.railway.app/account-deletion
+
+   The 404 is because the Play Console links point at https://app.toptier.app/...,
+   and that domain is still a PARKED "for sale" domain at Afternic (resolves to
+   AWS parking IPs 76.223.54.146 / 13.248.169.48, TLS handshake fails).
+
+2. Account deletion page returns a page not found error — SAME ROOT CAUSE ✅/MANUAL
+
+MANUAL STEPS (cannot be done from this machine):
+  A. QUICK: In Play Console -> App content -> Privacy Policy  set:
+       https://toptier-production.up.railway.app/privacy
+     And in Data safety -> data deletion request URL set:
+       https://toptier-production.up.railway.app/account-deletion
+     Then resubmit for review.
+
+  B. OPTIONAL (branded URLs): wire app.toptier.app to Railway.
+     In the GoDaddy/Afternic DNS for toptier.app add:
+       CNAME  @  ->  d3zueru2.up.railway.app
+       TXT    _railway-verify  ->  railway-verify=69b8391fe5ca881e2977361a19c135d3c513f5386c3638eb62c8a1aa22b3ac55
+     (Railway domain verified via `railway domain status app.toptier.app`, cert
+     status VALIDATING_OWNERSHIP. Propagation up to 72h; then re-test
+     `curl https://app.toptier.app/api/health` -> 200.)
+
+Release status: android/release/toptier-release.aab (v1.1.1, versionCode 7) built
+and signed, ready to upload. Gradle build fixed (Kotlin classpath for AdMob).
+Committed 5771b9a, deployed to Railway, /api/health OK.
