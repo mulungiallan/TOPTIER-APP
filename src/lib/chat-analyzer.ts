@@ -134,6 +134,23 @@ const HF_MODELS = {
 // or return 503 under load, so they are last resorts.
 const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.6-flash']
 
+// OpenRouter fallback for structured extraction. Gemini free tier is region-
+// capped (503s from Railway egress); OpenRouter free models are region-agnostic.
+// Empirically verified 2026-09-24 to return parseable JSON:
+//  - nvidia/nemotron-3-super-120b-a12b:free  (HTTP 200, ~2.6s)
+//  - poolside/laguna-s-2.1:free              (HTTP 200, ~3.0s)
+const OPENROUTER_KEYS = [process.env.OPENROUTER_API_KEY, process.env.OPENROUTER_API_KEY_2]
+  .map((k) => (k || '').trim())
+  .filter(Boolean)
+const OPENROUTER_STRUCTURE_MODELS = [
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'poolside/laguna-s-2.1:free',
+  'nvidia/nemotron-3.5-lightning:free',
+  'inclusionai/ling-3.0-flash-fin:free',
+  'liquid/lfm-2.5-2.6b:free',
+  'z-ai/glm-5.2:free',
+]
+
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
 // ─── AMD (Accumulation · Manipulation · Distribution) rule engine ───────────
@@ -571,7 +588,92 @@ async function structureWithGemini(
     return JSON.parse(raw) as GeminiStructure
   }
 
+  // Gemini unavailable/quota-blocked: try OpenRouter free text models for the
+  // same structured extraction before giving up.
+  if (OPENROUTER_KEYS.length > 0) {
+    return structureWithOpenRouter(text, history)
+  }
+
   throw new Error('No Gemini model available')
+}
+
+async function structureWithOpenRouter(
+  text: string,
+  history: string[]
+): Promise<GeminiStructure> {
+  const historyBlock = history.length
+    ? `\n\nPrior messages in this thread, oldest first:\n${history.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
+    : ''
+
+  const prompt = `${GEMINI_SCHEMA_INSTRUCTIONS}${historyBlock}\n\nMessage to analyze:\n"""${text}"""`
+
+  const transientStatus = new Set([429, 500, 502, 503, 504])
+
+  for (const key of OPENROUTER_KEYS) {
+    for (const model of OPENROUTER_STRUCTURE_MODELS) {
+      let lastError: unknown = null
+
+      // Free-tier models are burst-limited (429) and occasionally return 200
+      // with empty content — both are transient, so we retry the same model
+      // before drifting to the next one.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 15_000)
+        // Jitter helps dodge the shared-egress free-tier rate bucket.
+        await new Promise((r) => setTimeout(r, 250 + Math.random() * 500))
+
+        try {
+          const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${key}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://app.toptier.app',
+              'X-Title': 'TOPTIER',
+            },
+            body: JSON.stringify({
+              model,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.1,
+              max_tokens: 512,
+            }),
+            signal: controller.signal,
+          })
+
+          if (res.ok) {
+            const json = (await res.json()) as {
+              choices?: Array<{ message?: { content?: string } }>
+            }
+            const raw = json?.choices?.[0]?.message?.content || ''
+            const cleaned = raw.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
+            if (!cleaned) {
+              lastError = new Error(`OpenRouter ${model} returned an empty response`)
+            } else {
+              const parsed = JSON.parse(cleaned) as GeminiStructure
+              if (parsed && (parsed.intent || parsed.topic)) return parsed
+              lastError = new Error(`OpenRouter ${model} returned an invalid structure`)
+            }
+            // Empty or invalid JSON = transient provider behaviour; retry up to 3.
+          } else {
+            lastError = new Error(`OpenRouter ${model} error: ${res.status}`)
+            if (!transientStatus.has(res.status)) break
+          }
+        } catch (err) {
+          lastError = err
+        } finally {
+          clearTimeout(timeout)
+        }
+
+        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)))
+      }
+
+      if (lastError) {
+        console.warn(`[chat-analyzer] OpenRouter ${model} failed:`, (lastError as Error).message)
+      }
+    }
+  }
+
+  throw new Error('No OpenRouter model available')
 }
 
 // ─── Claude fusion / explanation ────────────────────────────────────────────

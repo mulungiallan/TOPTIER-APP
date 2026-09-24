@@ -52,8 +52,24 @@ interface CacheEntry {
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 const HF_TOKEN = process.env.HF_TOKEN
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+// Multiple Gemini keys (free-tier keys share/flip quota quickly). Each key is
+// tried against every model; the first key+model that returns content wins.
+const GEMINI_API_KEYS = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3]
+  .map((k) => (k || '').trim())
+  .filter(Boolean)
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+// OpenRouter (region-agnostic, works from any server egress). Free vision
+// models require the `:free` suffix and $0 balance is fine. Availability
+// shifts, so we drift through the list. Empirically verified 2026-09-24:
+// `nex-agi/nex-n2.5-mini:free` returns 200 with content.
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+const OPENROUTER_MODELS = [
+  'nex-agi/nex-n2.5-mini:free',
+  'nex-agi/nex-n2.5-pro:free',
+  'qwen/qwen3.8-27b:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'stealth/space-bunny-alpha',
+]
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 const PROVIDER_TIMEOUT_MS = 20_000 // Per-provider cap so a hanging provider can't stall analysis
 const GEMINI_TIMEOUT_MS = 60_000 // Gemini image analysis can legitimately take 10-40s; don't abort it early
@@ -62,12 +78,11 @@ const GEMINI_TIMEOUT_MS = 60_000 // Gemini image analysis can legitimately take 
 const PRIMARY_VLM = 'llava-hf/llava-1.5-7b-hf'
 const BACKUP_VLM = 'llava-hf/llava-v1.6-mistral-7b-hf'
 
-// Google Gemini models (free tier). Order matters: the first model that returns
-// content wins. Empirically verified on 2026-09-04: `gemini-3.1-flash-lite`
-// returns HTTP 200 with content (~3.7s); `gemini-3.6-flash` and
-// `gemini-flash-latest` HANG/abort or return 503 (high demand), so they are
-// moved last. Older ids (2.0/1.5 flash) are retired for new accounts (404).
-const GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.6-flash']
+// Google Gemini models (free tier). Availability shifts by the minute with
+// 503 high-demand spikes and per-key quota exhaustion (429), so we try EVERY
+// configured key against EVERY model. Order reflects current reliability
+// (verified 2026-09-24: `gemini-3.6-flash` returns 200; the others spike 503).
+const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite']
 
 // Anthropic Claude vision model for the screenshot analyzer (AI vote #3).
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -164,10 +179,46 @@ export class ChartAnalyzer {
       return { ...cached.data, cached: true }
     }
 
-    // 2. Fast path: race the primary HF model and Gemini in parallel so the
-    //    first provider that returns a good result wins. This caps perceived
-    //    latency instead of waiting on a hanging provider.
+    // 2-4. Run the provider chain. Transient provider spikes (HF busy queue,
+    //     Gemini 503 overload, Claude credit blips) are common and usually
+    //     clear within seconds — give the chain ONE grace retry before
+    //     surrendering to the honest heuristic fallback.
+    let result: ChartAnalysisResult
+    try {
+      result = await this.tryProviders(imageBuffer)
+    } catch {
+      console.warn('[chart-analyzer] All AI providers failed on first pass; retrying once...')
+      await new Promise((r) => setTimeout(r, 3000))
+      try {
+        result = await this.tryProviders(imageBuffer)
+      } catch {
+        console.warn('[chart-analyzer] All AI providers failed on retry; using honest fallback.')
+        result = this.heuristicFallback(imageBuffer)
+      }
+    }
+
+    cache.set(cacheKey, { data: result, timestamp: Date.now() })
+    return result
+  }
+
+  /**
+   * Runs the full provider chain (HF primary → Gemini → HF backup → Claude)
+   * and returns the first good result. Throws if every provider fails so the
+   * caller can retry the whole chain before falling back.
+   */
+  private async tryProviders(imageBuffer: Buffer): Promise<ChartAnalysisResult> {
+    // Fast path: race the primary HF model and Gemini in parallel so the
+    // first provider that returns a good result wins. This caps perceived
+    // latency instead of waiting on a hanging provider.
     const fastPath: Promise<ChartAnalysisResult>[] = []
+    if (OPENROUTER_API_KEY) {
+      fastPath.push(
+        this.analyzeWithOpenRouter(imageBuffer).catch((err) => {
+          console.warn('[chart-analyzer] OpenRouter failed:', (err as Error).message)
+          throw err
+        })
+      )
+    }
     if (this.hf) {
       fastPath.push(
         this.analyzeWithHuggingFace(imageBuffer, PRIMARY_VLM).catch((err) => {
@@ -175,8 +226,13 @@ export class ChartAnalyzer {
           throw err
         })
       )
+      fastPath.push(
+        this.analyzeWithHfRouter(imageBuffer, PRIMARY_VLM).catch(() => {
+          throw new Error('Primary HF router failed')
+        })
+      )
     }
-    if (GEMINI_API_KEY) {
+    if (GEMINI_API_KEYS.length > 0) {
       fastPath.push(
         this.analyzeWithGemini(imageBuffer).catch((err) => {
           console.warn('[chart-analyzer] Gemini fallback failed:', (err as Error).message)
@@ -186,40 +242,45 @@ export class ChartAnalyzer {
     }
     if (fastPath.length > 0) {
       try {
-        const result = await this.firstSuccess(fastPath)
-        cache.set(cacheKey, { data: result, timestamp: Date.now() })
-        return result
+        return await this.firstSuccess(fastPath)
       } catch {
         console.warn('[chart-analyzer] All fast-path providers failed, trying backups...')
       }
     }
 
-    // 3. Try backup HF model
+    // Backup HF model (legacy endpoint, then router)
     if (this.hf) {
       try {
-        const result = await this.analyzeWithHuggingFace(imageBuffer, BACKUP_VLM)
-        cache.set(cacheKey, { data: result, timestamp: Date.now() })
-        return result
+        return await this.analyzeWithHuggingFace(imageBuffer, BACKUP_VLM)
       } catch (err) {
         console.warn('[chart-analyzer] Backup HF model failed:', (err as Error).message)
       }
+      try {
+        return await this.analyzeWithHfRouter(imageBuffer, BACKUP_VLM)
+      } catch (err) {
+        console.warn('[chart-analyzer] Backup HF router failed:', (err as Error).message)
+      }
     }
 
-    // 4. Try Anthropic Claude vision (acts as an independent AI vote)
+    // OpenRouter backup
+    if (OPENROUTER_API_KEY) {
+      try {
+        return await this.analyzeWithOpenRouter(imageBuffer)
+      } catch (err) {
+        console.warn('[chart-analyzer] OpenRouter backup failed:', (err as Error).message)
+      }
+    }
+
+    // Anthropic Claude vision (acts as an independent AI vote)
     if (ANTHROPIC_API_KEY) {
       try {
-        const result = await this.analyzeWithClaude(imageBuffer)
-        cache.set(cacheKey, { data: result, timestamp: Date.now() })
-        return result
+        return await this.analyzeWithClaude(imageBuffer)
       } catch (err) {
         console.warn('[chart-analyzer] Claude fallback failed:', (err as Error).message)
       }
     }
 
-    // 6. Final fallback: rule-based heuristic (honest "unable to analyze")
-    const fallback = this.heuristicFallback(imageBuffer)
-    cache.set(cacheKey, { data: fallback, timestamp: Date.now() })
-    return fallback
+    throw new Error('All AI providers failed')
   }
 
   /**
@@ -257,34 +318,206 @@ export class ChartAnalyzer {
     // HF SDK expects Blob (cross-runtime). Convert from Buffer.
     const blob = new Blob([new Uint8Array(optimized)], { type: 'image/jpeg' })
 
-    // Use the image-to-text endpoint for LLaVA vision-language model
-    const response = await this.withTimeout(
-      this.hf!.imageToText({
-        model,
-        data: blob,
-      }),
-      PROVIDER_TIMEOUT_MS,
-      `HF ${model}`
-    )
+    // Use the image-to-text endpoint for LLaVA vision-language model. HF free
+    // tier is queue-based: 503 "model busy" and connection blips are normal, so
+    // retry a few times with backoff before marking the provider failed.
+    let lastError: unknown = new Error('HF request not attempted')
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await this.withTimeout(
+          this.hf!.imageToText({
+            model,
+            data: blob,
+          }),
+          PROVIDER_TIMEOUT_MS,
+          `HF ${model}`
+        )
 
-    // LLaVA returns { generated_text: "..." } on the HF inference API
-    const rawText =
-      typeof response === 'string'
-        ? response
-        : (response as { generated_text?: string }).generated_text || JSON.stringify(response)
+        // LLaVA returns { generated_text: "..." } on the HF inference API
+        const rawText =
+          typeof response === 'string'
+            ? response
+            : (response as { generated_text?: string }).generated_text || JSON.stringify(response)
 
-    const parsed = this.parseVLMResponse(rawText)
+        const parsed = this.parseVLMResponse(rawText)
 
-    return {
-      ...parsed,
-      method: `Hugging Face ${model.split('/').pop()}`,
-      cost: '$0.00',
-      cached: false,
-      timestamp: new Date(),
+        return {
+          ...parsed,
+          method: `Hugging Face ${model.split('/').pop()}`,
+          cost: '$0.00',
+          cached: false,
+          timestamp: new Date(),
+        }
+      } catch (err) {
+        lastError = err
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
+        }
+      }
     }
+
+    throw lastError
   }
 
-  // ─── Private: Google Gemini Flash fallback ─────────────────────────────────
+  // ─── Private: Hugging Face Router (OpenAI-compatible) ─────────────────────
+
+  /**
+   * Modern HF inference path. The legacy `api-inference` serverless endpoint
+   * no longer hosts many free vision models ("No Inference Provider available"),
+   * so we ALSO try HF's Router (`router.huggingface.co/v1`, OpenAI-compatible)
+   * which can route to whatever provider is live for the model. Works with any
+   * HF token that has inference permissions.
+   */
+  private async analyzeWithHfRouter(
+    imageBuffer: Buffer,
+    model: string
+  ): Promise<ChartAnalysisResult> {
+    const optimized = await sharp(imageBuffer)
+      .resize(768, 768, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer()
+
+    const base64 = optimized.toString('base64')
+    monthlyRequestCount++
+
+    let lastError: unknown = new Error('HF router request not attempted')
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await this.withTimeout(
+          (async () => {
+            const res = await fetch('https://router.huggingface.co/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${HF_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model,
+                provider: { list: ['hf-inference'], fail_on_error: true },
+                messages: [
+                  {
+                    role: 'user',
+                    content: [
+                      { type: 'text', text: CHART_ANALYSIS_PROMPT },
+                      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+                    ],
+                  },
+                ],
+                max_tokens: 1024,
+                temperature: 0.2,
+              }),
+            })
+
+            if (!res.ok) {
+              throw new Error(`HF router error: ${res.status} ${(await res.text()).slice(0, 200)}`)
+            }
+            const json = (await res.json()) as {
+              choices?: Array<{ message?: { content?: string } }>
+            }
+            const text = json?.choices?.[0]?.message?.content || ''
+            if (!text.trim()) throw new Error('HF router returned an empty response')
+            return text
+          })(),
+          PROVIDER_TIMEOUT_MS,
+          `HF router ${model}`
+        )
+
+        const parsed = this.parseVLMResponse(response)
+        return {
+          ...parsed,
+          method: `Hugging Face Router (${model.split('/').pop()})`,
+          cost: '$0.00',
+          cached: false,
+          timestamp: new Date(),
+        }
+      } catch (err) {
+        lastError = err
+        if (attempt < 1) {
+          await new Promise((r) => setTimeout(r, 1500))
+        }
+      }
+    }
+
+    throw lastError
+  }
+
+  // ─── Private: OpenRouter (region-agnostic free vision models) ─────────────
+
+  /**
+   * OpenRouter Chat Completions with image support. Unlike Gemini's free tier,
+   * OpenRouter's free models are NOT region-capped, so they work reliably from
+   * Railway egress. Drifts through OPENROUTER_MODELS; first model that returns
+   * usable content wins.
+   */
+  private async analyzeWithOpenRouter(imageBuffer: Buffer): Promise<ChartAnalysisResult> {
+    const optimized = await sharp(imageBuffer)
+      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer()
+
+    const base64 = optimized.toString('base64')
+    let lastError: unknown = new Error('OpenRouter request not attempted')
+
+    for (const model of OPENROUTER_MODELS) {
+      try {
+        const response = await this.withTimeout(
+          (async () => {
+            const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://app.toptier.app',
+                'X-Title': 'TOPTIER',
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  {
+                    role: 'user',
+                    content: [
+                      { type: 'text', text: CHART_ANALYSIS_PROMPT },
+                      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+                    ],
+                  },
+                ],
+                temperature: 0.2,
+                max_tokens: 1024,
+              }),
+            })
+
+            if (!res.ok) {
+              throw new Error(`OpenRouter error: ${res.status} ${(await res.text()).slice(0, 200)}`)
+            }
+            const json = (await res.json()) as {
+              choices?: Array<{ message?: { content?: string } }>
+            }
+            const text = json?.choices?.[0]?.message?.content || ''
+            if (!text.trim()) throw new Error(`OpenRouter ${model} returned an empty response`)
+            return text
+          })(),
+          GEMINI_TIMEOUT_MS,
+          `OpenRouter ${model}`
+        )
+
+        const parsed = this.parseVLMResponse(response)
+        return {
+          ...parsed,
+          method: `OpenRouter (${model.split('/').pop()})`,
+          cost: '$0.00',
+          cached: false,
+          timestamp: new Date(),
+        }
+      } catch (err) {
+        // 429/503 = capacity — try the next free model shortly after. Unrecoverable
+        // errors just move on; the backup chain handles the truly catastrophic case.
+        lastError = err
+        await new Promise((r) => setTimeout(r, 800 + Math.random() * 400))
+      }
+    }
+
+    throw lastError
+  }
 
   private async analyzeWithGemini(imageBuffer: Buffer): Promise<ChartAnalysisResult> {
     const optimized = await sharp(imageBuffer)
@@ -294,99 +527,102 @@ export class ChartAnalyzer {
 
     const base64 = optimized.toString('base64')
 
-    // Try newer model first, older model as fallback (region availability).
-    // Transient errors (network blips, 429/5xx overload) should not abort the
-    // whole provider — keep trying the remaining models so a temporary 503 on
-    // one model doesn't force us down to the heuristic fallback.
+    // Transient errors (network blips, 429 rate-limit/quota, 5xx overload)
+    // should not abort the provider — keep trying the remaining keys/models so
+    // a temporary 429/503 on one doesn't force us down to the heuristic.
     const transientStatus = new Set([429, 500, 502, 503, 504])
+    const REST_MS = [2500, 4500, 6500, 8500] // patient spacing rides out 503 spikes
 
-    for (const model of GEMINI_MODELS) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-      const body = JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: CHART_ANALYSIS_PROMPT },
-              { inline_data: { mime_type: 'image/jpeg', data: base64 } },
-            ],
-          },
-        ],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
-      })
+    // Every configured key, then every model on that key. The first key+model
+    // that returns usable content wins, so a single drained key can't take the
+    // whole provider down.
+    for (const apiKey of GEMINI_API_KEYS) {
+      for (const model of GEMINI_MODELS) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+        const body = JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: CHART_ANALYSIS_PROMPT },
+                { inline_data: { mime_type: 'image/jpeg', data: base64 } },
+              ],
+            },
+          ],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+        })
 
-      // Up to 2 extra retries on network/transient failures per model.
-      let lastError: unknown = null
-      let response: Response | null = null
+        // Up to 4 retries on network/transient failures per key+model. A large
+        // base delay with jitter spreads requests so a short capacity spike
+        // (503) or per-minute rate limit (429) has time to clear.
+        let lastError: unknown = null
+        let response: Response | null = null
 
-      for (let attempt = 0; attempt < 2 && !response; attempt++) {
-        // AbortController guard so a provider that hangs (never responds) can't
-        // stall the whole fallback chain. Falls through to the next model/etc.
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
+        for (let attempt = 0; attempt < 4 && !response; attempt++) {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
 
-        try {
-          // Send the key as a query param (`?key=`), NOT the header. Some keys
-          // only authenticate via the query string and hang on the
-          // `x-goog-api-key` header, which would stall analysis indefinitely.
-          let res = await fetch(`${url}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body,
-            signal: controller.signal,
-          })
+          try {
+            // Key as a query param (`?key=`), NOT the header — some keys only
+            // authenticate via the query string.
+            let res = await fetch(`${url}?key=${apiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body,
+              signal: controller.signal,
+            })
 
-          // 404 = model unavailable — move on to the next model, no retry.
-          if (res.status === 404) break
+            // 404 = model unavailable — move on to the next model/key, no retry.
+            if (res.status === 404) break
 
-          // Transient / overload: keep this response but try again next loop
-          // if we still don't have a good one.
-          if (res.ok) {
-            response = res
-            break
+            if (res.ok) {
+              response = res
+              break
+            }
+            // Transient (429/5xx): retry this key+model.
+            if (transientStatus.has(res.status)) {
+              lastError = new Error(`Gemini API error: ${res.status}`)
+            } else {
+              // Unrecoverable auth/validation error — try the next key/model.
+              lastError = new Error(`Gemini API error: ${res.status}`)
+              break
+            }
+          } catch (err) {
+            // fetch failed (network, DNS, TLS, proxy, or AbortController timeout)
+            lastError = err
+          } finally {
+            clearTimeout(timeout)
           }
-          if (transientStatus.has(res.status)) {
-            lastError = new Error(`Gemini API error: ${res.status}`)
-          } else {
-            // Unrecoverable auth/validation error — try the next model.
-            lastError = new Error(`Gemini API error: ${res.status}`)
-            break
+
+          if (attempt < 4) {
+            const delay = REST_MS[attempt] * (0.7 + Math.random() * 0.6)
+            await new Promise((r) => setTimeout(r, delay))
           }
-        } catch (err) {
-          // fetch failed (network, DNS, TLS, proxy, or AbortController timeout)
-          // — retry the request.
-          lastError = err
-        } finally {
-          clearTimeout(timeout)
         }
 
-        if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+        if (!response) {
+          if (lastError) console.warn(`[chart-analyzer] Gemini ${model} failed:`, (lastError as Error).message)
+          continue
         }
-      }
 
-      if (!response) {
-        if (lastError) console.warn(`[chart-analyzer] Gemini ${model} failed:`, (lastError as Error).message)
-        continue
-      }
+        const json = (await response.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+        }
+        const text =
+          json?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim() || ''
 
-      const json = (await response.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-      }
-      const text =
-        json?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim() || ''
+        if (!text) {
+          console.warn(`[chart-analyzer] Gemini ${model} returned an empty response`)
+          continue
+        }
 
-      if (!text) {
-        console.warn(`[chart-analyzer] Gemini ${model} returned an empty response`)
-        continue
-      }
-
-      const parsed = this.parseVLMResponse(text)
-      return {
-        ...parsed,
-        method: `Gemini Flash (${model})`,
-        cost: '$0.00',
-        cached: false,
-        timestamp: new Date(),
+        const parsed = this.parseVLMResponse(text)
+        return {
+          ...parsed,
+          method: `Gemini Flash (${model})`,
+          cost: '$0.00',
+          cached: false,
+          timestamp: new Date(),
+        }
       }
     }
 
