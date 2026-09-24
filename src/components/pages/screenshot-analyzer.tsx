@@ -873,13 +873,6 @@ export function ScreenshotAnalyzer() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pageTopRef = useRef<HTMLDivElement>(null)
 
-  // Wake the server while the user is still picking an image. Railway sleeps
-  // idle containers; this background health ping makes the FIRST analysis of a
-  // session start warm instead of paying a 15-60s cold boot on the user's dime.
-  useEffect(() => {
-    fetch('/api/health').catch(() => {})
-  }, [])
-
   const freeAnalysesUsed = analysisCount
   const freeLimitReached = false // analyzer is free & unlimited (ad-supported)
 

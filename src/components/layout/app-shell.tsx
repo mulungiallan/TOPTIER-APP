@@ -457,6 +457,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     document.documentElement.dir = isRTL(locale) ? 'rtl' : 'ltr'
   }, [locale])
 
+  // Wake the sleeping Railway container the moment the app opens, so the user's
+  // first action (chart analysis or anything else) never pays the cold boot.
+  React.useEffect(() => {
+    fetch('/api/health', { cache: 'no-store' }).catch(() => {})
+  }, [])
+
   // Native (Android) hardware back button → in-app navigation back when there is
   // history, otherwise background the app (standard Android behaviour).
   React.useEffect(() => {
