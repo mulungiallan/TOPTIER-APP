@@ -11,6 +11,22 @@ export async function register() {
     const { db } = await import("./lib/db");
     const { closeSocketServer } = await import("./lib/socket-server");
 
+    // Self-heal: keep the app admin account elevated. Railway's start command
+    // can drift from repo config, so this runs inside the server process at
+    // every boot to guarantee admin@toptier.app holds the super_admin role.
+    try {
+      const adminUser = await db.user.findUnique({ where: { email: "admin@toptier.app" } });
+      if (adminUser && adminUser.role !== "super_admin") {
+        const updated = await db.user.update({
+          where: { id: adminUser.id },
+          data: { role: "super_admin", isEmailVerified: true },
+        });
+        console.log(`[self-heal] elevated admin role to ${updated.role}`);
+      }
+    } catch (err) {
+      console.warn("[self-heal] admin elevation check skipped:", (err as Error).message);
+    }
+
     let shuttingDown = false;
     const shutdown = async (signal: string) => {
       if (shuttingDown) return;
