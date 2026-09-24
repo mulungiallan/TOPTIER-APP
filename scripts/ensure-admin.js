@@ -69,7 +69,7 @@ async function main() {
     }
 
     const verified = await prisma.user.findUnique({ where: { email: adminEmail } })
-    if (!verified || verified.role !== 'admin') {
+    if (!verified || verified.role !== 'super_admin') {
       throw new Error('Failed to verify admin account after ensure-admin ran')
     }
   } finally {

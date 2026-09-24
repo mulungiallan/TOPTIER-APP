@@ -28,7 +28,7 @@ param(
 
     [string]$PythonPath = "python",
 
-    [string]$Host = "127.0.0.1"
+    [string]$BindHost = "127.0.0.1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +39,8 @@ $EngineDir = Join-Path $ScriptDir "mt5_trading_bot"
 $ServiceDir = Join-Path $ScriptDir "mini-services\bot"
 if (-not (Test-Path $EngineDir)) { $EngineDir = Join-Path (Split-Path $ScriptDir -Parent) "mt5_trading_bot" }
 if (-not (Test-Path $ServiceDir)) { $ServiceDir = Join-Path (Split-Path $ScriptDir -Parent) "mini-services\bot" }
+if (-not (Test-Path $EngineDir)) { $EngineDir = Join-Path (Split-Path (Split-Path $ScriptDir -Parent) -Parent) "mt5_trading_bot" }
+if (-not (Test-Path $ServiceDir)) { $ServiceDir = Join-Path (Split-Path (Split-Path $ScriptDir -Parent) -Parent) "mini-services\bot" }
 
 if (-not (Test-Path $EngineDir)) { throw "Engine directory not found: $EngineDir" }
 if (-not (Test-Path $ServiceDir)) { throw "Service directory not found: $ServiceDir" }
@@ -69,7 +71,7 @@ $EnvFile = Join-Path $ServiceDir ".env"
 $envText = @"
 # Written by deploy/bot/install.ps1
 BOT_SERVICE_KEY=$ServiceKey
-BOT_SERVICE_HOST=$Host
+BOT_SERVICE_HOST=$BindHost
 BOT_SERVICE_PORT=$Port
 BOT_ENGINE_DIR=$EngineDir
 BOT_DATA_DIR=$(Join-Path $ServiceDir "data")
@@ -82,7 +84,7 @@ if (-not $InstallService -or $NoService) {
     Write-Host "`n[3/3] Not installing a service. Run manually from $ServiceDir :"
     Write-Host ""
     Write-Host "    set BOT_SERVICE_KEY=$ServiceKey"
-    Write-Host "    & '$PythonPath' -m uvicorn server:app --host $Host --port $Port"
+    Write-Host "    & '$PythonPath' -m uvicorn server:app --host $BindHost --port $Port"
     Write-Host ""
     Write-Host "Done."
     exit 0
@@ -110,11 +112,11 @@ if (-not $PyReal) { $PyReal = $PythonPath }
 
 & $Nssm stop ToptierBot 2>$null | Out-Null
 & $Nssm remove ToptierBot confirm 2>$null | Out-Null
-& $Nssm install ToptierBot $PyReal "-m uvicorn server:app --host $Host --port $Port"
-if ($LASTEXITCODE -ne 0) { throw "NSSM install failed." }
-& $Nssm set ToptierBot AppDirectory $ServiceDir
-& $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_KEY=$ServiceKey
-& $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_HOST=$Host
+& $Nssm install ToptierBot $PyReal "-m uvicorn server:app --host $BindHost --port $Port"
+    if ($LASTEXITCODE -ne 0) { throw "NSSM install failed." }
+    & $Nssm set ToptierBot AppDirectory $ServiceDir
+    & $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_KEY=$ServiceKey
+    & $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_HOST=$BindHost
 & $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_PORT=$Port
 & $Nssm set ToptierBot AppEnvironmentExtra BOT_ENGINE_DIR=$EngineDir
 & $Nssm set ToptierBot AppEnvironmentExtra BOT_DATA_DIR=$(Join-Path $ServiceDir "data")
