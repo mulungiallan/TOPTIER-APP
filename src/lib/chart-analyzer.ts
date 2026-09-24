@@ -73,6 +73,7 @@ const OPENROUTER_MODELS = [
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 const PROVIDER_TIMEOUT_MS = 20_000 // Per-provider cap so a hanging provider can't stall analysis
 const GEMINI_TIMEOUT_MS = 60_000 // Gemini image analysis can legitimately take 10-40s; don't abort it early
+const OPENROUTER_TIMEOUT_MS = 20_000 // Free OpenRouter models either answer in ~3-8s or hang; don't stall the leg on a hanged free model
 
 // Vision-Language Models on Hugging Face (all free with HF token)
 const PRIMARY_VLM = 'llava-hf/llava-1.5-7b-hf'
@@ -457,8 +458,13 @@ export class ChartAnalyzer {
 
     const base64 = optimized.toString('base64')
     let lastError: unknown = new Error('OpenRouter request not attempted')
+    const legStartedAt = Date.now()
 
     for (const model of OPENROUTER_MODELS) {
+      // Hard deadline for the whole OpenRouter leg: even a 429/empty-content
+      // storm must not stretch perceived latency beyond this window.
+      if (Date.now() - legStartedAt > 25_000) break
+
       try {
         const response = await this.withTimeout(
           (async () => {
@@ -496,7 +502,7 @@ export class ChartAnalyzer {
             if (!text.trim()) throw new Error(`OpenRouter ${model} returned an empty response`)
             return text
           })(),
-          GEMINI_TIMEOUT_MS,
+          OPENROUTER_TIMEOUT_MS,
           `OpenRouter ${model}`
         )
 

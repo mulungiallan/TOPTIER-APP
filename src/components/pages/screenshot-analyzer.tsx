@@ -845,6 +845,17 @@ export function ScreenshotAnalyzer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analyzeMs, setAnalyzeMs] = useState(0)
+  const analyzeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Stop the elapsed timer the moment analysis ends, regardless of which path
+  // (success/error) flipped the flag.
+  useEffect(() => {
+    if (!isAnalyzing && analyzeTimerRef.current) {
+      clearInterval(analyzeTimerRef.current)
+      analyzeTimerRef.current = null
+    }
+  }, [isAnalyzing])
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [history, setHistory] = useState<AnalysisResult[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -861,6 +872,13 @@ export function ScreenshotAnalyzer() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pageTopRef = useRef<HTMLDivElement>(null)
+
+  // Wake the server while the user is still picking an image. Railway sleeps
+  // idle containers; this background health ping makes the FIRST analysis of a
+  // session start warm instead of paying a 15-60s cold boot on the user's dime.
+  useEffect(() => {
+    fetch('/api/health').catch(() => {})
+  }, [])
 
   const freeAnalysesUsed = analysisCount
   const freeLimitReached = false // analyzer is free & unlimited (ad-supported)
@@ -904,22 +922,74 @@ export function ScreenshotAnalyzer() {
   }, [fetchHistory])
 
   // Handle file selection
-  const handleFileSelect = useCallback((file: File) => {
-    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'application/pdf']
-    if (!validTypes.includes(file.type)) {
-      toast.error('Unsupported format. Please use PNG, JPG, JPEG, PDF, or WEBP.')
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File too large. Maximum size is 10MB.')
-      return
-    }
-
-    setSelectedFile(file)
-    const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
-    setAnalysisResult(null)
+  // Shrink large screenshots before upload: a 12MP phone shot is megabytes of
+  // mobile-data payload for zero analytical value — the server resizes to 1024px
+  // anyway. Anything <=1000KB or already under 1200px is passed through untouched.
+  const downscaleImage = useCallback((file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      if (file.size < 1000 * 1024) return resolve(file)
+      const url = URL.createObjectURL(file)
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 1200
+        const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight))
+        if (scale >= 1) {
+          URL.revokeObjectURL(url)
+          return resolve(file)
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          URL.revokeObjectURL(url)
+          return resolve(file)
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(url)
+            if (blob) {
+              resolve(new File([blob], file.name.replace(/\.(png|webp)$/i, '.jpg'), { type: 'image/jpeg' }))
+            } else {
+              resolve(file)
+            }
+          },
+          'image/jpeg',
+          0.85
+        )
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        resolve(file)
+      }
+      img.src = url
+    })
   }, [])
+
+  const handleFileSelect = useCallback(
+    async (file: File) => {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'application/pdf']
+      if (!validTypes.includes(file.type)) {
+        toast.error('Unsupported format. Please use PNG, JPG, JPEG, PDF, or WEBP.')
+        return
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('File too large. Maximum size is 10MB.')
+        return
+      }
+
+      const ready = await downscaleImage(file)
+      setSelectedFile(ready)
+      const url = URL.createObjectURL(ready)
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return url
+      })
+      setAnalysisResult(null)
+    },
+    [downscaleImage]
+  )
 
   // Open the crop dialog for a given file
   const openCropFor = useCallback((file: File) => {
@@ -981,6 +1051,9 @@ export function ScreenshotAnalyzer() {
     setPendingAnalyze(false)
     setIsAnalyzing(true)
     setAnalysisResult(null)
+    setAnalyzeMs(0)
+    if (analyzeTimerRef.current) clearInterval(analyzeTimerRef.current)
+    analyzeTimerRef.current = setInterval(() => setAnalyzeMs((m) => m + 100), 100)
 
     const mapResult = (d: Record<string, unknown>): AnalysisResult => ({
       id: (d.id as string) || 'api-1',
@@ -1333,6 +1406,9 @@ export function ScreenshotAnalyzer() {
                         <p className="text-lg font-semibold">Analyzing your chart with AI...</p>
                         <p className="text-sm text-muted-foreground mt-1">
                           Detecting patterns, support/resistance levels, and signals
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2 font-mono">
+                          {(analyzeMs / 1000).toFixed(1)}s elapsed — typically 3–8s
                         </p>
                       </div>
                       <div className="flex gap-1">
