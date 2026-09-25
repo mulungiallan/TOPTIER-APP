@@ -32,6 +32,12 @@ const PROD_IDS = {
 
 export const AD_UNIT_IDS = IS_PROD ? PROD_IDS : TEST_IDS;
 
+// Master switch: when NEXT_PUBLIC_ADMOB_DISABLED=true, the native AdMob
+// plugin is NEVER touched (no AdMobPlus.start(), no banner/interstitial/
+// rewarded calls). Used to ship a crash-free build while the alpha plugin
+// (@admob-plus/capacitor 2.0.0-alpha.4) is incompatible with this runtime.
+const ADMOB_DISABLED = process.env.NEXT_PUBLIC_ADMOB_DISABLED === 'true';
+
 // ---------------------------------------------------------------------------
 // Distribution rules — in-app gating layered on top of AdMob's caps.
 // Persisted to localStorage so limits survive app restarts.
@@ -94,15 +100,18 @@ function getBannerAd(): BannerAd {
 let initialized = false;
 
 export async function initAds(): Promise<void> {
-  if (!Capacitor.isNativePlatform() || initialized) return;
+  if (!Capacitor.isNativePlatform() || initialized || ADMOB_DISABLED) return;
 
-  await AdMobPlus.start();
-  if (!IS_PROD) {
-    // Expose test device IDs so taps never count as invalid traffic.
-    await AdMobPlus.configRequest({ testDeviceIds: [] }).catch(() => {});
+  try {
+    await AdMobPlus.start();
+    if (!IS_PROD) {
+      // Expose test device IDs so taps never count as invalid traffic.
+      await AdMobPlus.configRequest({ testDeviceIds: [] }).catch(() => {});
+    }
+    initialized = true;
+  } catch {
+    // A native ad SDK failure must NEVER take down the app.
   }
-
-  initialized = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +119,7 @@ export async function initAds(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function showBanner(): Promise<void> {
-  if (!Capacitor.isNativePlatform() || getIsPremium()) return;
+  if (!Capacitor.isNativePlatform() || ADMOB_DISABLED || getIsPremium()) return;
   try {
     await getBannerAd().show();
   } catch {
@@ -119,7 +128,7 @@ export async function showBanner(): Promise<void> {
 }
 
 export async function hideBanner(): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+  if (!Capacitor.isNativePlatform() || ADMOB_DISABLED) return;
   try {
     await bannerAd?.hide();
   } catch {
@@ -132,7 +141,7 @@ export async function hideBanner(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function maybeShowInterstitialOnTransition(currentPath: string): Promise<boolean> {
-  if (!Capacitor.isNativePlatform() || getIsPremium()) return false;
+  if (!Capacitor.isNativePlatform() || ADMOB_DISABLED || getIsPremium()) return false;
   if (INTERSTITIAL_BLOCKED_ROUTES.some((p) => currentPath.startsWith(p))) return false;
 
   const timing = loadTiming();
@@ -163,7 +172,7 @@ export interface RewardedResult {
 
 export async function showRewardedForAnalysisUnlock(): Promise<RewardedResult> {
   if (getIsPremium()) return { watched: false, rewarded: true };
-  if (!Capacitor.isNativePlatform()) return { watched: false, rewarded: false };
+  if (!Capacitor.isNativePlatform() || ADMOB_DISABLED) return { watched: false, rewarded: false };
 
   try {
     const ad = new RewardedAd({ adUnitId: AD_UNIT_IDS.rewarded });

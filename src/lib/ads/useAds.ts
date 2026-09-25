@@ -9,6 +9,7 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { useStore } from '@/lib/store';
 import {
   initAds,
   showBanner,
@@ -19,6 +20,15 @@ import {
   registerPremiumStatusGetter,
   type RewardedResult,
 } from './adMobService';
+
+const INTERSTITIAL_BLOCKED_PAGES = ['login', 'register', 'onboarding', 'privacy', 'terms'];
+
+const INTERSTITIAL_BLOCKED_ROUTE_PREFIXES = ['/trade/execute', '/trade/confirm', '/positions/'];
+
+function isBlockedTransition(pageOrPath: string): boolean {
+  if (INTERSTITIAL_BLOCKED_PAGES.includes(pageOrPath)) return true;
+  return INTERSTITIAL_BLOCKED_ROUTE_PREFIXES.some((p) => pageOrPath.startsWith(p));
+}
 
 /**
  * Call this once near the root of the app (e.g. in client-providers.tsx),
@@ -59,10 +69,32 @@ export function useInterstitialOnRouteChange() {
 
   useEffect(() => {
     if (previousPath.current !== null && previousPath.current !== pathname) {
-      maybeShowInterstitialOnTransition(pathname);
+      if (!isBlockedTransition(pathname)) {
+        maybeShowInterstitialOnTransition(pathname);
+      }
     }
     previousPath.current = pathname;
   }, [pathname]);
+}
+
+/**
+ * The app is a client-side page state machine (store.currentPage), so the URL
+ * never changes on native. This hook fires the interstitial on actual page
+ * changes instead — the surface that makes AdMob interstitials effective in
+ * the Capacitor WebView. Mount once near the root alongside the route hook.
+ */
+export function useInterstitialOnPageChange() {
+  const currentPage = useStore((s) => s.currentPage);
+  const previousPage = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (previousPage.current !== null && previousPage.current !== currentPage) {
+      if (!isBlockedTransition(currentPage)) {
+        maybeShowInterstitialOnTransition(currentPage);
+      }
+    }
+    previousPage.current = currentPage;
+  }, [currentPage]);
 }
 
 /**
