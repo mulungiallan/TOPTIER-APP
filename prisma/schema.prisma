@@ -120,6 +120,7 @@ model User {
   botConnections BotConnection[]
   botInstances   BotInstance[]
   botTrades      BotTrade[]
+  botSnapshots   BotSnapshot[]
   botSettlements BotProfitShare[]
 
   // ─── App usage tracking ────────────────────────────────────────────────
@@ -1138,9 +1139,30 @@ model BotInstance {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  snapshots BotSnapshot[]
+
   @@index([connectionId])
   @@index([userId, status])
   @@index([shouldRun])
+}
+
+model BotSnapshot {
+  id         String      @id @default(cuid())
+  instanceId String
+  instance   BotInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  equity        Float?
+  balance       Float?
+  currency      String?
+  positionCount Int
+  openPl        Float
+  snapshot      String? // full dashboard snapshot JSON
+  createdAt     DateTime @default(now())
+
+  @@index([instanceId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model BotTrade {

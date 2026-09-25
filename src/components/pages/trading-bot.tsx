@@ -37,6 +37,7 @@ import {
   AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { AccountTierInfo } from '@/lib/account-tiers'
@@ -111,6 +112,15 @@ function liveSigned(v: number | null): string {
   return v == null ? '—' : `${(v >= 0 ? '+' : '')}${v.toFixed(2)}`
 }
 
+interface TelemetryPoint {
+  t: string
+  equity: number | null
+  balance: number | null
+  positionCount: number
+  openPl: number
+  currency: string | null
+}
+
 interface BotInstance {
   id: string
   status: string
@@ -172,6 +182,7 @@ export function TradingBotPage() {
   const [instanceDetail, setInstanceDetail] = useState<{ snapshot: any; logs: string[]; online: boolean } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BotConnection | null>(null)
   const [settling, setSettling] = useState<string | null>(null)
+  const [monitorConnId, setMonitorConnId] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     platform: 'mt5',
@@ -227,6 +238,16 @@ export function TradingBotPage() {
     const t = setInterval(() => { fetchAll() }, 15000)
     return () => clearInterval(t)
   }, [hasRunning, fetchAll])
+
+  // Default the Live Monitor to a running connection, else the first one.
+  useEffect(() => {
+    const cons = overview?.connections
+    if (!cons?.length) return
+    setMonitorConnId((prev) => {
+      if (prev && cons.some((c) => c.id === prev)) return prev
+      return (cons.find((c) => c.runningInstance) ?? cons[0]).id
+    })
+  }, [overview])
 
   const handleLink = async () => {
     if (!form.label || !form.login || !form.password || !form.server) {
@@ -357,6 +378,7 @@ export function TradingBotPage() {
   }
 
   const totals = overview?.totals
+  const monitorConn = overview?.connections?.find((c) => c.id === monitorConnId) ?? overview?.connections?.[0] ?? null
   const running = overview?.connections?.filter((c) => c.runningInstance).length ?? 0
   const due = overview?.connections?.reduce((a, c) => a + (c.summary?.dueAmount ?? 0), 0) ?? 0
   const realized = overview?.connections?.reduce((a, c) => a + (c.summary?.realizedPnl ?? 0), 0) ?? 0
@@ -468,6 +490,40 @@ export function TradingBotPage() {
                   settling={settling === conn.id}
                 />
               ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="h-4 w-4 text-[#1b4f9c]" /> Live Monitor
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(overview?.connections?.length ?? 0) > 1 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {overview?.connections?.map((c) => {
+                    const active = (monitorConn?.id ?? overview?.connections?.[0]?.id) === c.id
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setMonitorConnId(c.id)}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                          active
+                            ? 'border-[#1b4f9c]/40 bg-[#1b4f9c]/10 text-[#1b4f9c]'
+                            : 'border-border text-muted-foreground hover:bg-accent'
+                        )}
+                      >
+                        <Bot className="size-3.5" />
+                        {c.label}
+                        {c.runningInstance && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              <LiveMonitorPanel key={monitorConn?.id ?? 'none'} conn={monitorConn} />
             </CardContent>
           </Card>
 
@@ -817,6 +873,242 @@ export function TradingBotPage() {
   )
 }
 
+function LiveMonitorPanel({ conn }: { conn: BotConnection | null }) {
+  const [inst, setInst] = useState<{ snapshot: any; logs: string[]; online: boolean } | null>(null)
+  const [series, setSeries] = useState<TelemetryPoint[]>([])
+  const [timeline, setTimeline] = useState<BotTrade[]>([])
+  const logRef = useRef<HTMLDivElement>(null)
+
+  const id = conn?.instances?.[0]?.id
+
+  useEffect(() => {
+    if (!id || !conn) return
+    let cancelled = false
+    const loadAll = async () => {
+      try {
+        const [detail, telemetry, trades] = await Promise.all([
+          api.get<{ success: boolean; data: { snapshot: any; logs: string[]; online: boolean } }>(`/bot/instances/${id}?tail=200`),
+          api.get<{ success: boolean; data: { series: TelemetryPoint[] } }>(`/bot/telemetry?connectionId=${conn.id}&limit=400`),
+          api.get<{ success: boolean; data: { trades: BotTrade[] } }>(`/bot/trades?connectionId=${conn.id}&timeline=1&limit=100`),
+        ])
+        if (cancelled) return
+        setInst(detail?.data ?? null)
+        setSeries(telemetry?.data?.series ?? [])
+        setTimeline(trades?.data?.trades ?? [])
+      } catch {
+        // keep the previous state; the next tick re-tries
+      }
+    }
+    loadAll()
+    const t = setInterval(loadAll, 10000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [id, conn])
+
+  useEffect(() => {
+    const el = logRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [inst?.logs])
+
+  if (!conn || !id) {
+    return <p className="text-sm text-muted-foreground text-center py-8">Link a MetaTrader account and start the bot to monitor it here.</p>
+  }
+
+  const snap = inst?.snapshot as (Record<string, any> | null) | null
+  const positions: { symbol?: string; direction?: string; volume?: number; profit?: number }[] = snap && Array.isArray(snap.open_positions) ? snap.open_positions : []
+  const openPl = positions.reduce((sum, p) => sum + (Number(p.profit) || 0), 0)
+  const overall = snap?.overall_stats as (LiveOverallStats | null) | null
+  const currency: string | null = typeof snap?.currency === 'string' ? snap.currency : (series[series.length - 1]?.currency ?? null)
+  const chartData = series.map((p) => ({
+    time: new Date(p.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    equity: p.equity,
+    balance: p.balance,
+  }))
+
+  return (
+    <div className="space-y-3">
+      {inst && !inst.online && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-300/50 bg-amber-50 dark:bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+          <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>Bot service is offline for this account — showing the last known snapshot.</span>
+        </div>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-lg border p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Equity &amp; balance</span>
+            {series.length > 0 && (
+              <span className="text-[10px] text-muted-foreground tabular-nums">{series.length} samples</span>
+            )}
+          </div>
+          {chartData.length >= 2 ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#1b4f9c" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#1b4f9c" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="balGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="time" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" interval="preserveStartEnd" minTickGap={40} />
+                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={38} domain={['auto', 'auto']} tickFormatter={(v: number) => v.toFixed(0)} />
+                <Tooltip
+                  contentStyle={{ fontSize: 12, background: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8 }}
+                  labelStyle={{ color: 'var(--foreground)' }}
+                  formatter={(value: number | string | (number | string)[], name: number | string) => [
+                    `${Array.isArray(value) ? value.join(', ') : value} ${currency ?? ''}`,
+                    String(name) === 'equity' ? 'Equity' : 'Balance',
+                  ]}
+                />
+                <Area type="monotone" dataKey="balance" stroke="#10b981" strokeWidth={1.5} fill="url(#balGrad)" name="balance" />
+                <Area type="monotone" dataKey="equity" stroke="#1b4f9c" strokeWidth={1.5} fill="url(#eqGrad)" name="equity" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Collecting equity history… samples appear once the bot starts posting status snapshots.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Open positions</span>
+            <span className="flex items-center gap-2">
+              {positions.length > 0 && (
+                <span className={cn('text-xs font-semibold tabular-nums', openPl >= 0 ? 'text-emerald-500' : 'text-rose-500')}>{liveSigned(openPl)}</span>
+              )}
+              <Badge variant={positions.length > 0 ? 'default' : 'outline'}>{positions.length}{snap?.max_open_positions != null ? ` / ${snap.max_open_positions}` : ''} open</Badge>
+            </span>
+          </div>
+          {positions.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No open positions right now.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {positions.map((p, i) => {
+                const profit = Number(p.profit) || 0
+                const buy = p.direction === 'BUY'
+                return (
+                  <div key={i} className="flex items-center justify-between p-2 rounded-lg border bg-card/50 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {buy ? <TrendingUp className="h-4 w-4 text-emerald-500 shrink-0" /> : <TrendingDown className="h-4 w-4 text-rose-500 shrink-0" />}
+                      <span className="font-medium truncate">
+                        {p.symbol || '—'} <Badge variant={buy ? 'default' : 'destructive'} className="text-[10px] ml-1">{p.direction || '—'}</Badge>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-xs text-muted-foreground tabular-nums">{p.volume != null ? `${p.volume} lots` : ''}</span>
+                      <span className={cn('font-semibold tabular-nums', profit >= 0 ? 'text-emerald-500' : 'text-rose-500')}>{liveSigned(profit)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {snap && (
+            <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Equity</div>
+                <div className="font-semibold tabular-nums">{liveMoney(snap.equity != null ? Number(snap.equity) : null, currency)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Balance</div>
+                <div className="font-semibold tabular-nums">{liveMoney(snap.balance != null ? Number(snap.balance) : null, currency)}</div>
+              </div>
+              {snap.open_risk_pct != null ? (
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Open risk</div>
+                  <div className="font-semibold tabular-nums">
+                    {Number(snap.open_risk_pct).toFixed(2)}%{snap.portfolio_risk_ceiling_pct != null ? `/${snap.portfolio_risk_ceiling_pct}%` : ''}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Total P/L</div>
+                  <div className={cn('font-semibold tabular-nums', (overall?.total_profit ?? 0) >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                    {liveSigned(overall?.total_profit ?? 0)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-lg border p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Performance</span>
+            {overall && (
+              <span className="text-[10px] text-muted-foreground tabular-nums">{overall.trade_count ?? 0} closed trades</span>
+            )}
+          </div>
+          {overall && (overall.trade_count ?? 0) > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Wins / Losses</div>
+                <div className="font-semibold tabular-nums"><span className="text-emerald-500">{overall.wins ?? 0}</span> / <span className="text-rose-500">{overall.losses ?? 0}</span></div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Win rate</div>
+                <div className="font-semibold tabular-nums">{overall.win_rate_pct != null ? `${overall.win_rate_pct}%` : '—'}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Profit factor</div>
+                <div className="font-semibold tabular-nums">{overall.profit_factor != null ? overall.profit_factor : '—'}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Total P/L</div>
+                <div className={cn('font-semibold tabular-nums', (overall.total_profit ?? 0) >= 0 ? 'text-emerald-500' : 'text-rose-500')}>{liveSigned(overall.total_profit ?? 0)}</div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">No closed trades yet — performance appears as the bot completes trades.</p>
+          )}
+        </div>
+
+        <div className="rounded-lg border p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Activity</span>
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-500">
+              <span className="relative flex size-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full size-1.5 bg-emerald-500" />
+              </span>
+              {inst?.online ? 'LIVE · 10s' : 'OFFLINE'}
+            </span>
+          </div>
+          <div ref={logRef} className="rounded-lg border bg-black/90 text-green-400 p-3 font-mono text-[11px] max-h-40 overflow-y-auto whitespace-pre-wrap">
+            {inst?.logs?.length ? inst.logs.join('\n') : inst?.online ? 'No log output yet.' : 'Bot service unreachable — is the bot running on the server?'}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Trade timeline</span>
+          <span className="text-[10px] text-muted-foreground">{timeline.filter((t) => t.closePrice == null).length} open</span>
+        </div>
+        {timeline.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No trades yet — the timeline fills in as the bot opens and closes positions.</p>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {timeline.map((t) => <TradeRow key={t.id} trade={t} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: 'good' | 'bad' }) {
   return (
     <Card>
@@ -989,10 +1281,16 @@ function TradeRow({ trade }: { trade: BotTrade }) {
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className={cn('font-semibold tabular-nums text-sm', positive ? 'text-emerald-500' : 'text-rose-500')}>
-          {positive ? '+' : ''}${trade.profit.toFixed(2)}
-        </div>
-        {trade.result && <div className="text-[10px] text-muted-foreground uppercase">{trade.result}</div>}
+        {trade.closePrice == null ? (
+          <Badge variant="secondary" className="text-[10px]">OPEN</Badge>
+        ) : (
+          <>
+            <div className={cn('font-semibold tabular-nums text-sm', positive ? 'text-emerald-500' : 'text-rose-500')}>
+              {positive ? '+' : ''}${trade.profit.toFixed(2)}
+            </div>
+            {trade.result && <div className="text-[10px] text-muted-foreground uppercase">{trade.result}</div>}
+          </>
+        )}
       </div>
     </div>
   )

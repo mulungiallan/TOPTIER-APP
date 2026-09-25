@@ -3,7 +3,9 @@ import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth
 import { db } from '@/lib/db'
 import { hasBotAccess, BOT_PAYWALL_MESSAGE } from '@/lib/entitlements'
 
-// GET /api/bot/trades?connectionId=&limit=&symbol= — closed trades for the user
+// GET /api/bot/trades?connectionId=&limit=&symbol=&timeline=
+// Closed trades for the user (newest first). With timeline=1, open trades are
+// prepended newest-first so the page can show a single activity timeline.
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request)
@@ -17,14 +19,33 @@ export async function GET(request: NextRequest) {
     const connectionId = searchParams.get('connectionId')
     const symbol = searchParams.get('symbol')
     const limit = Math.min(Number(searchParams.get('limit') || '100'), 500)
+    const timeline = searchParams.get('timeline') === '1'
+
+    const baseWhere = {
+      userId,
+      ...(connectionId ? { connectionId } : {}),
+      ...(symbol ? { symbol } : {}),
+    }
+
+    if (timeline) {
+      const [open, closed] = await Promise.all([
+        db.botTrade.findMany({
+          where: { ...baseWhere, closePrice: null, closedAt: null },
+          orderBy: { openedAt: 'desc' },
+          take: limit,
+        }),
+        db.botTrade.findMany({
+          where: { ...baseWhere, NOT: { closedAt: null } },
+          orderBy: { closedAt: 'desc' },
+          take: limit,
+        }),
+      ])
+      return successResponse({ trades: [...open, ...closed] })
+    }
 
     const trades = await db.botTrade.findMany({
-      where: {
-        userId,
-        ...(connectionId ? { connectionId } : {}),
-        ...(symbol ? { symbol } : {}),
-      },
-      orderBy: { closedAt: 'desc' },
+      where: baseWhere,
+      orderBy: { openedAt: 'desc' },
       take: limit,
     })
 

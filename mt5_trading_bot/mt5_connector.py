@@ -38,7 +38,14 @@ _COLOR_NAME_MAP = {
 
 
 def connect() -> bool:
-    """Initialize the MT5 terminal connection and log in."""
+    """Initialize the MT5 terminal connection and log in.
+
+    Attach-first: if the terminal is already logged into the target account
+    (or we run in attach mode - no MT5_LOGIN), reuse the existing session
+    instead of calling login(). Calling login() on an already-logged-in
+    terminal fails with 'Invalid 1st unnamed argument', so we only log in
+    after fully detaching the current session.
+    """
     init_kwargs = {}
     if config.MT5_PATH:
         init_kwargs["path"] = config.MT5_PATH
@@ -47,15 +54,35 @@ def connect() -> bool:
         logger.error(f"MT5 initialize() failed: {mt5.last_error()}")
         return False
 
+    info = mt5.account_info()
+
     if config.MT5_LOGIN:
-        authorized = mt5.login(
-            config.MT5_LOGIN,
-            password=config.MT5_PASSWORD,
-            server=config.MT5_SERVER,
-        )
-        if not authorized:
-            logger.error(f"MT5 login() failed: {mt5.last_error()}")
-            return False
+        if info is not None and str(info.login) == str(config.MT5_LOGIN):
+            logger.info(f"Attached to running MT5 session. Account: {info.login}, Balance: {info.balance} {info.currency}")
+            return True
+    else:
+        # Attach mode: we expect a terminal that is already logged in.
+        if info is not None:
+            logger.info(f"Attached to running MT5 session (attach mode). Account: {info.login}, Balance: {info.balance} {info.currency}")
+            return True
+        logger.error("Attach mode requires an already-logged-in MT5 terminal, but no account session was found.")
+        return False
+
+    # Need to (re)log in: fully detach the current session first, otherwise
+    # login() fails with 'Invalid 1st unnamed argument' on a live terminal.
+    mt5.shutdown()
+    if not mt5.initialize(**init_kwargs):
+        logger.error(f"MT5 initialize() failed: {mt5.last_error()}")
+        return False
+
+    authorized = mt5.login(
+        config.MT5_LOGIN,
+        password=config.MT5_PASSWORD,
+        server=config.MT5_SERVER,
+    )
+    if not authorized:
+        logger.error(f"MT5 login() failed: {mt5.last_error()}")
+        return False
 
     info = mt5.account_info()
     if info is None:

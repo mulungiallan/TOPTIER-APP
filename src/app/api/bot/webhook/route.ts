@@ -63,6 +63,51 @@ async function runBotMaintenance(instance: { id: string; userId: string; status:
   }
 }
 
+// Throttle between two telemetry writes per instance (min gap).
+const SNAPSHOT_MIN_GAP_MS = 20_000
+const SNAPSHOT_RETENTION_DAYS = 14
+
+/**
+ * Persists one equity/balance/open-position sample for the chart. Best-effort:
+ * a telemetry write must never fail the webhook (which the bot treats as a
+ * failure and retries on the next scan).
+ */
+async function recordSnapshot(instanceId: string, userId: string, data: unknown) {
+  try {
+    if (!data || typeof data !== 'object') return
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data
+    const snap = parsed as Record<string, any>
+    const positions = Array.isArray(snap.open_positions) ? snap.open_positions : []
+    const openPl = positions.reduce((sum: number, p: any) => sum + (Number(p?.profit) || 0), 0)
+
+    const recent = await db.botSnapshot.findFirst({
+      where: { instanceId },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    })
+    if (recent && Date.now() - recent.createdAt.getTime() < SNAPSHOT_MIN_GAP_MS) return
+
+    await db.botSnapshot.create({
+      data: {
+        instanceId,
+        userId,
+        equity: Number.isFinite(Number(snap.equity)) ? Number(snap.equity) : null,
+        balance: Number.isFinite(Number(snap.balance)) ? Number(snap.balance) : null,
+        currency: typeof snap.currency === 'string' ? snap.currency : null,
+        positionCount: positions.length,
+        openPl: Math.round(openPl * 100) / 100,
+        snapshot: JSON.stringify(parsed),
+      },
+    })
+
+    await db.botSnapshot.deleteMany({
+      where: { instanceId, createdAt: { lt: new Date(Date.now() - SNAPSHOT_RETENTION_DAYS * 86_400_000) } },
+    })
+  } catch (e) {
+    console.error('Bot telemetry record failed:', e)
+  }
+}
+
 export async function POST(request: NextRequest) {
   const expected = process.env.BOT_SERVICE_KEY
   if (!expected) return errorResponse('BOT_SERVICE_KEY not configured', 500)
@@ -94,6 +139,7 @@ export async function POST(request: NextRequest) {
           lastSnapshot: typeof data === 'string' ? data : JSON.stringify(data ?? null),
         },
       })
+      await recordSnapshot(instanceId, instance.userId, data)
       await runBotMaintenance(instance)
       return successResponse({ received: true })
     }
