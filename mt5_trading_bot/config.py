@@ -111,8 +111,8 @@ BARS_TO_FETCH = 500                                    # live-scan history lengt
 # (it almost always is, to some degree, vs. live results).
 # ----------------------------------------------------------------------
 BACKTEST_BARS = 2000            # bars of history used to evaluate each combo
-MIN_WIN_RATE_PCT = 25.0          # breakeven is 25% at a 1:3 RR -- this adds a safety margin
-MIN_PROFIT_FACTOR = 1.1          # gross profit / gross loss must exceed this to qualify
+MIN_WIN_RATE_PCT = 35.0          # breakeven is 25% at a 1:3 RR -- this adds a safety margin
+MIN_PROFIT_FACTOR = 1.3          # gross profit / gross loss must exceed this to qualify
 MIN_TRADES_FOR_VALIDITY = 10     # need at least this many backtested trades to trust the stats
 RE_VALIDATE_EVERY_N_SCANS = 500  # periodically re-run the backtest filter so a combo that
                                   # stops working gets disabled automatically (0 = never)
@@ -146,7 +146,7 @@ FOREX_BASE_LOT_PER_100 = 0.08      # currency pairs: EURUSD, GBPJPY, ... (0.08 p
 CRYPTO_BASE_LOT_PER_100 = 0.04     # crypto: BTCUSD, ETHUSD, ... (0.04 per $100 equity)
 HIGH_VOL_BASE_LOT_PER_100 = 0.02   # metals/oil/indices: XAU, XAG, USOIL, US30, NAS100, ... (0.02 per $100 equity)
 BASE_LOT_EQUITY_REFERENCE = 100.0  # the three lots above are "per 100 units of equity"
-MAX_OPEN_POSITIONS = 3             # MAXIMUM entries per trade -- hard cap on open position COUNT
+MAX_OPEN_POSITIONS = 2             # MAXIMUM entries per trade -- hard cap on open position COUNT
 
 # ----------------------------------------------------------------------
 # ACCOUNT-SIZE TIERS (bot risk rules by account size)
@@ -269,7 +269,7 @@ USE_STAT_ARBITRAGE = True       # z-score reversion of price vs its rolling mean
 USE_MARKET_MAKING_BIAS = True   # lean against deviation from EMA fair value
 USE_BREAKOUT = True             # price breaks the prior N-period high/low
 
-MIN_VOTES_TO_TRADE = 2          # how many strategies must agree (same direction) to act -- this is
+MIN_VOTES_TO_TRADE = 3          # how many strategies must agree (same direction) to act -- this is
                                   # the BASE value; trade_frequency.py can temporarily lower it (never
                                   # below 1) on slow days, see "SOFT DAILY TRADE TARGET" below
 
@@ -371,10 +371,10 @@ STRATEGY_VOLATILITY_MAP = {
 # Set USE_TRADE_FREQUENCY_TARGET = False to disable this and just let
 # MIN_VOTES_TO_TRADE stay fixed all day.
 # ----------------------------------------------------------------------
-USE_TRADE_FREQUENCY_TARGET = True
+USE_TRADE_FREQUENCY_TARGET = False
 DAILY_TRADE_TARGET = 20
 TRADE_TARGET_WINDOW_HOURS = 12
-RELAXATION_FLOOR_MIN_VOTES = 1     # the absolute minimum MIN_VOTES_TO_TRADE can ever be relaxed to
+RELAXATION_FLOOR_MIN_VOTES = 3     # the absolute minimum MIN_VOTES_TO_TRADE can ever be relaxed to
 RELAXATION_CHECK_EVERY_N_SCANS = 30  # how often to check pace and possibly relax further
 
 # ----------------------------------------------------------------------
