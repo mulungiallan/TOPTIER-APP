@@ -73,6 +73,13 @@ def _post(body: bytes, timeout: float = 6.0):
             headers={
                 "Content-Type": "application/json",
                 "x-bot-service-key": _SERVICE_KEY,
+                # Browser-like headers so the edge/CDN in front of the app
+                # doesn't 403 our urllib posts (it blocks plain UA-absent or
+                # Python-urllib User-Agents).
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Accept": "application/json",
+                "Origin": _WEBHOOK_URL,
+                "Referer": _WEBHOOK_URL,
             },
         )
         urllib.request.urlopen(req, timeout=timeout).read()

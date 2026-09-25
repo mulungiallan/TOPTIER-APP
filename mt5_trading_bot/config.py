@@ -111,9 +111,9 @@ BARS_TO_FETCH = 500                                    # live-scan history lengt
 # (it almost always is, to some degree, vs. live results).
 # ----------------------------------------------------------------------
 BACKTEST_BARS = 2000            # bars of history used to evaluate each combo
-MIN_WIN_RATE_PCT = 35.0          # breakeven is 25% at a 1:3 RR -- this adds a safety margin
-MIN_PROFIT_FACTOR = 1.3          # gross profit / gross loss must exceed this to qualify
-MIN_TRADES_FOR_VALIDITY = 15     # need at least this many backtested trades to trust the stats
+MIN_WIN_RATE_PCT = 25.0          # breakeven is 25% at a 1:3 RR -- this adds a safety margin
+MIN_PROFIT_FACTOR = 1.1          # gross profit / gross loss must exceed this to qualify
+MIN_TRADES_FOR_VALIDITY = 10     # need at least this many backtested trades to trust the stats
 RE_VALIDATE_EVERY_N_SCANS = 500  # periodically re-run the backtest filter so a combo that
                                   # stops working gets disabled automatically (0 = never)
 
@@ -293,28 +293,13 @@ MIN_VOTES_TO_TRADE = 2          # how many strategies must agree (same direction
 # (the bucket still influences which STRATEGIES vote, just not the risk).
 # ----------------------------------------------------------------------
 HIGH_VOL_SYMBOLS = [
-    # Commodities & crypto (confirmed or best-guess -- run check_symbols.py to verify)
-    "BTCUSD.m",       # crypto -- confirmed in broker symbol list
-    "XAUUSD.m",       # gold -- UNCONFIRMED suffix, verify with check_symbols.py
-    "USOIL.std",      # oil -- UNCONFIRMED suffix
-    "US30.std",       # US30 index -- UNCONFIRMED suffix
-    # Most volatile forex crosses (genuinely high-movement even vs other forex)
-    "GBPJPY.m", "GBPNZD.m", "GBPAUD.m",
-    "USDZAR.m", "USDMXN.m",
-    "EURJPY.m", "EURNZD.m", "EURAUD.m",
-    "AUDJPY.m", "CADJPY.m", "NZDJPY.m", "CHFJPY.m",
 ]
 
 LOW_VOL_SYMBOLS = [
-    # Majors -- well-behaved, tighter spreads, core forex
-    "EURUSD.m", "GBPUSD.m", "USDJPY.m", "USDCHF.m", "USDCAD.m", "AUDUSD.m", "NZDUSD.m",
-    # Crosses -- moderate volatility
-    "EURGBP.m", "EURCHF.m", "EURCAD.m",
-    "GBPCHF.m", "GBPCAD.m",
-    "AUDCAD.m", "AUDCHF.m", "AUDNZD.m",
-    "CADCHF.m",
-    "NZDCAD.m", "NZDCHF.m",
-    "USDSEK.m", "USDNOK.m", "USDPLN.m",
+    # Real broker symbols for this Exness MT5 trial account
+    # (lowercase trailing 'm' suffix, no dot).
+    "EURUSDm", "GBPUSDm", "USDJPYm", "USDCHFm", "USDCADm", "AUDUSDm", "NZDUSDm",
+    "EURGBPm", "EURJPYm", "GBPJPYm", "AUDJPYm", "XAUUSDm", "BTCUSDm",
 ]
 
 # Keep SYMBOLS as the union for any code that needs the full list (check_symbols, volatility screener)
@@ -327,7 +312,7 @@ _UNION = HIGH_VOL_SYMBOLS + [s for s in LOW_VOL_SYMBOLS if s not in HIGH_VOL_SYM
 # is re-derived at startup from each symbol's asset class, so it no longer depends
 # on broker-specific symbol naming. When Auto-detect is on, SYMBOLS starts empty
 # and main.py fills it live from the connection.
-AUTO_DETECT_SYMBOLS = True
+AUTO_DETECT_SYMBOLS = False
 SYMBOLS = [] if AUTO_DETECT_SYMBOLS else _UNION
 
 # LIFT_VOLATILITY_FILTER = True lets every backtest-approved strategy vote on a

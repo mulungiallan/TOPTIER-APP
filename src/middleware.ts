@@ -185,6 +185,6 @@ export const config = {
      * Match all request paths except provider callbacks (they sign their own
      * requests), the Socket.IO transport, and static assets.
      */
-    "/((?!api/webhooks/stripe|api/payments/stripe/webhook|api/payments/mpesa/callback|api/payments/mpesa/b2c-callback|api/payments/momo/callback|api/payments/paypal/callback|api/payments/paystack/callback|api/payments/flutterwave/callback|api/payments/pesapal/callback|api/payments/pesapal/ipn|api/wallet/crypto/ipn|api/socket|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/webhooks/stripe|api/payments/stripe/webhook|api/payments/mpesa/callback|api/payments/mpesa/b2c-callback|api/payments/momo/callback|api/payments/paypal/callback|api/payments/paystack/callback|api/payments/flutterwave/callback|api/payments/pesapal/callback|api/payments/pesapal/ipn|api/wallet/crypto/ipn|api/bot/webhook|api/socket|_next/static|_next/image|favicon.ico).*)",
   ],
 };
