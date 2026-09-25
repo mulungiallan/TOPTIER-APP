@@ -18,16 +18,11 @@ import {
   Target,
   Shield,
   Zap,
-  Lock,
-  Crown,
-  CheckCircle2,
   ImageIcon,
   Crop,
   ChevronDown,
   ChevronUp,
-  AlertTriangle,
 } from 'lucide-react'
-import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -68,8 +63,6 @@ interface AnalysisResult {
   imageUrl: string
   createdAt: Date
 }
-
-const FREE_ANALYSIS_LIMIT = 2
 
 // ─── Trade Setups (Scalp / Day / Swing) ────────────────────────────────────────
 
@@ -276,53 +269,6 @@ function ConfidenceMeter({ value }: { value: number }) {
       </div>
       <Progress value={value} className={cn('h-2', getProgressColor(value))} />
     </div>
-  )
-}
-
-// ─── Paywall Component ─────────────────────────────────────────────────────────
-
-function Paywall({ onUpgrade }: { onUpgrade: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mx-auto max-w-md"
-    >
-      <Card className="border-primary/20 bg-gradient-to-b from-primary/5 to-transparent">
-        <CardContent className="p-8 text-center space-y-6">
-          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/10">
-            <Lock className="size-8 text-primary" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold">You&apos;ve used all {FREE_ANALYSIS_LIMIT} free analyses</h3>
-            <p className="text-muted-foreground mt-2">
-              Upgrade to Premium for unlimited AI-powered chart analysis and unlock all features.
-            </p>
-          </div>
-
-          <div className="space-y-3 text-left">
-            {[
-              'Unlimited screenshot analyses',
-              'Real-time trading signals',
-              'Advanced pattern recognition',
-              'Priority AI processing',
-              'Watchlist with real-time prices',
-              'Performance analytics',
-            ].map((feature) => (
-              <div key={feature} className="flex items-center gap-3">
-                <CheckCircle2 className="size-4 text-primary shrink-0" />
-                <span className="text-sm">{feature}</span>
-              </div>
-            ))}
-          </div>
-
-          <Button size="lg" className="w-full gap-2" onClick={onUpgrade}>
-            <Crown className="size-4" />
-            Upgrade Now
-          </Button>
-        </CardContent>
-      </Card>
-    </motion.div>
   )
 }
 
@@ -837,10 +783,6 @@ function CropDialog({ imageUrl, fileName, onClose, onCrop }: {
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export function ScreenshotAnalyzer() {
-  const user = useStore((s) => s.user)
-  const setPage = useStore((s) => s.setPage)
-  const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
-  const referralCount = user?.referralCount ?? 0
   // State
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -859,10 +801,8 @@ export function ScreenshotAnalyzer() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [history, setHistory] = useState<AnalysisResult[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
-  const [analysisCount, setAnalysisCount] = useState(0)
   const [isDragOver, setIsDragOver] = useState(false)
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all')
-  const [showAdFlow, setShowAdFlow] = useState(false)
   const [pendingAnalyze, setPendingAnalyze] = useState(false)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cropOpen, setCropOpen] = useState(false)
@@ -872,9 +812,6 @@ export function ScreenshotAnalyzer() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pageTopRef = useRef<HTMLDivElement>(null)
-
-  const freeAnalysesUsed = analysisCount
-  const freeLimitReached = false // analyzer is free & unlimited (ad-supported)
 
   // Fetch analysis history on mount
   const fetchHistory = useCallback(async () => {
@@ -900,7 +837,6 @@ export function ScreenshotAnalyzer() {
           createdAt: new Date(a.createdAt as string),
         }))
         setHistory(mappedHistory)
-        setAnalysisCount(data.total || mappedHistory.length)
       }
     } catch {
       // Keep empty history on API error — never fabricate canned results.
@@ -1125,9 +1061,7 @@ export function ScreenshotAnalyzer() {
       // New endpoint returns nested { analysis, result, quota, provider }
       const d = responseData.data.analysis || responseData.data
       const result = mapResult(d)
-      setAnalysisCount((c) => c + 1)
       setIsAnalyzing(false)
-      setShowAdFlow(false)
       // Reveal the result immediately — no ad gate.
       setAnalysisResult(result)
 
@@ -1157,11 +1091,9 @@ export function ScreenshotAnalyzer() {
   // Analyses run immediately with no forced-ad interstitial. Reaching the result
   // only depends on a successful API call, not on completing an ad phase.
   const handleAnalyze = useCallback(async () => {
-    if (freeLimitReached) return
     if (pendingAnalyze) return
-    setShowAdFlow(false)
     runAnalysis()
-  }, [freeLimitReached, pendingAnalyze, runAnalysis])
+  }, [pendingAnalyze, runAnalysis])
 
   // Save to history
   const handleSave = useCallback(() => {
@@ -1175,7 +1107,6 @@ export function ScreenshotAnalyzer() {
 
   // Analyze another — instant reset, no interstitial.
   const handleAnalyzeAnother = useCallback(() => {
-    setShowAdFlow(false)
     setSelectedFile(null)
     setPreviewUrl(null)
     setAnalysisResult(null)
@@ -1227,14 +1158,8 @@ export function ScreenshotAnalyzer() {
     return true
   })
 
-  // Paywall
-  if (freeLimitReached && !analysisResult) {
-    return (
-      <div className="p-6">
-        <Paywall onUpgrade={() => setPage('subscriptions')} />
-      </div>
-    )
-  }
+  // Paywall is not needed — the analyzer is free for everyone (ad-supported).
+  // Remove-ad buyers simply never see the app-wide ad units.
 
   return (
     <div ref={pageTopRef} className="p-3 sm:p-4 space-y-5 max-w-4xl mx-auto">

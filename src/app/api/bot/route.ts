@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
 import { summarizeConnection } from '@/lib/services/bot-profit-share'
 import { botService } from '@/lib/services/bot-service'
 import { classifyAccountTier } from '@/lib/account-tiers'
-import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
+import { getEntitlements, BOT_PAYWALL_MESSAGE } from '@/lib/entitlements'
 
 function parseSettings(raw: string): Record<string, unknown> {
   try {
@@ -32,8 +33,17 @@ export async function GET(request: NextRequest) {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
 
-    if (!(await isPremiumActive(userId))) {
-      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+    const entitlements = await getEntitlements(userId)
+    if (!entitlements.bot) {
+      // Overview still loads so the page can show the user's previous data
+      // together with the buy/upgrade prompt.
+      return successResponse({
+        connections: [],
+        totals: { totalRealizedPnl: 0, totalDue: 0, totalTrades: 0, runningInstances: 0, totalAccounts: 0 },
+        serviceOnline: false,
+        reconcile: { healed: 0, stoppedExpired: 0, skipped: 0, errors: 0 },
+        access: { bot: false, paywall: BOT_PAYWALL_MESSAGE },
+      })
     }
 
     const connections = await db.botConnection.findMany({
@@ -52,6 +62,16 @@ export async function GET(request: NextRequest) {
       serviceOnline = health?.status === 'ok'
     } catch {
       serviceOnline = false
+    }
+
+    // Keep-running reconciliation: restart instances that went down while the
+    // subscription is live, stop instances whose subscription has ended.
+    let reconcile
+    try {
+      reconcile = await BotInstanceManager.reconcileForUser(userId)
+    } catch (error) {
+      console.error('Bot reconcile error:', error)
+      reconcile = { healed: 0, stoppedExpired: 0, skipped: 0, errors: 0 }
     }
 
     const enriched = connections.map((conn) => {
@@ -85,7 +105,7 @@ export async function GET(request: NextRequest) {
       { totalRealizedPnl: 0, totalDue: 0, totalTrades: 0, runningInstances: 0, totalAccounts: enriched.length }
     )
 
-    return successResponse({ connections: enriched, totals, serviceOnline })
+    return successResponse({ connections: enriched, totals, serviceOnline, reconcile, access: { bot: true, paywall: null } })
   } catch (error) {
     console.error('Bot overview error:', error)
     return errorResponse('Failed to load bot data', 500)

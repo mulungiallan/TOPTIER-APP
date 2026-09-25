@@ -208,6 +208,9 @@ export function successResponse(data: unknown, status = 200) {
   return Response.json({ success: true, data }, { status })
 }
 
-export function errorResponse(message: string, status = 400, details?: unknown) {
-  return Response.json({ success: false, error: message, ...(details ? { details } : {}) }, { status })
+export function errorResponse(message: string, status = 400, details?: unknown, code?: string) {
+  return Response.json(
+    { success: false, error: message, ...(details ? { details } : {}), ...(code ? { code } : {}) },
+    { status }
+  )
 }

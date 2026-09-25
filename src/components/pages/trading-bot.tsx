@@ -39,8 +39,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ReferralLockBanner } from '@/components/referral-lock'
-import { PremiumLockBanner } from '@/components/premium-lock'
 import type { AccountTierInfo } from '@/lib/account-tiers'
 
 interface BotConnection {
@@ -79,6 +77,8 @@ interface BotInstance {
   lastError: string | null
   startCount: number
   createdAt: string
+  shouldRun?: boolean
+  stoppedReason?: string | null
 }
 
 interface BotTrade {
@@ -114,15 +114,15 @@ interface OverviewData {
   connections: BotConnection[]
   totals: { totalRealizedPnl: number; totalDue: number; totalTrades: number; runningInstances: number; totalAccounts: number }
   serviceOnline: boolean
+  access?: { bot: boolean; paywall: string | null }
 }
 
 export function TradingBotPage() {
-  const user = useStore((s) => s.user)
+  const setPage = useStore((s) => s.setPage)
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [trades, setTrades] = useState<BotTrade[]>([])
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [loading, setLoading] = useState(true)
-  const [refStatus, setRefStatus] = useState<{ lockEnabled: boolean; unlocked: boolean; premium: boolean; referralUrl?: string | null; message?: string | null; premiumMessage?: string | null } | null>(null)
   const [showLink, setShowLink] = useState(false)
   const [linking, setLinking] = useState(false)
   const [busyConnection, setBusyConnection] = useState<string | null>(null)
@@ -149,14 +149,20 @@ export function TradingBotPage() {
 
   const fetchAll = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [ov, tr, ps] = await Promise.all([
-        api.get<{ success: boolean; data: OverviewData }>('/bot', { signal }),
-        api.get<{ success: boolean; data: { trades: BotTrade[] } }>('/bot/trades?limit=50', { signal }),
-        api.get<{ success: boolean; data: { settlements: Settlement[] } }>('/bot/profit-share', { signal }),
-      ])
-      setOverview(ov?.data || null)
-      setTrades(tr?.data?.trades || [])
-      setSettlements(ps?.data?.settlements || [])
+      const ov = await api.get<{ success: boolean; data: OverviewData }>('/bot', { signal })
+      const data = ov?.data || null
+      setOverview(data)
+      if (data?.access?.bot) {
+        const [tr, ps] = await Promise.all([
+          api.get<{ success: boolean; data: { trades: BotTrade[] } }>('/bot/trades?limit=50', { signal }),
+          api.get<{ success: boolean; data: { settlements: Settlement[] } }>('/bot/profit-share', { signal }),
+        ])
+        setTrades(tr?.data?.trades || [])
+        setSettlements(ps?.data?.settlements || [])
+      } else {
+        setTrades([])
+        setSettlements([])
+      }
     } catch {
       if (!signal?.aborted) setOverview((p) => (p ? { ...p, serviceOnline: false } : p))
     } finally {
@@ -170,15 +176,7 @@ export function TradingBotPage() {
     return () => ctrl.abort()
   }, [fetchAll])
 
-  // Referral-gated feature status (bot + copy trading are invite-only)
-  useEffect(() => {
-    api.get<{ success: boolean; data: any }>('/referral/status')
-      .then((res) => setRefStatus(res?.data || null))
-      .catch(() => setRefStatus(null))
-  }, [])
-
-  const refLocked = !!refStatus && refStatus.lockEnabled && !refStatus.unlocked
-  const premiumLocked = !!refStatus && !refStatus.premium
+  const botLocked = !!overview && !overview.access?.bot
 
   // Light auto-refresh while a bot is running
   const hasRunning = overview?.connections?.some((c) => c.runningInstance) ?? false
@@ -195,7 +193,10 @@ export function TradingBotPage() {
     }
     setLinking(true)
     try {
-      await api.post('/bot/connections', {
+      const res = await api.post<{
+        success: boolean
+        autoStart: { attempted: boolean; ok: boolean; message: string }
+      }>('/bot/connections', {
         platform: form.platform,
         label: form.label,
         brokerName: form.brokerName || undefined,
@@ -213,6 +214,11 @@ export function TradingBotPage() {
         },
       })
       toast.success('MetaTrader account linked')
+      if (res?.autoStart?.ok) {
+        toast.success('Bot started automatically')
+      } else if (res?.autoStart?.attempted && res.autoStart.message) {
+        toast.warning(`Bot did not auto-start: ${res.autoStart.message}`)
+      }
       setShowLink(false)
       setForm({ platform: 'mt5', label: '', brokerName: '', login: '', password: '', server: '', terminalPath: '', riskPerTradePct: 1, providerSharePct: 50, forexBaseLot: 0.08, cryptoBaseLot: 0.04, highVolBaseLot: 0.02, maxOpenPositions: 3 })
       fetchAll()
@@ -294,7 +300,7 @@ export function TradingBotPage() {
   const due = overview?.connections?.reduce((a, c) => a + (c.summary?.dueAmount ?? 0), 0) ?? 0
   const realized = overview?.connections?.reduce((a, c) => a + (c.summary?.realizedPnl ?? 0), 0) ?? 0
 
-  if (refLocked) {
+  if (botLocked) {
     return (
       <div className="space-y-5 p-3 md:p-4 max-w-6xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
@@ -303,21 +309,18 @@ export function TradingBotPage() {
             Trading Bot
           </h1>
         </motion.div>
-        <ReferralLockBanner message={refStatus?.message} referralUrl={refStatus?.referralUrl} />
-      </div>
-    )
-  }
-
-  if (premiumLocked) {
-    return (
-      <div className="space-y-5 p-3 md:p-4 max-w-6xl mx-auto">
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Bot className="h-7 w-7 text-[#1b4f9c]" />
-            Trading Bot
-          </h1>
-        </motion.div>
-        <PremiumLockBanner message={refStatus?.premiumMessage} />
+        <div className="flex items-start gap-3 rounded-2xl border border-[#1b4f9c]/20 bg-gradient-to-br from-[#1b4f9c]/10 to-transparent p-6">
+          <ShieldCheck className="h-8 w-8 mt-0.5 shrink-0 text-[#1b4f9c]" />
+          <div className="space-y-3">
+            <div>
+              <p className="font-semibold text-lg">Unlock the Trading Bot</p>
+              <p className="text-muted-foreground text-sm mt-1">{overview?.access?.paywall || 'Get the Trading Bot to link your MetaTrader account and let the AI trade it 24/7.'}</p>
+            </div>
+            <Button onClick={() => setPage('subscriptions')}>
+              Get the Trading Bot — $100 / 3 months
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -678,6 +681,7 @@ function ConnectionCard({
             </div>
             <div className="text-xs text-muted-foreground truncate">
               Login {conn.login} · {conn.server}
+              {inst?.stoppedReason === 'subscription_expired' && <span className="text-amber-500"> · Subscription ended — bot stopped</span>}
               {inst?.lastError && <span className="text-rose-500"> · {inst.lastError}</span>}
             </div>
             {conn.accountTier?.tier && (

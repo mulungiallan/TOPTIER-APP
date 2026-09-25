@@ -75,6 +75,11 @@ export interface User {
   // Referrals
   referralCount?: number
   earnedPremiumDays?: number
+  // A-la-carte entitlements
+  signalsUnlocked?: boolean
+  signalsExpiresAt?: string | null
+  botExpiresAt?: string | null
+  adsRemoved?: boolean
 }
 
 export interface UserPrivacySettings {

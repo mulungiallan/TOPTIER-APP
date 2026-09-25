@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
-import { trackAd } from '@/lib/ads'
+import { trackAd, shouldShowAds } from '@/lib/ads'
 import { X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -22,11 +22,11 @@ export function PopupAd({ onComplete, delay = 2000 }: PopupAdProps) {
   const [adData, setAdData] = useState<AdCreative | null>(null)
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
-  const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
+  const showAds = shouldShowAds(user)
   const userId = user?.id || 'guest'
 
   useEffect(() => {
-    if (isPremium) return
+    if (!showAds) return
 
     const timer = setTimeout(() => {
       if (adService.shouldShowPopup(userId)) {
@@ -37,7 +37,7 @@ export function PopupAd({ onComplete, delay = 2000 }: PopupAdProps) {
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [isPremium, delay, userId])
+  }, [showAds, delay, userId])
 
   const handleClose = () => {
     setVisible(false)
@@ -56,7 +56,7 @@ export function PopupAd({ onComplete, delay = 2000 }: PopupAdProps) {
     onComplete?.()
   }
 
-  if (!visible || isPremium || !adData) return null
+  if (!visible || !showAds || !adData) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -101,7 +101,7 @@ export function PopupAd({ onComplete, delay = 2000 }: PopupAdProps) {
         </div>
 
         <p className="mt-4 text-center text-[11px] text-white/70">
-          💎 Upgrade to Premium to remove all ads
+          Remove all ads app-wide for a one-time $5 purchase
         </p>
       </div>
     </div>

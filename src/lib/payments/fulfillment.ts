@@ -63,8 +63,28 @@ export async function fulfillPendingPayment(
 
   const now = new Date()
   const planType = match.planType || transaction.planType
+
+  // A-la-carte entitlements stack/extend from their existing expiry date so
+  // re-purchases before expiry keep the user uninterrupted.
+  const currentUser = await db.user.findUnique({
+    where: { id: transaction.userId },
+    select: { signalsExpiresAt: true, botExpiresAt: true },
+  })
+
   let endDate: Date | null = null
-  if (planType === 'premium_daily') {
+  if (planType === 'signals_monthly') {
+    const base =
+      currentUser?.signalsExpiresAt && new Date(currentUser.signalsExpiresAt).getTime() > now.getTime()
+        ? currentUser.signalsExpiresAt
+        : now
+    endDate = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000)
+  } else if (planType === 'bot_quarterly') {
+    const base =
+      currentUser?.botExpiresAt && new Date(currentUser.botExpiresAt).getTime() > now.getTime()
+        ? currentUser.botExpiresAt
+        : now
+    endDate = new Date(base.getTime() + 90 * 24 * 60 * 60 * 1000)
+  } else if (planType === 'premium_daily') {
     endDate = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
   } else if (planType === 'premium_weekly') {
     endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -75,17 +95,31 @@ export async function fulfillPendingPayment(
   } else if (planType === 'premium_annual') {
     endDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
   }
-  // lifetime has no end date
+  // lifetime and remove_ads have no end date
 
-  const tier = planType === 'lifetime' ? 'lifetime' : planType === 'trial' ? 'trial' : 'premium'
+  const legacyPlans = ['premium_daily', 'premium_weekly', 'premium_quarterly', 'premium_monthly', 'premium_annual']
+  const tier: string | undefined =
+    planType === 'lifetime' ? 'lifetime' : planType === 'trial' ? 'trial' : legacyPlans.includes(planType) ? 'premium' : undefined
+
+  const data: Record<string, unknown> = {}
+  if (planType === 'signals_monthly') {
+    data.signalsUnlocked = true
+    data.signalsExpiresAt = endDate
+  } else if (planType === 'bot_quarterly') {
+    data.botExpiresAt = endDate
+  } else if (planType === 'remove_ads') {
+    data.adsRemoved = true
+    data.adsRemovedAt = now
+  }
+  if (tier) {
+    data.subscriptionTier = tier
+    data.subscriptionStartDate = now
+    data.subscriptionEndDate = endDate
+  }
 
   await db.user.update({
     where: { id: transaction.userId },
-    data: {
-      subscriptionTier: tier,
-      subscriptionStartDate: now,
-      subscriptionEndDate: endDate,
-    },
+    data,
   })
 
   // Referral reward: when a referred user pays for premium, grant the
@@ -129,10 +163,23 @@ export async function fulfillPendingPayment(
     }
   }
 
+  const title =
+    planType === 'remove_ads'
+      ? 'Ads Removed'
+      : planType === 'signals_monthly'
+      ? 'Signals Subscription Active'
+      : planType === 'bot_quarterly'
+      ? 'Trading Bot Access Active'
+      : 'Payment Confirmed'
+  const message =
+    planType === 'remove_ads'
+      ? 'Ads have been removed app-wide. Enjoy an ad-free experience!'
+      : `Your purchase is now active${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}!`
+
   await notifyUser(transaction.userId, {
     type: 'subscription',
-    title: 'Payment Confirmed',
-    message: `Your subscription is now active${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}!`,
+    title,
+    message,
   })
 
   await db.activityLog.create({

@@ -2,8 +2,9 @@ import { NextRequest } from 'next/server'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/bot-crypto'
-import { isReferralUnlocked, REFERRAL_LOCK_MESSAGE } from '@/lib/referral-gate'
-import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
+import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
+import { BotServiceOfflineError } from '@/lib/services/bot-service'
+import { hasBotAccess, BOT_PAYWALL_MESSAGE } from '@/lib/entitlements'
 
 const DEFAULT_SETTINGS = {
   FOREX_BASE_LOT_PER_100: 0.08,
@@ -38,8 +39,8 @@ export async function GET(request: NextRequest) {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
 
-    if (!(await isPremiumActive(userId))) {
-      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+    if (!(await hasBotAccess(userId))) {
+      return errorResponse(BOT_PAYWALL_MESSAGE, 403, undefined, 'bot_paywall')
     }
 
     const connections = await db.botConnection.findMany({
@@ -67,12 +68,10 @@ export async function POST(request: NextRequest) {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
 
-    if (!(await isPremiumActive(userId))) {
-      return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
-    }
-
-    if (!(await isReferralUnlocked(userId))) {
-      return errorResponse(REFERRAL_LOCK_MESSAGE, 403)
+    // Bot access is a paid product now — no invite gate. Paid users get the
+    // bot regardless of referral lock status.
+    if (!(await hasBotAccess(userId))) {
+      return errorResponse(BOT_PAYWALL_MESSAGE, 403, undefined, 'bot_paywall')
     }
 
     const body = await request.json()
@@ -81,11 +80,16 @@ export async function POST(request: NextRequest) {
     if (!platform || !['mt5', 'mt4'].includes(platform)) {
       return errorResponse('platform must be mt5 or mt4', 400)
     }
-    if (!login || !password || !server) {
-      return errorResponse('login, password and server are required', 400)
-    }
     if (!label) {
       return errorResponse('label is required', 400)
+    }
+
+    // Broker credentials are optional as a set — either ALL of login/password/
+    // server are supplied (headless login), or NONE (attach to a terminal that
+    // is already signed in on the machine hosting the bot service).
+    const hasCreds = Boolean(String(login || '').trim())
+    if (hasCreds && (!password || !server)) {
+      return errorResponse('login, password and server are required together', 400)
     }
 
     const connection = await db.botConnection.create({
@@ -94,16 +98,33 @@ export async function POST(request: NextRequest) {
         platform,
         label: String(label),
         brokerName: brokerName ? String(brokerName) : null,
-        login: String(login),
-        passwordEnc: encryptSecret(String(password)),
-        server: String(server),
+        login: String(login || ''),
+        passwordEnc: hasCreds ? encryptSecret(String(password)) : '',
+        server: String(server || ''),
         terminalPath: terminalPath ? String(terminalPath) : null,
         riskPerTradePct: riskPerTradePct != null ? Number(riskPerTradePct) : 1.0,
         providerSharePct: providerSharePct != null ? Number(providerSharePct) : 50,
         settings: JSON.stringify({ ...DEFAULT_SETTINGS, ...(settings || {}) }),
       },
     })
-    return successResponse({ connection }, 201)
+
+    // Keep-running behaviour: once an account is linked it starts trading right
+    // away and keeps running for the lifetime of the subscription (reconcile
+    // restarts it if it ever goes down). Best-effort — a linking that fails to
+    // start still succeeds; the failure is surfaced to the client.
+    let autoStart = { attempted: true, ok: false, message: '' }
+    try {
+      await BotInstanceManager.start(connection.id, { autoStarted: true })
+      autoStart = { attempted: true, ok: true, message: '' }
+    } catch (err) {
+      if (err instanceof BotServiceOfflineError) {
+        autoStart.message = 'The bot service is not running.'
+      } else {
+        autoStart.message = err instanceof Error ? err.message : 'Failed to start bot'
+      }
+    }
+
+    return successResponse({ connection, autoStart }, 201)
   } catch (error) {
     console.error('Bot connections POST error:', error)
     return errorResponse('Failed to link account', 500)

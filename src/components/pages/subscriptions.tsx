@@ -103,143 +103,78 @@ function planPrice(planId: string): number {
 const plans: Plan[] = [
   {
     id: 'free',
-    name: 'Free Trial',
+    name: 'Free',
     price: '$0',
-    period: 'for 30 days',
-    badge: 'Current Plan',
+    period: '',
+    badge: 'Free forever',
     badgeColor: 'bg-secondary text-secondary-foreground',
     features: [
-      { text: 'Signals delayed by 15-30 minutes', included: true },
-      { text: '2 screenshot analyses (lifetime)', included: true },
-      { text: "Today's economic calendar only", included: true },
-      { text: 'News headlines only, 15-min delay', included: true },
-      { text: 'Basic performance statistics', included: true },
-      { text: 'Limited market access (3 markets)', included: true },
-      { text: '5 active price alerts max', included: true },
-      { text: 'Basic support', included: true },
-      { text: 'Real-time instant signals', included: false },
-      { text: 'Unlimited screenshot analyses', included: false },
-      { text: 'Custom indicator alerts', included: false },
-      { text: 'Priority support', included: false },
-      { text: 'Data export (CSV/Excel)', included: false },
+      { text: 'Unlimited screenshot analysis', included: true },
+      { text: 'Economic calendar', included: true },
+      { text: 'News + market data', included: true },
+      { text: 'Community + alerts', included: true },
+      { text: 'The 2 best signals of the day', included: false },
+      { text: 'Trading bot (MT5/MT4)', included: false },
+      { text: 'No ads', included: false },
     ],
-    buttonText: 'Current Plan',
+    buttonText: 'Free',
     buttonVariant: 'outline',
   },
   {
-    id: 'premium_daily',
-    name: 'Premium Daily',
-    price: '$1.50',
-    period: '/day',
-    badge: 'Try it',
+    id: 'signals_monthly',
+    name: 'Signals',
+    price: '$20',
+    period: '/month',
+    badge: 'Popular',
     badgeColor: 'bg-primary text-primary-foreground',
     features: [
-      { text: 'No ads', included: true },
-      { text: 'Trading bot access', included: true },
-      { text: 'TOPTIER signals', included: true },
-      { text: 'Copy trading', included: true },
-      { text: 'Real-time instant signals', included: true },
-      { text: 'Unlimited screenshot analyses', included: true },
-      { text: 'All markets available', included: true },
-      { text: 'Unlimited price alerts', included: true },
-      { text: 'Priority support', included: true },
+      { text: 'The 2 best signals of the day', included: true },
+      { text: 'Ranked by confidence (win-rate proxy)', included: true },
+      { text: 'Real-time entry, SL & TP levels', included: true },
+      { text: 'AI breakdown + full analysis', included: true },
+      { text: 'Accept / customize / track signal performance', included: true },
+      { text: 'Trading bot (MT5/MT4)', included: false },
+      { text: 'No ads', included: false },
     ],
-    buttonText: 'Subscribe Now',
+    buttonText: 'Get Signals',
     buttonVariant: 'default',
   },
   {
-    id: 'premium_weekly',
-    name: 'Premium Weekly',
-    price: '$7',
-    period: '/week',
-    badge: 'Popular',
-    badgeColor: 'bg-secondary text-secondary-foreground',
+    id: 'bot_quarterly',
+    name: 'Trading Bot',
+    price: '$100',
+    period: '/3 months',
+    badge: 'AI-Powered',
+    badgeColor: 'bg-emerald-500 text-white',
     features: [
-      { text: 'No ads', included: true },
-      { text: 'Trading bot access', included: true },
-      { text: 'TOPTIER signals', included: true },
-      { text: 'Copy trading', included: true },
-      { text: 'Real-time instant signals', included: true },
-      { text: 'Unlimited screenshot analyses', included: true },
-      { text: 'All markets available', included: true },
-      { text: 'Unlimited price alerts', included: true },
-      { text: 'Custom indicator alerts', included: true },
-      { text: 'Priority support', included: true },
+      { text: 'Link your MetaTrader 5/4 account', included: true },
+      { text: 'AI trades your account 24/7', included: true },
+      { text: 'Profit share on winning trades only', included: true },
+      { text: 'PAMM/MAM copy-trading support', included: true },
+      { text: 'Live P&L, trades & bot stats', included: true },
+      { text: 'The 2 best signals of the day', included: false },
+      { text: 'No ads', included: false },
     ],
-    buttonText: 'Subscribe Now',
+    buttonText: 'Get Trading Bot',
     buttonVariant: 'default',
     highlighted: true,
   },
   {
-    id: 'premium_quarterly',
-    name: 'Premium Quarterly',
-    price: '$75',
-    period: '/quarter',
-    badge: 'Best Value',
-    badgeColor: 'bg-emerald-500 text-white',
-    features: [
-      { text: 'No ads', included: true },
-      { text: 'Trading bot access', included: true },
-      { text: 'TOPTIER signals', included: true },
-      { text: 'Copy trading', included: true },
-      { text: 'Real-time instant signals', included: true },
-      { text: 'Unlimited screenshot analyses', included: true },
-      { text: 'All markets available', included: true },
-      { text: 'Unlimited price alerts', included: true },
-      { text: 'Custom indicator alerts', included: true },
-      { text: 'Data export (CSV/Excel)', included: true },
-      { text: 'Priority support', included: true },
-    ],
-    buttonText: 'Subscribe Now',
-    buttonVariant: 'default',
-  },
-  {
-    id: 'premium_annual',
-    name: 'Premium Yearly',
-    price: '$120',
-    period: '/year',
-    badge: 'Save 72% vs daily',
-    badgeColor: 'bg-amber-500 text-white',
-    features: [
-      { text: 'No ads', included: true },
-      { text: 'Trading bot access', included: true },
-      { text: 'TOPTIER signals', included: true },
-      { text: 'Copy trading', included: true },
-      { text: 'Real-time instant signals', included: true },
-      { text: 'Unlimited screenshot analyses', included: true },
-      { text: 'All markets available', included: true },
-      { text: 'Unlimited price alerts', included: true },
-      { text: 'Custom indicator alerts', included: true },
-      { text: 'Data export (CSV/Excel)', included: true },
-      { text: 'Early access to features', included: true },
-      { text: 'Priority support', included: true },
-    ],
-    buttonText: 'Subscribe Now',
-    buttonVariant: 'default',
-  },
-  {
-    id: 'lifetime',
-    name: 'Lifetime',
-    price: '$499.99',
+    id: 'remove_ads',
+    name: 'Remove Ads',
+    price: '$5',
     period: 'one-time',
-    badge: 'One-time Payment',
+    badge: 'One-time',
     badgeColor: 'bg-amber-500 text-white',
     features: [
-      { text: 'Everything in Premium', included: true },
-      { text: 'Lifetime access, no recurring fees', included: true },
-      { text: 'All future updates included', included: true },
-      { text: 'Real-time instant signals', included: true },
-      { text: 'Unlimited screenshot analyses', included: true },
-      { text: 'Full economic calendar (30 days)', included: true },
-      { text: 'Complete news + sentiment analysis', included: true },
-      { text: 'Full performance statistics', included: true },
-      { text: 'All markets available', included: true },
-      { text: 'Unlimited price alerts', included: true },
-      { text: 'Custom indicator alerts', included: true },
-      { text: 'Priority support', included: true },
-      { text: 'Data export (CSV/Excel)', included: true },
+      { text: 'Removes ALL ads app-wide', included: true },
+      { text: 'Banner, interstitial & native ads', included: true },
+      { text: 'Lifetime, one-time payment', included: true },
+      { text: 'Never pay again for no ads', included: true },
+      { text: 'The 2 best signals of the day', included: false },
+      { text: 'Trading bot (MT5/MT4)', included: false },
     ],
-    buttonText: 'Get Lifetime Access',
+    buttonText: 'Remove Ads',
     buttonVariant: 'default',
   },
 ]
@@ -309,6 +244,17 @@ export function SubscriptionsPage() {
   const currentPlan = user?.subscriptionTier || 'free'
   const referralCode = user?.referralCode || 'TRADE123'
   const daysRemaining = 18
+
+  // Which feature purchases the user already holds (mirrors entitlement logic).
+  const legacyAccess =
+    currentPlan === 'premium' || currentPlan === 'lifetime' || currentPlan === 'pro' ||
+    currentPlan === 'enterprise' || currentPlan === 'unlimited'
+  const trialActive = currentPlan === 'trial'
+  const signalsExpiry = user?.signalsExpiresAt ? new Date(user.signalsExpiresAt).getTime() : 0
+  const botExpiry = user?.botExpiresAt ? new Date(user.botExpiresAt).getTime() : 0
+  const hasSignals = legacyAccess || trialActive || (!!user?.signalsUnlocked && signalsExpiry > Date.now())
+  const hasBot = legacyAccess || trialActive || botExpiry > Date.now()
+  const hasAds = !!user?.adsRemoved
 
   // Fetch subscription data on mount
   const fetchSubscriptions = useCallback(async () => {
@@ -408,9 +354,10 @@ export function SubscriptionsPage() {
   }
 
   const getButtonState = (planId: string) => {
-    if (currentPlan === 'free' && planId === 'free') return 'current'
-    if (currentPlan === 'premium' && (planId === 'premium_daily' || planId === 'premium_weekly' || planId === 'premium_quarterly' || planId === 'premium_annual')) return 'current'
-    if (currentPlan === 'lifetime' && planId === 'lifetime') return 'current'
+    if (planId === 'free') return 'current'
+    if (planId === 'signals_monthly' && hasSignals) return 'current'
+    if (planId === 'bot_quarterly' && hasBot) return 'current'
+    if (planId === 'remove_ads' && hasAds) return 'current'
     return 'available'
   }
 
@@ -768,7 +715,7 @@ export function SubscriptionsPage() {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       We'll deduct the {selectedPlan ? `$${planPrice(selectedPlan).toFixed(2)}` : ''} instantly from your wallet.
-                      {walletBalance < planPrice(selectedPlan ?? 'premium_daily') ? (
+                      {walletBalance < planPrice(selectedPlan ?? 'signals_monthly') ? (
                         <span className="text-amber-500"> You need more balance — top up your wallet or pick another method.</span>
                       ) : (
                         <span> Your premium activates immediately.</span>
@@ -788,7 +735,7 @@ export function SubscriptionsPage() {
                 </Button>
                 <Button
                   className="flex-1"
-                  disabled={!selectedProvider || processingPayment || (selectedProvider === 'wallet' && walletBalance < planPrice(selectedPlan ?? 'premium_daily'))}
+                  disabled={!selectedProvider || processingPayment || (selectedProvider === 'wallet' && walletBalance < planPrice(selectedPlan ?? 'signals_monthly'))}
                   onClick={handleCheckout}
                 >
                   {processingPayment ? (
@@ -875,18 +822,18 @@ export function SubscriptionsPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-semibold">
-                    {currentPlan === 'premium' ? 'Premium Plan' : currentPlan === 'lifetime' ? 'Lifetime Plan' : 'Free Trial'}
+                    {trialActive ? 'Free Trial' : legacyAccess ? 'Premium Plan' : hasSignals || hasBot || hasAds ? 'Your Features' : 'Free Plan'}
                   </h3>
                   <Badge variant="default" className="text-xs">
-                    {currentPlan === 'premium' ? 'Active' : currentPlan === 'lifetime' ? 'Active' : `${daysRemaining} days remaining`}
+                    {trialActive ? `${daysRemaining} days remaining` : legacyAccess ? 'Active' : hasSignals || hasBot || hasAds ? 'Active' : 'Free'}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  {currentPlan === 'premium'
-                    ? 'Premium active — manage your plan below'
-                    : currentPlan === 'lifetime'
-                    ? 'Lifetime access · No recurring payments'
-                    : 'Upgrade to unlock all features'}
+                  {trialActive
+                    ? 'Trial active — full access for the trial period'
+                    : legacyAccess
+                    ? 'Premium plan active — copy trading included'
+                    : `Signals ${hasSignals ? 'active' : 'locked'} · Bot ${hasBot ? 'active' : 'locked'} · Ads ${hasAds ? 'removed' : 'shown'}`}
                 </p>
               </div>
             </div>
@@ -925,14 +872,14 @@ export function SubscriptionsPage() {
                   <span className="text-3xl font-bold text-foreground">{plan.price}</span>
                   <span className="text-sm text-muted-foreground ml-1">{plan.period}</span>
                 </CardDescription>
-                {plan.id === 'premium_annual' && (
+                {plan.id === 'signals_monthly' && (
                   <p className="text-xs text-emerald-500 font-medium mt-1">
-                    Save $1,467.50 vs daily · best value
+                    The 2 highest-confidence picks every day
                   </p>
                 )}
-                {plan.id === 'lifetime' && (
+                {plan.id === 'bot_quarterly' && (
                   <p className="text-xs text-amber-500 font-medium mt-1">
-                    Equivalent to ~20 months of Premium
+                    24/7 automated trading on your account
                   </p>
                 )}
               </CardHeader>
@@ -969,7 +916,7 @@ export function SubscriptionsPage() {
                       await handleNotifyMe(plan.id)
                       return
                     }
-                    if (plan.id === 'trial' || plan.price === '$0') {
+                    if (plan.id === 'trial') {
                         // Free trial - no payment needed
                         try {
                           setSubscribing(plan.id)

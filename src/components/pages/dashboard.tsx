@@ -964,39 +964,30 @@ function WinLossBar({ wins, losses, total }: { wins: number; losses: number; tot
   )
 }
 
-function ScreenshotUsageCard({ used, limit }: { used: number; limit: number }) {
-  const pct = limit > 0 ? (used / limit) * 100 : 0
-  const isExceeded = used >= limit
-
+function ScreenshotUsageCard() {
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold">Screenshot Analysis</CardTitle>
-          <Badge variant={isExceeded ? 'destructive' : 'outline'} className="text-[10px]">
-            {used}/{limit} used
+          <Badge variant="outline" className="text-[10px]">
+            Free · Unlimited
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
-        <Progress value={pct} className="h-2" />
         <p className="text-[11px] text-muted-foreground">
-          {isExceeded
-            ? 'You have reached your free analysis limit. Upgrade for unlimited access.'
-            : `${limit - used} free analyses remaining this month.`
-          }
+          Upload any chart for instant AI pattern analysis — completely free for everyone.
         </p>
-        {isExceeded && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full gap-1.5"
-            onClick={() => useStore.getState().setPage('subscriptions')}
-          >
-            <Sparkles className="size-3.5" />
-            Upgrade for Unlimited
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full gap-1.5"
+          onClick={() => useStore.getState().setPage('subscriptions')}
+        >
+          <Sparkles className="size-3.5" />
+          Remove All Ads for $5
+        </Button>
       </CardContent>
     </Card>
   )
@@ -1326,10 +1317,7 @@ export function DashboardPage() {
         <UpcomingEvents events={events} loading={false} onRetry={fetchDashboardData} />
         <div className="space-y-3">
           <PlanUsageCard />
-          <ScreenshotUsageCard
-            used={stats?.screenshotsUsed ?? 0}
-            limit={stats?.screenshotsLimit ?? 2}
-          />
+          <ScreenshotUsageCard />
           <CommunityStats />
         </div>
       </div>

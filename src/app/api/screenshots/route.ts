@@ -8,7 +8,6 @@ import { purgeExpiredAnalyses } from '@/lib/services/analysis-cleanup'
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp']
 const DOWNLOAD_TIMEOUT_MS = 15_000
-const FREE_DAILY_LIMIT = 3
 
 function isPrivateAddress(ip: string): boolean {
   const parts = ip.split('.').map(Number)
@@ -72,37 +71,8 @@ export async function POST(request: NextRequest) {
       return errorResponse('No image provided. Upload an image file or provide an imageUrl', 400)
     }
 
-    // ─── Quota enforcement (free-tier daily cap) ────────────────────────
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { subscriptionTier: true, subscriptionEndDate: true, plan: true },
-    })
-
-    const subActive =
-      user?.subscriptionEndDate
-        ? new Date() < user.subscriptionEndDate
-        : user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'lifetime'
-
-    const isPremium =
-      (user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'lifetime') &&
-      subActive
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const todayCount = await db.screenshotAnalysis.count({
-      where: {
-        userId,
-        createdAt: { gte: today },
-      },
-    })
-
-    if (!isPremium && todayCount >= FREE_DAILY_LIMIT) {
-      return errorResponse(
-        `Free tier limit reached (${FREE_DAILY_LIMIT} analyses/day). Upgrade to a Premium plan for more analyses.`,
-        429
-      )
-    }
+    // The screenshot analyzer is FREE for everyone (ad-supported on the
+    // client). No quota enforcement — unlimited analyses per day.
 
     // Create a pending analysis record
     const analysis = await db.screenshotAnalysis.create({

@@ -44,6 +44,15 @@ model User {
   analysesUsed     Int        @default(0)
   analysesResetAt  DateTime?
   planExpiresAt    DateTime?
+
+  // ─── A-la-carte feature entitlements ─────────────────────────────────
+  // Feature purchases (see /api/subscriptions PLANS): signals_monthly
+  // $20/mo, bot_quarterly $100/3mo, remove_ads $5 one-time.
+  signalsUnlocked   Boolean   @default(false)
+  signalsExpiresAt  DateTime?
+  botExpiresAt      DateTime?
+  adsRemoved        Boolean   @default(false)
+  adsRemovedAt      DateTime?
   stripeCustomerId String?
   orders           Order[]
   analyses         Analysis[]
@@ -1114,11 +1123,24 @@ model BotInstance {
   lastSnapshot    String? // latest status snapshot JSON pushed by the bot service
   lastError       String?
   startCount      Int       @default(0)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+
+  // ─── Keep-running intent (reconcile) ──────────────────────────────────
+  // `shouldRun` is true while the bot is meant to keep trading continuously
+  // for the lifetime of the user's subscription. Set true on (auto)start, false
+  // on manual stop or subscription expiry. Reconciliation restarts instances
+  // with shouldRun=true that the bot service reports as stopped, and stops
+  // instances whose subscription has ended.
+  shouldRun           Boolean   @default(false)
+  stoppedReason       String? // manual | subscription_expired | error
+  lastRestartAttemptAt DateTime? // cooldown guard against restart loops
+  autoStarted         Boolean   @default(false) // bot was launched right after linking
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([connectionId])
   @@index([userId, status])
+  @@index([shouldRun])
 }
 
 model BotTrade {

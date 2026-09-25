@@ -65,10 +65,11 @@ export const socialAuthSchema = z.object({
 
 // ─── Payments ───────────────────────────────────────────────────────────────
 // The payment-init route uses `planType` (trial | premium_monthly |
-// premium_annual | lifetime). Keep this in sync with the route's local schema.
+// premium_annual | lifetime, plus a-la-carte products signals_monthly |
+// bot_quarterly | remove_ads). Keep this in sync with the route's local schema.
 export const paymentInitSchema = z.object({
   provider: z.enum(["stripe", "paypal", "paystack", "flutterwave", "mpesa", "airtel", "mtn", "revenuecat", "pesapal", "bank", "wallet"]),
-  planType: z.enum(["trial", "premium_daily", "premium_weekly", "premium_quarterly", "premium_annual", "lifetime"]),
+  planType: z.enum(["trial", "premium_daily", "premium_weekly", "premium_quarterly", "premium_annual", "lifetime", "signals_monthly", "bot_quarterly", "remove_ads"]),
   couponCode: z.string().trim().max(64).optional(),
   metadata: z.record(z.string(), z.string()).optional(),
 });

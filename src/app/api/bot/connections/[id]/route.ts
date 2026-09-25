@@ -3,11 +3,11 @@ import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/bot-crypto'
 import { botService } from '@/lib/services/bot-service'
-import { isPremiumActive, PREMIUM_FEATURE_MESSAGE } from '@/lib/premium-gate'
+import { hasBotAccess, BOT_PAYWALL_MESSAGE } from '@/lib/entitlements'
 
-async function assertPremium(userId: string) {
-  if (!(await isPremiumActive(userId))) {
-    return errorResponse(PREMIUM_FEATURE_MESSAGE, 403)
+async function assertBotAccess(userId: string) {
+  if (!(await hasBotAccess(userId))) {
+    return errorResponse(BOT_PAYWALL_MESSAGE, 403, undefined, 'bot_paywall')
   }
   return null
 }
@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
-    const premiumError = await assertPremium(userId)
+    const premiumError = await assertBotAccess(userId)
     if (premiumError) return premiumError
     const { id } = await params
 
@@ -54,7 +54,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) return errorResponse('Unauthorized', 401)
-    const premiumError = await assertPremium(userId)
+    const premiumError = await assertBotAccess(userId)
     if (premiumError) return premiumError
     const { id } = await params
 

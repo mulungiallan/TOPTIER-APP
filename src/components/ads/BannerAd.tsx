@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
-import { getAdSettings, trackAd, type AdSettings } from '@/lib/ads'
+import { getAdSettings, shouldShowAds, trackAd, type AdSettings } from '@/lib/ads'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -28,7 +28,7 @@ export function BannerAd({ position = 'bottom', className = '' }: BannerAdProps)
   const [settings, setSettings] = useState<AdSettings | null>(null)
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
-  const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
+  const showAds = shouldShowAds(user)
   const userId = user?.id || 'guest'
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function BannerAd({ position = 'bottom', className = '' }: BannerAdProps)
   }, [])
 
   useEffect(() => {
-    if (isPremium) {
+    if (!showAds) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(false)
       return
@@ -54,11 +54,11 @@ export function BannerAd({ position = 'bottom', className = '' }: BannerAdProps)
     }, adService.getConfig().banners.refreshInterval * 1000)
 
     return () => clearInterval(interval)
-  }, [isPremium, userId])
+  }, [showAds, userId])
 
   const adsEnabled = settings ? settings.enabled && settings.provider !== 'none' : false
 
-  if (!visible || isPremium) return null
+  if (!visible || !showAds) return null
 
   const hasAdSense = adsEnabled && settings?.provider === 'google' && settings?.adSenseClientId
   const customImage = adsEnabled && settings?.provider === 'custom' && settings?.customBannerImage

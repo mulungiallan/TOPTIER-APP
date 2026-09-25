@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
-import { trackAd } from '@/lib/ads'
+import { trackAd, shouldShowAds } from '@/lib/ads'
 import { TrendingUp, ExternalLink, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -23,11 +23,11 @@ export function NativeAd({ className = '', forceShow = false }: NativeAdProps) {
   const [visible, setVisible] = useState(true)
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
-  const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
+  const showAds = shouldShowAds(user)
   const userId = user?.id || 'guest'
 
   useEffect(() => {
-    if (isPremium) {
+    if (!showAds) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(false)
       return
@@ -36,9 +36,9 @@ export function NativeAd({ className = '', forceShow = false }: NativeAdProps) {
       setAdData(adService.getNativeAd())
       trackAd('native', 'view')
     }
-  }, [isPremium, forceShow, userId])
+  }, [showAds, forceShow, userId])
 
-  if (!visible || isPremium || !adData) return null
+  if (!visible || !showAds || !adData) return null
 
   const handleClick = () => {
     trackAd('native', 'click')

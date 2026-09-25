@@ -54,7 +54,11 @@ npm run db:push      # push schema to SQLite
 - Providers registered in `src/lib/payments/registry.ts` (`PaymentProvider` union in `types.ts`, validated in `validation.ts`).
 - **To add a payment provider:** (1) add to `PaymentProvider` union in `src/lib/payments/types.ts`; (2) add to `paymentInitSchema` provider enum in `src/lib/validation.ts`; (3) create/find a gateway in `src/lib/payments/`; (4) register in `registry.ts` gateways map + `envChecks`; (5) add to `getAvailableProviders()`.
 - `getAvailableProviders()` = what the UI chooser shows. Wallet + PesaPal are the instant methods; mpesa/airtel/mtn/bank are manual (admin confirms).
-- Plan catalog is defined in `src/app/api/subscriptions/route.ts` (PLANS) and mirrored in `src/app/api/billing/dashboard/route.ts` (PLAN_CATALOG). **Keep the two in sync.** Prices: trial $0, premium_daily $1.50, premium_weekly $7, premium_quarterly $75, premium_annual $120. No premium_monthly.
+- Plan catalog is defined in `src/app/api/subscriptions/route.ts` (PLANS) and mirrored in `src/app/api/billing/dashboard/route.ts` (PLAN_CATALOG). **Keep the two in sync.**
+- **A-la-carte feature purchases** (sellable products, in `payments/init` PLANS + `subscriptions` PLANS + billing PLAN_CATALOG): signals_monthly $20/30d, bot_quarterly $100/90d, remove_ads $5/one-time. Trial $0 and legacy premium_* plans still exist for existing subscribers / copy-trading but are no longer sold in the subscriptions UI.
+- **Entitlements** (`src/lib/entitlements.ts`): `hasSignalsAccess` / `hasBotAccess` / `hasAdFree` gate signals + bot + ads. Legacy premium/lifetime/pro tiers, trial, and admins get full access. Signals = exactly the 2 best daily signals by confidence (see `/api/signals`). Bot still uses `/api/bot/**` gates. Ads show for everyone unless `adsRemoved`, a premium-tier flag, or trial.
+- Screenshot analyzer is FREE/unlimited for everyone (`/api/screenshots` has no quota). `remove_ads` purchase sets `adsRemoved`/`adsRemovedAt` lifetime.
+- `fulfillPendingPayment` (`src/lib/payments/fulfillment.ts`) stacks signals_monthly (+30d) and bot_quarterly (+90d) from `max(now, existing expiry)`; `remove_ads` is idempotent/lifetime.
 - Wallet payment (provider `'wallet'`) is handled inline in `/api/payments/init` (checks USD `getBalance`, `withdrawCash`, then `fulfillPendingPayment`).
 - **Idempotency matters:** ledger postings are idempotent by reference; `fulfillPendingPayment` claims only `status: 'pending'` transactions. Never mark a transaction completed before calling it, or fulfillment silently no-ops.
 

@@ -898,9 +898,11 @@ function mapApiSignal(s: any): MockSignal {
 // ─── Main Signals Page ─────────────────────────────────────────────────────────────
 
 export function SignalsPage() {
+  const setPage = useStore((s) => s.setPage)
   const [signals, setSignals] = useState<MockSignal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [paywall, setPaywall] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [marketFilter, setMarketFilter] = useState<MarketType>('All')
   const [strategyFilter, setStrategyFilter] = useState<Strategy>('Both')
@@ -918,6 +920,7 @@ export function SignalsPage() {
         setLoading(true)
       }
       setError(null)
+      setPaywall(false)
 
       const params = new URLSearchParams()
       if (marketFilter !== 'All') params.set('market', marketFilter)
@@ -933,7 +936,9 @@ export function SignalsPage() {
       const rawSignals = Array.isArray(result?.data) ? result.data : result?.data?.signals || result?.signals || []
       setSignals(rawSignals.map(mapApiSignal))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load signals')
+      const apiError = err as Error & { code?: string }
+      setPaywall(apiError?.code === 'signals_paywall')
+      setError(apiError instanceof Error ? apiError.message : 'Failed to load signals')
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -1276,7 +1281,22 @@ export function SignalsPage() {
       </Card>
 
       {/* ── Signal Feed ──────────────────────────────────────────────── */}
-      {loading ? (
+      {paywall ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-[#1b4f9c]/20 bg-gradient-to-br from-[#1b4f9c]/10 to-transparent p-6">
+          <TrendingUp className="h-8 w-8 mt-0.5 shrink-0 text-[#1b4f9c]" />
+          <div className="space-y-3">
+            <div>
+              <p className="font-semibold text-lg">Unlock the 2 Best Signals Every Day</p>
+              <p className="text-muted-foreground text-sm mt-1">
+                {error || 'Get the Signals subscription to see the two highest-confidence setups of the day, ranked by win probability.'}
+              </p>
+            </div>
+            <Button onClick={() => setPage('subscriptions')}>
+              Get Signals — $20 / month
+            </Button>
+          </div>
+        </div>
+      ) : loading ? (
         <SignalsLoadingSkeleton />
       ) : error ? (
         <SignalsErrorState error={error} onRetry={() => fetchSignals()} />

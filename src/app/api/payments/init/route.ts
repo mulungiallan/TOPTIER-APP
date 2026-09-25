@@ -20,7 +20,26 @@ const PLANS: Record<string, { price: number; currency: string }> = {
   premium_quarterly: { price: 75, currency: 'USD' },
   premium_annual: { price: 120, currency: 'USD' },
   lifetime: { price: 499.99, currency: 'USD' },
+  signals_monthly: { price: 20, currency: 'USD' },
+  bot_quarterly: { price: 100, currency: 'USD' },
+  remove_ads: { price: 5, currency: 'USD' },
 }
+
+const productLabels: Record<string, string> = {
+    trial: 'Trial',
+    premium_daily: 'Premium Daily',
+    premium_weekly: 'Premium Weekly',
+    premium_quarterly: 'Premium Quarterly',
+    premium_annual: 'Premium Annual',
+    lifetime: 'Lifetime Access',
+    signals_monthly: 'Signals (30 days)',
+    bot_quarterly: 'Trading Bot (3 months)',
+    remove_ads: 'Remove Ads (lifetime)',
+  }
+
+  function productLabel(planType: string): string {
+    return productLabels[planType] || planType.replace('_', ' ')
+  }
 
 export async function POST(request: NextRequest) {
   try {
@@ -144,7 +163,7 @@ export async function POST(request: NextRequest) {
         planType,
         paymentProvider: provider,
         status: 'pending',
-        description: `TOPTIER ${planType.replace('_', ' ')} subscription${discount > 0 ? ` (discount: $${discount.toFixed(2)})` : ''}${couponUsed ? `|coupon:${couponUsed}` : ''}`,
+        description: `TOPTIER ${productLabel(planType)}${discount > 0 ? ` (discount: $${discount.toFixed(2)})` : ''}${couponUsed ? `|coupon:${couponUsed}` : ''}`,
       },
     })
 
@@ -202,7 +221,7 @@ export async function POST(request: NextRequest) {
         asset: 'USD',
         amount: finalAmount,
         reference: transaction.id,
-        memo: `Premium ${planType.replace('_', ' ')} payment from wallet`,
+        memo: `${productLabel(planType)} payment from wallet`,
       })
 
       await fulfillPendingPayment({ id: transaction.id }, { provider: 'wallet', paymentMethod: 'wallet' })

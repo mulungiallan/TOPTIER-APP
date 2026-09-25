@@ -99,14 +99,19 @@ export function applyAdSettings(s: AdSettings): void {
   })
 }
 
-// Free / trial users get ads; paying plans do not.
+// Ads show for everyone EXCEPT users who bought remove_ads ($5 one-time) or
+// hold a legacy premium/trial status that already includes ad-free. Clicking
+// "premium_with_ads" users still see ads unless they buy the ad-removal flag.
 export function shouldShowAds(user: User | null): boolean {
   if (!user) return false
+  if (user.adsRemoved) return false
   const tier = (user.subscriptionTier || '').toLowerCase()
   const plan = (user.plan || '').toLowerCase()
   if (
     tier === 'premium' ||
+    tier === 'pro' ||
     tier === 'lifetime' ||
+    tier === 'trial' ||
     plan === 'premium' ||
     plan === 'pro' ||
     plan === 'enterprise' ||

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useStore, type Page } from '@/lib/store'
 import { adService } from '@/lib/services/ad-service'
-import { trackAd } from '@/lib/ads'
+import { trackAd, shouldShowAds } from '@/lib/ads'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdCreative } from '@/lib/services/ad-service'
@@ -25,11 +25,11 @@ export function InterstitialAd({ onComplete, onSkip, forceShow = false }: Inters
   const [adData, setAdData] = useState<AdCreative | null>(null)
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
-  const isPremium = user?.subscriptionTier === 'premium' || user?.subscriptionTier === 'pro'
+  const showAds = shouldShowAds(user)
   const userId = user?.id || 'guest'
 
   useEffect(() => {
-    if (isPremium) {
+    if (!showAds) {
       onComplete()
       return
     }
@@ -49,7 +49,7 @@ export function InterstitialAd({ onComplete, onSkip, forceShow = false }: Inters
     setAdData(creative)
     setCountdown(creative.duration ?? 5)
     setVisible(true)
-    if (!isPremium) trackAd('interstitial', 'view')
+    trackAd('interstitial', 'view')
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -62,7 +62,7 @@ export function InterstitialAd({ onComplete, onSkip, forceShow = false }: Inters
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [isPremium])
+  }, [showAds])
 
   const handleSkip = () => {
     setVisible(false)
@@ -83,7 +83,7 @@ export function InterstitialAd({ onComplete, onSkip, forceShow = false }: Inters
     onComplete()
   }
 
-  if (!visible || isPremium || !adData) return null
+  if (!visible || !showAds || !adData) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4">

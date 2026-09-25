@@ -2,7 +2,9 @@ import { NextRequest } from 'next/server'
 import { successResponse, errorResponse } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { BotProfitShareService } from '@/lib/services/bot-profit-share'
+import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
 import { ManagedCopyService, MasterTradeEvent } from '@/lib/services/managed-copy'
+import { hasBotAccess } from '@/lib/entitlements'
 import { timingSafeEqual } from 'crypto'
 
 // POST /api/bot/webhook — called by the Python bot service (mini-services/bot)
@@ -28,6 +30,37 @@ function timingSafeCompare(a: string, b: string): boolean {
   const bufB = Buffer.from(b)
   if (bufA.length !== bufB.length) return false
   return timingSafeEqual(bufA, bufB)
+}
+
+/**
+ * Keep-running maintenance, triggered on every webhook hit from the bot
+ * service:
+ *  - Subscription expired for this instance's owner → stop it so the bot never
+ *    keeps trading after the plan is over.
+ *  - Otherwise, if any keep-running instance is down (crash / service restart),
+ *    reconcile the whole fleet to restart it.
+ */
+async function runBotMaintenance(instance: { id: string; userId: string; status: string }) {
+  try {
+    if (!(await hasBotAccess(instance.userId))) {
+      if (['starting', 'running', 'stopping'].includes(instance.status)) {
+        await BotInstanceManager.stop(instance.id, 'subscription_expired')
+      }
+      return
+    }
+    const downCount = await db.botInstance.count({
+      where: { shouldRun: true, status: { in: ['stopped', 'error'] } },
+    })
+    if (downCount > 0) {
+      try {
+        await BotInstanceManager.reconcileAll()
+      } catch (e) {
+        console.error('Bot fleet reconcile failed:', e)
+      }
+    }
+  } catch (e) {
+    console.error('Bot maintenance failed:', e)
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -61,6 +94,7 @@ export async function POST(request: NextRequest) {
           lastSnapshot: typeof data === 'string' ? data : JSON.stringify(data ?? null),
         },
       })
+      await runBotMaintenance(instance)
       return successResponse({ received: true })
     }
 
@@ -74,12 +108,16 @@ export async function POST(request: NextRequest) {
           ...(event === 'error' && data?.message ? { lastError: String(data.message) } : {}),
         },
       })
+      await runBotMaintenance(instance)
       return successResponse({ received: true })
     }
 
     if (type === 'trade_opened') {
       const trades: any[] = data?.trades || []
-      if (trades.length === 0) return successResponse({ received: true, upserted: 0 })
+      if (trades.length === 0) {
+        await runBotMaintenance(instance)
+        return successResponse({ received: true, upserted: 0 })
+      }
 
       let upserted = 0
       let mirrored = 0
@@ -130,12 +168,16 @@ export async function POST(request: NextRequest) {
         mirrored += (await ManagedCopyService.mirrorMasterOpen(instance.connectionId, ev)).mirrored
       }
 
+      await runBotMaintenance(instance)
       return successResponse({ received: true, upserted, mirrored })
     }
 
     if (type === 'trade_closed') {
       const trades: any[] = data?.trades || []
-      if (trades.length === 0) return successResponse({ received: true, upserted: 0 })
+      if (trades.length === 0) {
+        await runBotMaintenance(instance)
+        return successResponse({ received: true, upserted: 0 })
+      }
 
       let upserted = 0
       for (const t of trades) {
@@ -207,6 +249,7 @@ export async function POST(request: NextRequest) {
         settled += (await ManagedCopyService.mirrorMasterClose(instance.connectionId, ev)).settled
       }
 
+      await runBotMaintenance(instance)
       return successResponse({ received: true, upserted, settled })
     }
 

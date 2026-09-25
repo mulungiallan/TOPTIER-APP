@@ -3,12 +3,20 @@ import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { notifyUsers } from '@/lib/services/notifications'
 import { signalGenerator } from '@/lib/services/signal-generator'
+import { hasSignalsAccess, SIGNALS_PAYWALL_MESSAGE } from '@/lib/entitlements'
 
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request)
     if (!userId) {
       return errorResponse('Unauthorized', 401)
+    }
+
+    // Signals are a paid product: only Signals subscribers / legacy premium /
+    // trial users see them. Everyone else gets a paywall.
+    const hasSignals = await hasSignalsAccess(userId)
+    if (!hasSignals) {
+      return errorResponse(SIGNALS_PAYWALL_MESSAGE, 403, undefined, 'signals_paywall')
     }
 
     const { searchParams } = new URL(request.url)
@@ -18,8 +26,6 @@ export async function GET(request: NextRequest) {
     const strategyType = searchParams.get('strategyType')
     const status = searchParams.get('status')
     const asset = searchParams.get('asset')
-    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '50')), 200)
-    const offset = Math.max(0, parseInt(searchParams.get('offset') || '0'))
 
     const where: Record<string, unknown> = {}
 
@@ -38,33 +44,32 @@ export async function GET(request: NextRequest) {
     // instead of showing the same stale entries forever.
     await signalGenerator.ensureSignals()
 
-    const [signals, total] = await Promise.all([
-      db.signal.findMany({
+    // ─── Top-2 daily rule ────────────────────────────────────────────────
+    // The Signals product delivers exactly the 2 BEST signals per day, ranked
+    // by confidence (the win-rate proxy; signals carry no winRate field yet).
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const includeCount = { _count: { select: { comments: true, reactions: true } } }
+
+    let signals = await db.signal.findMany({
+      where: { ...where, createdAt: { gte: since } },
+      orderBy: [{ confidence: 'desc' }, { createdAt: 'desc' }],
+      take: 2,
+      include: includeCount,
+    })
+
+    // Quiet day / quiet market: top up with the most recent signals so the
+    // subscriber always has at least 2 picks to see.
+    if (signals.length < 2) {
+      const newest = await db.signal.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        take: limit,
-        skip: offset,
-        include: {
-          _count: { select: { comments: true, reactions: true } },
-        },
-      }),
-      db.signal.count({ where }),
-    ])
-
-    // If we just generated and the user asked for a specific market with no
-    // results for that market, fall back to showing all generated signals.
-    if (total === 0 && market) {
-      const all = await db.signal.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        include: {
-          _count: { select: { comments: true, reactions: true } },
-        },
+        take: 2 - signals.length,
+        include: includeCount,
       })
-      return successResponse({ signals: all, total: all.length, limit, offset: 0 })
+      signals = [...signals, ...newest]
     }
 
-    return successResponse({ signals, total, limit, offset })
+    return successResponse({ signals, total: signals.length, limit: 2, offset: 0 })
   } catch (error) {
     console.error('Signals GET error:', error)
     return errorResponse('Failed to fetch signals', 500)

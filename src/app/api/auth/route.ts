@@ -122,6 +122,10 @@ export async function POST(request: NextRequest) {
           onboardingCompleted: user.onboardingCompleted,
           onboardingStep: user.onboardingStep,
           darkMode: user.darkMode,
+          signalsUnlocked: user.signalsUnlocked,
+          signalsExpiresAt: user.signalsExpiresAt,
+          botExpiresAt: user.botExpiresAt,
+          adsRemoved: user.adsRemoved,
         },
         token,
       }, 201)
@@ -214,6 +218,10 @@ export async function POST(request: NextRequest) {
           language: user.language,
           isEmailVerified: user.isEmailVerified,
           twoFactorEnabled: user.twoFactorEnabled,
+          signalsUnlocked: user.signalsUnlocked,
+          signalsExpiresAt: user.signalsExpiresAt,
+          botExpiresAt: user.botExpiresAt,
+          adsRemoved: user.adsRemoved,
         },
         token,
       })

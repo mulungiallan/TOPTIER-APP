@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { grantReferralCashMilestones } from '@/lib/services/referral-rewards'
+import { deriveEntitlements } from '@/lib/entitlements'
 
 // ─── Plan catalogue (kept in sync with /api/subscriptions) ─────────────────
 const PLAN_CATALOG = [
@@ -12,7 +13,7 @@ const PLAN_CATALOG = [
     currency: 'USD',
     interval: null,
     color: 'slate',
-    features: ['3 signals per day', 'Basic market coverage', 'Community access', 'Economic calendar'],
+    features: ['FREE screenshot analysis (ad-supported)', 'Community access', 'Economic calendar', 'Market coverage'],
   },
   {
     id: 'trial',
@@ -21,52 +22,34 @@ const PLAN_CATALOG = [
     currency: 'USD',
     interval: '7_days',
     color: 'amber',
-    features: ['All premium features', 'Unlimited signals', 'Screenshot analysis', 'Custom alerts'],
+    features: ['All features unlocked', 'Signals access', 'Trading bot access', 'No ads', 'Screenshot analysis'],
   },
   {
-    id: 'premium_daily',
-    name: 'Premium Daily',
-    price: 1.5,
+    id: 'signals_monthly',
+    name: 'Signals',
+    price: 20,
     currency: 'USD',
-    interval: 'day',
-    color: 'emerald',
-    features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features'],
-  },
-  {
-    id: 'premium_weekly',
-    name: 'Premium Weekly',
-    price: 7,
-    currency: 'USD',
-    interval: 'week',
-    color: 'teal',
-    features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features'],
-  },
-  {
-    id: 'premium_quarterly',
-    name: 'Premium Quarterly',
-    price: 75,
-    currency: 'USD',
-    interval: 'quarter',
+    interval: 'month',
     color: 'violet',
-    features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features', 'Early access'],
+    features: ['The 2 best signals every day', 'Highest-confidence picks', 'Forex, crypto, indices & more', 'Full trade ideas with SL/TP'],
   },
   {
-    id: 'premium_annual',
-    name: 'Premium Yearly',
-    price: 120,
+    id: 'bot_quarterly',
+    name: 'Trading Bot',
+    price: 100,
     currency: 'USD',
-    interval: 'year',
-    color: 'amber',
-    features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features', 'Early access', 'Exclusive webinars'],
+    interval: '3_months',
+    color: 'emerald',
+    features: ['Automated MT5/MT4 bot', 'Runs continuously while active', 'Profit-share settlements', '4 instances per account'],
   },
   {
-    id: 'lifetime',
-    name: 'Lifetime Access',
-    price: 499.99,
+    id: 'remove_ads',
+    name: 'Remove Ads',
+    price: 5,
     currency: 'USD',
     interval: 'lifetime',
     color: 'rose',
-    features: ['Everything in Premium', 'Lifetime access', 'One-time payment', 'VIP support'],
+    features: ['No ads anywhere in the app', 'Removes banners, popups & interstitials', 'One-time payment, permanent'],
   },
 ]
 
@@ -83,6 +66,9 @@ const PLAN_DURATIONS_DAYS: Record<string, number> = {
   one_week: 7,
   two_week: 14,
   quarterly: 90,
+  signals_monthly: 30,
+  bot_quarterly: 90,
+  remove_ads: 36500,
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -131,6 +117,11 @@ export async function GET(request: NextRequest) {
         referralCode: true,
         referralCount: true,
         earnedPremiumDays: true,
+        role: true,
+        signalsUnlocked: true,
+        signalsExpiresAt: true,
+        botExpiresAt: true,
+        adsRemoved: true,
         createdAt: true,
       },
     })
@@ -224,6 +215,9 @@ export async function GET(request: NextRequest) {
       ? Math.min(100, Math.max(0, ((planDurationDays - daysRemaining) / planDurationDays) * 100))
       : 0
 
+    // ─── A-la-carte entitlements (signals / bot / ads) ────────────────────
+    const entitlements = deriveEntitlements(user)
+
     const analysesLimit = user.analysesLimit || 0
     const analysesUsed = user.analysesUsed || 0
     const analysesRemaining = analysesLimit === 0 ? null : Math.max(0, analysesLimit - analysesUsed)
@@ -287,8 +281,16 @@ export async function GET(request: NextRequest) {
         isTrial,
         isLifetime: user.subscriptionTier === 'lifetime',
         isFree: user.subscriptionTier === 'free',
-        isPremium: ['premium', 'premium_with_ads', 'lifetime', 'pro'].includes(user.subscriptionTier),
-        hasAds: user.subscriptionTier === 'premium_with_ads' || user.subscriptionTier === 'free' || isTrial,
+        isPremium: entitlements.legacyPremium,
+        hasAds: !entitlements.adFree,
+      },
+      entitlements: {
+        signals: entitlements.signals,
+        signalsExpiresAt: entitlements.signals ? user.signalsExpiresAt : null,
+        bot: entitlements.bot,
+        botExpiresAt: entitlements.bot ? user.botExpiresAt : null,
+        adFree: entitlements.adFree,
+        adsRemoved: user.adsRemoved === true,
       },
       usage: {
         analysesLimit,
