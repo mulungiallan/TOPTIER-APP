@@ -195,8 +195,10 @@ MAX_LOT_FLOOR_RISK_MULTIPLE = 2.5  # if the broker's MINIMUM lot would risk more
 
 REWARD_RISK_RATIO = 3.0          # take-profit distance = stop-loss distance * this (swing/trend/momentum/mean-reversion)
 REWARD_RISK_RATIO_SCALPING = 1.5 # scalping uses a tighter, faster ratio -- see strategies/scalping.py
-MAX_DAILY_LOSS_PCT = 5.0         # kill switch: stop trading for the day past this drawdown
+MAX_DAILY_LOSS_PCT = 5.0         # past this drawdown (vs the anchor equity) the loss cooldown engages
 KILL_SWITCH_CONFIRM_SCANS = 2    # require the breach to show up this many consecutive scans before
+LOSS_COOLDOWN_MINUTES = 5        # after a confirmed drawdown breach, pause new entries this many minutes, then resume automatically
+LOSS_COOLDOWN_RESUME_FLAG = None # optional absolute path to a "resume now" flag file; None = next to the running config.py
                                   # trusting it -- protects against a single bad/transient equity
                                   # reading (e.g. during a brief network hiccup) causing a false alarm
 MAX_SPREAD_PIPS = 10000.0       # LIFTED (10k pips) -- wide-spread instruments are no longer rejected. Restore ~3.0 to re-enable the guard.

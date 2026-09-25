@@ -33,10 +33,12 @@ import trade_tracker as tt
 
 logger = logging.getLogger("risk_manager")
 
-_day_start_equity = None
+_day_start_equity = None        # daily anchor baseline (used by the daily profit target)
 _current_day = None
-_paused_until = None  # consecutive-loss pause expiry, or None
+_paused_until = None            # consecutive-loss pause expiry, or None
 _kill_switch_breach_count = 0   # consecutive scans where drawdown looked breached -- debounces single bad readings
+_drawdown_anchor = None         # equity the loss switch measures against (re-anchored after each cooldown)
+_cooldown_until = None          # loss-cooldown expiry: pause new entries a few minutes, then resume
 
 
 # ----------------------------------------------------------------------
@@ -44,26 +46,49 @@ _kill_switch_breach_count = 0   # consecutive scans where drawdown looked breach
 # ----------------------------------------------------------------------
 
 def _refresh_daily_baseline(account_info):
-    """Reset the daily baseline (used by both kill switch and profit target) at the start of a new UTC day."""
-    global _day_start_equity, _current_day, _kill_switch_breach_count
+    """Reset the daily baseline (used by the daily profit target) and the
+    drawdown anchor (used by the loss cooldown) at the start of a new UTC day."""
+    global _day_start_equity, _current_day, _kill_switch_breach_count, _drawdown_anchor, _cooldown_until
     today = datetime.now(timezone.utc).date()
     if _current_day != today:
         _current_day = today
         _day_start_equity = account_info.equity
+        _drawdown_anchor = account_info.equity
         _kill_switch_breach_count = 0
+        _cooldown_until = None
         logger.info(f"New trading day. Baseline equity set to {_day_start_equity:.2f}")
+
+
+def _resume_flag_path() -> str:
+    """Absolute path of the operator 'resume now' flag file. Defaults to a
+    file next to the running config.py; overridable via config."""
+    flag = getattr(config, "LOSS_COOLDOWN_RESUME_FLAG", None)
+    if flag:
+        return flag
+    return os.path.join(os.path.dirname(os.path.abspath(config.__file__)), "resume.flag")
 
 
 def kill_switch_triggered(account_info) -> bool:
     """
-    True if today's drawdown has breached MAX_DAILY_LOSS_PCT for
-    KILL_SWITCH_CONFIRM_SCANS consecutive checks in a row. Requiring
-    repeated confirmation (not just one reading) protects against a
-    single transient bad equity read (e.g. during a brief network/MT5
-    reconnect hiccup) causing a false alarm -- a real loss stays low
-    across multiple checks; a glitch self-corrects within seconds.
+    True while the day's drawdown has breached MAX_DAILY_LOSS_PCT -- and the
+    engine must not open new entries meanwhile.
+
+    Unlike the old "shut down for the rest of the day" behavior, a confirmed
+    breach now engages a short LOSS_COOLDOWN_MINUTES pause (configurable,
+    default 5). When the cooldown expires the bot re-anchors its drawdown
+    baseline to the current equity and resumes trading -- so a losing stretch
+    costs the account a few minutes of rest, not the whole day.
+
+    A breach must be confirmed KILL_SWITCH_CONFIRM_SCANS consecutive scans in
+    a row before anything happens, protecting against a single transient bad
+    equity read (e.g. during a brief network/MT5 reconnect hiccup) -- a real
+    loss stays low across multiple checks; a glitch self-corrects in seconds.
+
+    An operator can force an immediate resume by dropping a `resume.flag` file
+    next to the running config.py (or at config.LOSS_COOLDOWN_RESUME_FLAG); the
+    flag clears the cooldown and re-anchors the baseline on the next scan.
     """
-    global _kill_switch_breach_count
+    global _kill_switch_breach_count, _drawdown_anchor, _cooldown_until
     _refresh_daily_baseline(account_info)
     if not _day_start_equity:
         return False
@@ -73,23 +98,58 @@ def kill_switch_triggered(account_info) -> bool:
     # Default of 1 = old behavior (trip on the very first breach, no debounce).
     confirm_scans_required = getattr(config, "KILL_SWITCH_CONFIRM_SCANS", 1)
 
-    drawdown_pct = (_day_start_equity - account_info.equity) / _day_start_equity * 100
-    logger.debug(f"Kill switch check: baseline={_day_start_equity:.2f}, current_equity={account_info.equity:.2f}, drawdown={drawdown_pct:.2f}%")
+    # Operator override: drop a resume.flag file to skip the rest of a cooldown now.
+    if os.path.exists(_resume_flag_path()):
+        _kill_switch_breach_count = 0
+        _cooldown_until = None
+        _drawdown_anchor = account_info.equity
+        logger.warning(
+            "resume.flag detected -- clearing loss cooldown and re-anchoring "
+            "drawdown baseline to current equity; resuming entries."
+        )
+        try:
+            os.remove(_resume_flag_path())
+        except OSError:
+            pass
+        return False
+
+    # Active cooldown window -- hold new entries, then resume automatically.
+    if _cooldown_until is not None:
+        if datetime.now(timezone.utc) < _cooldown_until:
+            logger.info(f"Loss cooldown active until {_cooldown_until.isoformat()} -- holding new entries.")
+            return True
+        _drawdown_anchor = account_info.equity
+        _kill_switch_breach_count = 0
+        _cooldown_until = None
+        logger.warning(
+            f"Loss cooldown expired. Re-anchoring drawdown baseline to current equity "
+            f"({_drawdown_anchor:.2f}) and resuming trading."
+        )
+        return False
+
+    drawdown_pct = (_drawdown_anchor - account_info.equity) / _drawdown_anchor * 100
+    logger.debug(f"Kill switch check: baseline={_drawdown_anchor:.2f}, current_equity={account_info.equity:.2f}, drawdown={drawdown_pct:.2f}%")
 
     if drawdown_pct >= config.MAX_DAILY_LOSS_PCT:
         _kill_switch_breach_count += 1
         logger.warning(
             f"Drawdown {drawdown_pct:.2f}% >= limit {config.MAX_DAILY_LOSS_PCT}% "
-            f"(baseline equity={_day_start_equity:.2f}, current equity={account_info.equity:.2f}) "
+            f"(anchor equity={_drawdown_anchor:.2f}, current equity={account_info.equity:.2f}) "
             f"-- confirmation {_kill_switch_breach_count}/{confirm_scans_required}"
         )
         if _kill_switch_breach_count >= confirm_scans_required:
-            logger.warning("KILL SWITCH CONFIRMED: no new trades today.")
+            cool_min = getattr(config, "LOSS_COOLDOWN_MINUTES", 5)
+            _cooldown_until = datetime.now(timezone.utc) + timedelta(minutes=cool_min)
+            logger.warning(
+                f"LOSS COOLDOWN ENGAGED: drawdown {drawdown_pct:.2f}% >= limit "
+                f"{config.MAX_DAILY_LOSS_PCT}%. Pausing new entries for {cool_min} minutes "
+                f"(until {_cooldown_until.isoformat()} UTC), then resuming automatically."
+            )
             return True
         return False  # not confirmed yet, could be a transient bad reading
     else:
         if _kill_switch_breach_count > 0:
-            logger.info(f"Drawdown reading recovered ({drawdown_pct:.2f}%) -- resetting kill switch confirmation counter.")
+            logger.info(f"Drawdown reading recovered ({drawdown_pct:.2f}%) -- resetting confirmation counter.")
         _kill_switch_breach_count = 0
         return False
 
