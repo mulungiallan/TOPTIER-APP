@@ -8,6 +8,11 @@ from . import market_making_bias
 from . import breakout
 from . import pairs_trading
 from . import carry_trade
+from . import ema_cross
+from . import macd_cross
+from . import adx_trend
+from . import stochastic_reversion
+from . import atr_channel_breakout
 
 __all__ = [
     "trend_following",
@@ -20,4 +25,9 @@ __all__ = [
     "breakout",
     "pairs_trading",
     "carry_trade",
+    "ema_cross",
+    "macd_cross",
+    "adx_trend",
+    "stochastic_reversion",
+    "atr_channel_breakout",
 ]

@@ -60,6 +60,7 @@ interface AnalysisResult {
   detectedAsset: string
   pattern: string
   explanation: string
+  strategy: string
   imageUrl: string
   createdAt: Date
 }
@@ -362,6 +363,12 @@ function AnalysisResultCard({
               <Zap className="size-3" />
               {result.pattern}
             </Badge>
+            {result.strategy ? (
+              <Badge variant="outline" className="gap-1">
+                <Target className="size-3" />
+                {result.strategy}
+              </Badge>
+            ) : null}
           </div>
 
           {/* Explanation */}
@@ -832,6 +839,7 @@ export function ScreenshotAnalyzer() {
           timeframe: (a.timeframe as string) || 'Unknown',
           detectedAsset: (a.detectedAsset as string) || 'Unknown',
           pattern: (a.pattern as string) || 'Unknown',
+          strategy: (a.strategy as string) || '',
           explanation: (a.explanation as string) || '',
           imageUrl: (a.imageUrl as string) || '',
           createdAt: new Date(a.createdAt as string),
@@ -996,6 +1004,7 @@ export function ScreenshotAnalyzer() {
       timeframe: (d.timeframe as string) || 'Unknown',
       detectedAsset: (d.detectedAsset as string) || 'Unknown',
       pattern: (d.pattern as string) || 'Unknown',
+      strategy: (d.strategy as string) || '',
       explanation: (d.explanation as string) || '',
       imageUrl: previewUrl || '',
       createdAt: new Date(),

@@ -157,6 +157,131 @@ export function atrSeries(candles: CandleInput[], period = 14): number[] {
   return out
 }
 
+export function macdSeries(candles: CandleInput[], fast = 12, slow = 26, signalPeriod = 9): {
+  macd: number[]
+  signal: number[]
+  hist: number[]
+} {
+  const closes = candles.map((c) => c.close)
+  const fastEma = emaSeries(closes, fast)
+  const slowEma = emaSeries(closes, slow)
+  const macd = closes.map((_, i) =>
+    Number.isFinite(fastEma[i]) && Number.isFinite(slowEma[i]) ? fastEma[i] - slowEma[i] : NaN
+  )
+  const cleaned = macd.map((v) => (Number.isFinite(v) ? v : 0))
+  const signal = emaSeries(cleaned, signalPeriod)
+  const hist = macd.map((v, i) => (Number.isFinite(v) && Number.isFinite(signal[i]) ? v - signal[i] : NaN))
+  return { macd, signal, hist }
+}
+
+export function stochasticSeries(
+  closes: number[],
+  highs: number[],
+  lows: number[],
+  period = 14,
+  kSmooth = 3,
+  dSmooth = 3
+): { k: number[]; d: number[] } {
+  const n = closes.length
+  const k = new Array<number>(n).fill(NaN)
+  const d = new Array<number>(n).fill(NaN)
+  if (n < period + 1) return { k, d }
+  const kRaw = new Array<number>(n).fill(NaN)
+  for (let i = period - 1; i < n; i++) {
+    let lowest = Infinity
+    let highest = -Infinity
+    for (let j = i - period + 1; j <= i; j++) {
+      if (lows[j] < lowest) lowest = lows[j]
+      if (highs[j] > highest) highest = highs[j]
+    }
+    const rng = highest - lowest
+    kRaw[i] = rng > 1e-12 ? ((closes[i] - lowest) / rng) * 100 : 50
+  }
+  for (let i = kSmooth - 1; i < n; i++) {
+    let s = 0
+    for (let j = i - kSmooth + 1; j <= i; j++) {
+      if (Number.isFinite(kRaw[j])) s += kRaw[j]
+      else {
+        s = NaN
+        break
+      }
+    }
+    if (Number.isFinite(s)) k[i] = s / kSmooth
+  }
+  for (let i = dSmooth - 1; i < n; i++) {
+    let s = 0
+    for (let j = i - dSmooth + 1; j <= i; j++) {
+      if (Number.isFinite(k[j])) s += k[j]
+      else {
+        s = NaN
+        break
+      }
+    }
+    if (Number.isFinite(s)) d[i] = s / dSmooth
+  }
+  return { k, d }
+}
+
+export function directionalIndicators(candles: CandleInput[], period = 14): {
+  adx: number[]
+  plusDi: number[]
+  minusDi: number[]
+} {
+  const n = candles.length
+  const tr = new Array<number>(n).fill(0)
+  const plusDm = new Array<number>(n).fill(0)
+  const minusDm = new Array<number>(n).fill(0)
+  for (let i = 1; i < n; i++) {
+    const { high, low } = candles[i]
+    const pc = candles[i - 1].close
+    tr[i] = Math.max(high - low, Math.abs(high - pc), Math.abs(low - pc))
+    const up = high - candles[i - 1].high
+    const dn = candles[i - 1].low - low
+    plusDm[i] = up > dn && up > 0 ? up : 0
+    minusDm[i] = dn > up && dn > 0 ? dn : 0
+  }
+  const plusDi = new Array<number>(n).fill(NaN)
+  const minusDi = new Array<number>(n).fill(NaN)
+  const adx = new Array<number>(n).fill(NaN)
+  let atr = 0
+  let pdm = 0
+  let mdm = 0
+  for (let j = 1; j <= period; j++) {
+    atr += tr[j]
+    pdm += plusDm[j]
+    mdm += minusDm[j]
+  }
+  atr /= period
+  pdm /= period
+  mdm /= period
+  const dxs = new Array<number>(n).fill(0)
+  let adxVal = 0
+  for (let i = period; i < n; i++) {
+    if (i > period) {
+      atr = (atr * (period - 1) + tr[i]) / period
+      pdm = (pdm * (period - 1) + plusDm[i]) / period
+      mdm = (mdm * (period - 1) + minusDm[i]) / period
+    }
+    const atrSafe = atr || 1e-9
+    const pdi = (100 * pdm) / atrSafe
+    const mdi = (100 * mdm) / atrSafe
+    plusDi[i] = pdi
+    minusDi[i] = mdi
+    const sum = pdi + mdi
+    dxs[i] = sum > 1e-9 ? (100 * Math.abs(pdi - mdi)) / sum : 0
+    if (i === 2 * period - 1) {
+      let s = 0
+      for (let j = period; j <= i; j++) s += dxs[j]
+      adxVal = s / period
+      adx[i] = adxVal
+    } else if (i > 2 * period - 1) {
+      adxVal = (adxVal * (period - 1) + dxs[i]) / period
+      adx[i] = adxVal
+    }
+  }
+  return { adx, plusDi, minusDi }
+}
+
 export function adxSeries(candles: CandleInput[], period = 14): number[] {
   const n = candles.length
   const out = new Array<number>(n).fill(NaN)
@@ -252,6 +377,24 @@ export interface IndicatorSnapshot {
   prevZ: number
   fairDev: number
   prevFairDev: number
+  // is.txt strategy inputs — EMA cross (#1), MACD cross (#3), ADX trend (#4),
+  // stochastic reversion (#16-20), ATR/Keltner channel breakout.
+  ema10: number
+  ema30: number
+  prevEma10: number
+  prevEma30: number
+  macdHist: number
+  prevMacdHist: number
+  plusDi: number
+  minusDi: number
+  stochK: number
+  stochD: number
+  prevK: number
+  prevD: number
+  keltUpper: number
+  keltLower: number
+  prevKeltUpper: number
+  prevKeltLower: number
 }
 
 export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | null {
@@ -264,6 +407,10 @@ export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | n
   const rsi14 = rsiSeries(closes, 14)
   const atr14 = atrSeries(candles, 14)
   const adx14 = adxSeries(candles, 14)
+  const ema10 = emaSeries(closes, 10)
+  const ema30 = emaSeries(closes, 30)
+  const { hist: macdHistSeries } = macdSeries(candles)
+  const di = directionalIndicators(candles, 14)
 
   let i = n - 1
   let prev = n - 2
@@ -313,6 +460,10 @@ export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | n
   const devNow = ema20[i] ? (closes[n - 1] - ema20[i]) / ema20[i] : NaN
   const devPrev = ema20[prev] ? (closes[n - 2] - ema20[prev]) / ema20[prev] : NaN
 
+  const stoch = stochasticSeries(closes, highs, lows)
+  const prevKeltUpper = ema20[prev] + 2 * (Number.isFinite(atr14[prev]) ? atr14[prev] : atr14[i])
+  const prevKeltLower = ema20[prev] - 2 * (Number.isFinite(atr14[prev]) ? atr14[prev] : atr14[i])
+
   const atrTail = atr14.filter(Number.isFinite)
   const atrTailMean = rollingMean(atrTail.slice(-20), Math.min(20, atrTail.length))
 
@@ -340,6 +491,22 @@ export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | n
     prevZ: Number.isFinite(zPrev) ? zPrev : 0,
     fairDev: Number.isFinite(devNow) ? devNow : 0,
     prevFairDev: Number.isFinite(devPrev) ? devPrev : 0,
+    ema10: ema10[i],
+    ema30: ema30[i],
+    prevEma10: ema10[prev] ?? ema10[i],
+    prevEma30: ema30[prev] ?? ema30[i],
+    macdHist: macdHistSeries[i],
+    prevMacdHist: macdHistSeries[i - 1],
+    plusDi: di.plusDi[i],
+    minusDi: di.minusDi[i],
+    stochK: stoch.k[i],
+    stochD: stoch.d[i],
+    prevK: stoch.k[i - 1],
+    prevD: stoch.d[i - 1],
+    keltUpper: ema20[i] + 2 * atr14[i],
+    keltLower: ema20[i] - 2 * atr14[i],
+    prevKeltUpper,
+    prevKeltLower,
   }
 }
 
@@ -352,6 +519,11 @@ export type StrategyId =
   | 'momentum'
   | 'stat_arbitrage'
   | 'market_making'
+  | 'ema_cross'
+  | 'macd_cross'
+  | 'adx_trend'
+  | 'stochastic_reversion'
+  | 'atr_channel_breakout'
 
 export interface RawSignal {
   direction: 'long' | 'short' | null
@@ -471,6 +643,98 @@ export function bestRawSignal(s: IndicatorSnapshot): RawSignal {
       strategy: 'market_making',
       strength: Math.min(Math.abs(s.fairDev) / 0.006, 1),
       label: `Price ${(s.fairDev * 100).toFixed(2)}% above EMA20 fair value — lean short`,
+    })
+
+  // ─── is.txt voters (#1, #3, #4, #16-20, ATR channel) ──────────────────
+
+  // 1. EMA cross — fast EMA10 crossing through slow EMA30 = trend flip.
+  const emaCrossoverUp = s.prevEma10 <= s.prevEma30 && s.ema10 > s.ema30
+  const emaCrossoverDown = s.prevEma10 >= s.prevEma30 && s.ema10 < s.ema30
+  if (emaCrossoverUp)
+    candidates.push({
+      direction: 'long',
+      strategy: 'ema_cross',
+      strength: Math.min(Math.abs(s.ema10 - s.ema30) / (s.lastClose * 0.0005), 1),
+      label: 'EMA10/30 bullish cross',
+    })
+  if (emaCrossoverDown)
+    candidates.push({
+      direction: 'short',
+      strategy: 'ema_cross',
+      strength: Math.min(Math.abs(s.ema10 - s.ema30) / (s.lastClose * 0.0005), 1),
+      label: 'EMA10/30 bearish cross',
+    })
+
+  // 3. MACD cross — histogram positive and expanding, or negative and contracting.
+  const macdUp = s.macdHist > 0 && s.macdHist > s.prevMacdHist
+  const macdDown = s.macdHist < 0 && s.macdHist < s.prevMacdHist
+  if (macdUp)
+    candidates.push({
+      direction: 'long',
+      strategy: 'macd_cross',
+      strength: Math.min(Math.abs(s.macdHist) / (s.lastClose * 0.001) + 0.4, 1),
+      label: 'MACD histogram rising above zero',
+    })
+  if (macdDown)
+    candidates.push({
+      direction: 'short',
+      strategy: 'macd_cross',
+      strength: Math.min(Math.abs(s.macdHist) / (s.lastClose * 0.001) + 0.4, 1),
+      label: 'MACD histogram falling below zero',
+    })
+
+  // 4. ADX trend — only when the trend is strong enough, trade the stronger DI.
+  const diBull = s.adx14 >= 20 && s.plusDi > s.minusDi
+  const diBear = s.adx14 >= 20 && s.minusDi > s.plusDi
+  if (diBull)
+    candidates.push({
+      direction: 'long',
+      strategy: 'adx_trend',
+      strength: Math.min(s.adx14 / 50, 1),
+      label: `ADX ${s.adx14.toFixed(0)} trending with +DI above −DI`,
+    })
+  if (diBear)
+    candidates.push({
+      direction: 'short',
+      strategy: 'adx_trend',
+      strength: Math.min(s.adx14 / 50, 1),
+      label: `ADX ${s.adx14.toFixed(0)} trending with −DI above +DI`,
+    })
+
+  // 16-20. Stochastic reversion — %K/%D cross in oversold/overbought zones.
+  const stochBull = s.prevK <= s.prevD && s.stochK > s.stochD && s.stochK < 30
+  const stochBear = s.prevK >= s.prevD && s.stochK < s.stochD && s.stochK > 70
+  if (stochBull)
+    candidates.push({
+      direction: 'long',
+      strategy: 'stochastic_reversion',
+      strength: Math.min((30 - s.stochK) / 30 + 0.5, 1),
+      label: `Stochastic %K ${s.stochK.toFixed(0)} oversold bull cross`,
+    })
+  if (stochBear)
+    candidates.push({
+      direction: 'short',
+      strategy: 'stochastic_reversion',
+      strength: Math.min((s.stochK - 70) / 30 + 0.5, 1),
+      label: `Stochastic %K ${s.stochK.toFixed(0)} overbought bear cross`,
+    })
+
+  // ATR/Keltner channel — two consecutive closes outside EMA20 ± 2·ATR.
+  const keltBrokeUp = s.lastClose > s.keltUpper && s.prevClose > s.prevKeltUpper
+  const keltBrokeDown = s.lastClose < s.keltLower && s.prevClose < s.prevKeltLower
+  if (keltBrokeUp)
+    candidates.push({
+      direction: 'long',
+      strategy: 'atr_channel_breakout',
+      strength: Math.min(Math.abs(s.lastClose - s.keltUpper) / s.atr14 / 2 + 0.5, 1),
+      label: '2-bar break above ATR channel',
+    })
+  if (keltBrokeDown)
+    candidates.push({
+      direction: 'short',
+      strategy: 'atr_channel_breakout',
+      strength: Math.min(Math.abs(s.keltLower - s.lastClose) / s.atr14 / 2 + 0.5, 1),
+      label: '2-bar break below ATR channel',
     })
 
   if (candidates.length === 0) return { direction: null, strategy: 'trend', strength: 0, label: '' }

@@ -266,10 +266,14 @@ USE_MOMENTUM = True
 USE_MEAN_REVERSION = True
 USE_SWING = True
 USE_SCALPING = True             # fast M1/M5 strategy, see strategies/scalping.py
-# File-9 strategies (dropped into the same BUY/SELL/HOLD voter interface):
 USE_STAT_ARBITRAGE = True       # z-score reversion of price vs its rolling mean
 USE_MARKET_MAKING_BIAS = True   # lean against deviation from EMA fair value
 USE_BREAKOUT = True             # price breaks the prior N-period high/low
+USE_EMA_CROSS = True            # EMA fast/slow cross trend (is.txt #1)
+USE_MACD_CROSS = True           # MACD histogram sign/slope (is.txt #3)
+USE_ADX_TREND = True            # ADX filter, trade the stronger DI (is.txt #4)
+USE_STOCHASTIC_REVERSION = True # %K/%D cross at overbought/oversold (is.txt #16-20)
+USE_ATR_CHANNEL_BREAKOUT = True # EMA +/- N*ATR channel breakout (Keltner)
 
 MIN_VOTES_TO_TRADE = 3          # how many strategies must agree (same direction) to act -- this is
                                   # the BASE value; trade_frequency.py can temporarily lower it (never
@@ -337,10 +341,10 @@ HIGH_VOL_MAX_LOT_FLOOR_MULTIPLE = 5.0  # legacy -- unused (lot-floor check is no
 
 # High-vol branch strategy map -- scalping + momentum dominant on all buckets
 HIGH_VOL_STRATEGY_MAP = {
-    "LOW": ["momentum", "swing_trading", "stat_arbitrage"],
-    "MEDIUM": ["momentum", "scalping", "breakout"],
-    "HIGH": ["scalping", "momentum", "trend_following", "breakout"],
-    "EXTREME": ["scalping", "momentum", "market_making_bias"],
+    "LOW": ["momentum", "swing_trading", "stat_arbitrage", "ema_cross"],
+    "MEDIUM": ["momentum", "scalping", "breakout", "macd_cross"],
+    "HIGH": ["scalping", "momentum", "trend_following", "breakout", "atr_channel_breakout"],
+    "EXTREME": ["scalping", "momentum", "market_making_bias", "atr_channel_breakout"],
 }
 
 # Scan priority -- high-vol is checked first EACH scan cycle
@@ -356,10 +360,10 @@ VOLATILITY_HIGH_PERCENTILE = 80
 VOLATILITY_REFRESH_EVERY_N_SCANS = 60
 
 STRATEGY_VOLATILITY_MAP = {
-    "LOW": ["mean_reversion", "swing_trading", "stat_arbitrage", "market_making_bias"],
-    "MEDIUM": ["swing_trading", "trend_following", "market_making_bias", "breakout"],
-    "HIGH": ["trend_following", "momentum", "breakout", "stat_arbitrage"],
-    "EXTREME": ["scalping", "momentum", "breakout", "market_making_bias"],
+    "LOW": ["mean_reversion", "swing_trading", "stat_arbitrage", "market_making_bias", "stochastic_reversion"],
+    "MEDIUM": ["swing_trading", "trend_following", "market_making_bias", "breakout", "ema_cross", "macd_cross"],
+    "HIGH": ["trend_following", "momentum", "breakout", "stat_arbitrage", "macd_cross", "adx_trend"],
+    "EXTREME": ["scalping", "momentum", "breakout", "market_making_bias", "adx_trend", "atr_channel_breakout"],
 }
 
 # ----------------------------------------------------------------------

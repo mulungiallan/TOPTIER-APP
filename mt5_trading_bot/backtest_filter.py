@@ -30,6 +30,11 @@ from strategies import (
     stat_arbitrage,
     market_making_bias,
     breakout,
+    ema_cross,
+    macd_cross,
+    adx_trend,
+    stochastic_reversion,
+    atr_channel_breakout,
 )
 
 logger = logging.getLogger("backtest_filter")
@@ -43,6 +48,11 @@ STRATEGY_FUNCS = {
     "stat_arbitrage": stat_arbitrage.signal,
     "market_making_bias": market_making_bias.signal,
     "breakout": breakout.signal,
+    "ema_cross": ema_cross.signal,
+    "macd_cross": macd_cross.signal,
+    "adx_trend": adx_trend.signal,
+    "stochastic_reversion": stochastic_reversion.signal,
+    "atr_channel_breakout": atr_channel_breakout.signal,
 }
 
 # Each strategy can use its own stop-distance multiplier and reward:risk ratio.
@@ -57,6 +67,11 @@ STRATEGY_RISK_PARAMS = {
     "stat_arbitrage": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
     "market_making_bias": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
     "breakout": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
+    "ema_cross": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
+    "macd_cross": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
+    "adx_trend": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
+    "stochastic_reversion": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
+    "atr_channel_breakout": (config.ATR_SL_MULTIPLIER, config.REWARD_RISK_RATIO),
 }
 
 

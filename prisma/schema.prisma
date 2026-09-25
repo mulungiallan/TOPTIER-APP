@@ -193,6 +193,7 @@ model ScreenshotAnalysis {
   detectedAsset String?
   pattern       String?
   explanation   String?
+  strategy      String?
   status        String   @default("pending") // pending, completed, failed
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

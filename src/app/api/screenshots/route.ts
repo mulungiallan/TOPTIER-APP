@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
           detectedAsset: result.detectedAsset,
           pattern: result.pattern,
           explanation: result.reasoning,
+          strategy: result.strategy,
           status: 'completed',
         },
       })

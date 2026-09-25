@@ -27,6 +27,7 @@ export interface ChartAnalysisResult {
   confidence: number // 0-100
   pattern: string
   patterns: string[]
+  strategy: string | null
   trend: 'bullish' | 'bearish' | 'neutral'
   detectedAsset: string | null
   detectedTimeframe: string | null
@@ -113,6 +114,7 @@ Respond with ONLY valid JSON (no markdown, no explanation outside JSON) in this 
   "trend": "bullish" | "bearish" | "neutral",
   "detectedAsset": "<symbol like EUR/USD, BTC/USD, AAPL — or null if unclear>",
   "detectedTimeframe": "<1m, 5m, 15m, 1H, 4H, 1D — or null if unclear>",
+  "strategy": "<best matching strategy name from this list, or null: ema_cross, macd_cross, adx_trend, stochastic_reversion, atr_channel_breakout, trend_following, mean_reversion, breakout, momentum, stat_arbitrage, market_making>",
   "entryPrice": <number or null>,
   "stopLoss": <number or null>,
   "takeProfit1": <number or null>,
@@ -130,6 +132,7 @@ Detection checklist:
 4. Indicator signals if visible: RSI, MACD, EMA, Bollinger Bands
 5. Candlestick patterns: engulfing, doji, hammer, shooting star
 6. Volume confirmation if visible
+7. Strategy match: name the single strategy from the list that best describes the setup (EMA cross, MACD cross, ADX trend, stochastic reversion in overbought/oversold, ATR channel breakout, trend following, mean reversion, breakout, momentum, stat arbitrage, market making)
 
 SIGNAL RULES:
 - If you see a clear directional bias (trend + pattern + levels), give BUY or SELL with full trade levels.
@@ -705,6 +708,7 @@ export class ChartAnalyzer {
       confidence: 30,
       pattern: 'Unable to analyze',
       patterns: [],
+      strategy: null,
       trend: 'neutral',
       detectedAsset: null,
       detectedTimeframe: null,
@@ -792,6 +796,7 @@ export class ChartAnalyzer {
       confidence,
       pattern,
       patterns,
+      strategy: this.sanitizeStrategy(parsed.strategy),
       trend: this.sanitizeTrend(parsed.trend as string, widened.signal),
       detectedAsset: (parsed.detectedAsset as string) || null,
       detectedTimeframe: (parsed.detectedTimeframe as string) || null,
@@ -1007,6 +1012,25 @@ export class ChartAnalyzer {
       .map((p) => String(p).trim())
       .filter((p) => p.length > 0)
       .slice(0, 5)
+  }
+
+  private sanitizeStrategy(value: unknown): string | null {
+    if (typeof value !== 'string') return null
+    const v = value.trim()
+    const known = [
+      'ema_cross',
+      'macd_cross',
+      'adx_trend',
+      'stochastic_reversion',
+      'atr_channel_breakout',
+      'trend_following',
+      'mean_reversion',
+      'breakout',
+      'momentum',
+      'stat_arbitrage',
+      'market_making',
+    ]
+    return known.includes(v) ? v : null
   }
 
   private sanitizeTrend(value: unknown, signal: 'BUY' | 'SELL' | 'HOLD'): 'bullish' | 'bearish' | 'neutral' {

@@ -28,6 +28,11 @@ from strategies import (
     stat_arbitrage,
     market_making_bias,
     breakout,
+    ema_cross,
+    macd_cross,
+    adx_trend,
+    stochastic_reversion,
+    atr_channel_breakout,
 )
 import ai_strategy
 
@@ -42,6 +47,11 @@ STRATEGY_REGISTRY = [
     ("stat_arbitrage", stat_arbitrage.signal, config.USE_STAT_ARBITRAGE),
     ("market_making_bias", market_making_bias.signal, config.USE_MARKET_MAKING_BIAS),
     ("breakout", breakout.signal, config.USE_BREAKOUT),
+    ("ema_cross", ema_cross.signal, config.USE_EMA_CROSS),
+    ("macd_cross", macd_cross.signal, config.USE_MACD_CROSS),
+    ("adx_trend", adx_trend.signal, config.USE_ADX_TREND),
+    ("stochastic_reversion", stochastic_reversion.signal, config.USE_STOCHASTIC_REVERSION),
+    ("atr_channel_breakout", atr_channel_breakout.signal, config.USE_ATR_CHANNEL_BREAKOUT),
     ("ai_strategy", ai_strategy.signal, config.USE_AI_STRATEGY),
 ]
 
