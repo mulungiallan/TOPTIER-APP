@@ -15,14 +15,53 @@ function parseSettings(raw: string): Record<string, unknown> {
   }
 }
 
-function snapshotBalance(instance: { lastSnapshot: string | null }): number | null {
+function parsedSnapshot(instance: { lastSnapshot: string | null }): Record<string, unknown> | null {
   if (!instance.lastSnapshot) return null
   try {
     const snap = JSON.parse(instance.lastSnapshot)
-    const balance = Number(snap?.balance ?? snap?.equity)
-    return Number.isFinite(balance) ? balance : null
+    return snap && typeof snap === 'object' ? snap : null
   } catch {
     return null
+  }
+}
+
+function fin(value: unknown): number | null {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+interface OpenPosition {
+  symbol?: string
+  direction?: string
+  volume?: number | string
+  profit?: number | string
+}
+
+/* Builds the small "live now" block shown on connection cards + detail view:
+   equity/balance/open P/L/positions/overall stats straight from the bot's
+   dashboard snapshot (posted by the webhook every scan cycle). */
+function liveBlock(snapshot: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!snapshot) return null
+  const positions = Array.isArray(snapshot.open_positions) ? (snapshot.open_positions as OpenPosition[]) : []
+  const openPl = positions.reduce((sum, p) => sum + (fin(p.profit) ?? 0), 0)
+  return {
+    at: snapshot.timestamp ?? null,
+    equity: fin(snapshot.equity),
+    balance: fin(snapshot.balance),
+    currency: snapshot.currency ?? null,
+    openPositions: positions.map((p) => ({
+      symbol: p.symbol ?? null,
+      direction: p.direction ?? null,
+      volume: fin(p.volume),
+      profit: fin(p.profit) ?? 0,
+    })),
+    maxOpenPositions: fin(snapshot.max_open_positions),
+    openRiskPct: fin(snapshot.open_risk_pct),
+    portfolioRiskCeilingPct: fin(snapshot.portfolio_risk_ceiling_pct),
+    openPl: Math.round(openPl * 100) / 100,
+    overallStats: snapshot.overall_stats ?? null,
+    approvedComboCount: fin(snapshot.approved_combo_count),
+    totalComboCount: fin(snapshot.total_combo_count),
   }
 }
 
@@ -77,7 +116,9 @@ export async function GET(request: NextRequest) {
     const enriched = connections.map((conn) => {
       const settings = parseSettings(conn.settings)
       const instance = conn.instances[0] ?? null
-      const balance = instance ? snapshotBalance(instance) : null
+      const snap = instance ? parsedSnapshot(instance) : null
+      const balance = snap ? fin(snap.balance ?? snap.equity) : null
+      const equity = snap ? fin(snap.equity) : null
       return {
         ...conn,
         tradeCount: conn._count.trades,
@@ -86,11 +127,10 @@ export async function GET(request: NextRequest) {
         isCopyMaster: !!conn.masterTrader,
         copyMasterHandle: conn.masterTrader?.handle ?? null,
         accountBalance: balance,
-        accountEquity: balance,
-        accountCurrency: instance
-          ? (() => { try { return JSON.parse(instance.lastSnapshot || '{}').currency ?? null } catch { return null } })()
-          : null,
+        accountEquity: equity ?? balance,
+        accountCurrency: typeof snap?.currency === 'string' ? snap.currency : null,
         accountTier: classifyAccountTier(balance, settings),
+        live: liveBlock(snap),
       }
     })
 
