@@ -348,6 +348,628 @@ function rollingStd(values: number[], lookback: number): number {
   return Math.sqrt(slice.reduce((a, b) => a + (b - mean) ** 2, 0) / (slice.length - 1))
 }
 
+// ─── Strategy-extra inputs (ports of the trading_app "100 strategies") ─────
+// Each family below is computed ONCE per analysis and stored in the snapshot's
+// `extra` bucket. Every voter keys off a FRESH event anchored to the last two
+// bars (or a pattern resolution at the final bar), exactly like the Python bot
+// strategies -- a condition that merely persists never re-trips.
+
+function smaLast(v: number[], period: number, idx: number): number {
+  if (idx < period - 1) return NaN
+  let s = 0
+  for (let j = idx - period + 1; j <= idx; j++) s += v[j]
+  return s / period
+}
+
+function maxLast(v: number[], period: number, idx: number): number {
+  if (idx < period - 1) return NaN
+  let m = -Infinity
+  for (let j = idx - period + 1; j <= idx; j++) if (v[j] > m) m = v[j]
+  return m
+}
+
+function minLast(v: number[], period: number, idx: number): number {
+  if (idx < period - 1) return NaN
+  let m = Infinity
+  for (let j = idx - period + 1; j <= idx; j++) if (v[j] < m) m = v[j]
+  return m
+}
+
+function supertrendDir(candles: CandleInput[]): { now: number; prev: number } {
+  const w = candles.slice(-150)
+  const n = w.length
+  if (n < 13) return { now: 0, prev: 0 }
+  const atrArr = atrSeries(w, 10)
+  const closes = w.map((c) => c.close)
+  const upper = new Array<number>(n).fill(NaN)
+  const lower = new Array<number>(n).fill(NaN)
+  for (let i = 0; i < n; i++) {
+    const a = atrArr[i]
+    const mid = (w[i].high + w[i].low) / 2
+    if (i === 0 || !Number.isFinite(a) || !Number.isFinite(upper[i - 1])) {
+      upper[i] = Number.isFinite(a) ? mid + 3 * a : NaN
+      lower[i] = Number.isFinite(a) ? mid - 3 * a : NaN
+      continue
+    }
+    const upCand = mid + 3 * a
+    const lowCand = mid - 3 * a
+    upper[i] = closes[i - 1] <= upper[i - 1] ? Math.min(upCand, upper[i - 1]) : upCand
+    lower[i] = closes[i - 1] >= lower[i - 1] ? Math.max(lowCand, lower[i - 1]) : lowCand
+  }
+  const dir = new Array<number>(n).fill(1)
+  const trend = new Array<number>(n).fill(NaN)
+  for (let i = 1; i < n; i++) {
+    if (!Number.isFinite(lower[i]) || !Number.isFinite(lower[i - 1])) continue
+    // The classic supertrend compares the CLOSE to the PREVIOUS bar's band.
+    if (closes[i] > upper[i - 1]) dir[i] = 1
+    else if (closes[i] < lower[i - 1]) dir[i] = -1
+    else dir[i] = dir[i - 1]
+    trend[i] = dir[i] === 1 ? lower[i] : upper[i]
+  }
+  return { now: dir[n - 1], prev: dir[n - 2] }
+}
+
+function psarValues(candles: CandleInput[]): { now: number; prev: number } {
+  const w = candles.slice(-200)
+  const n = w.length
+  if (n < 20) return { now: NaN, prev: NaN }
+  const highs = w.map((c) => c.high)
+  const lows = w.map((c) => c.low)
+  const sar = new Array<number>(n).fill(0)
+  let trendUp = true
+  let af = 0.02
+  let ep = highs[0]
+  sar[0] = lows[0]
+  for (let i = 1; i < n; i++) {
+    if (trendUp) {
+      sar[i] = sar[i - 1] + af * (ep - sar[i - 1])
+      sar[i] = Math.min(sar[i], lows[i - 1], i > 1 ? lows[i - 2] : lows[i - 1])
+      if (lows[i] < sar[i]) {
+        trendUp = false
+        sar[i] = ep
+        ep = lows[i]
+        af = 0.02
+      } else {
+        if (highs[i] > ep) {
+          ep = highs[i]
+          af = Math.min(af + 0.02, 0.2)
+        }
+      }
+    } else {
+      sar[i] = sar[i - 1] + af * (ep - sar[i - 1])
+      sar[i] = Math.max(sar[i], highs[i - 1], i > 1 ? highs[i - 2] : highs[i - 1])
+      if (highs[i] > sar[i]) {
+        trendUp = true
+        sar[i] = ep
+        ep = highs[i]
+        af = 0.02
+      } else {
+        if (lows[i] < ep) {
+          ep = lows[i]
+          af = Math.min(af + 0.02, 0.2)
+        }
+      }
+    }
+  }
+  return { now: sar[n - 1], prev: sar[n - 2] }
+}
+
+function ichimokuLast(
+  candles: CandleInput[],
+  tenkanP = 9,
+  kijunP = 26,
+  senkouBP = 52,
+  displacement = 26
+): {
+  tenkanNow: number
+  kijunNow: number
+  tenkanPrev: number
+  kijunPrev: number
+  cloudTop: number
+  cloudBottom: number
+} {
+  const none: ReturnType<typeof ichimokuLast> = {
+    tenkanNow: NaN,
+    kijunNow: NaN,
+    tenkanPrev: NaN,
+    kijunPrev: NaN,
+    cloudTop: NaN,
+    cloudBottom: NaN,
+  }
+  if (candles.length < kijunP + 3) return none
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+  const n = candles.length
+  const at = (i: number) => {
+    const t = (maxLast(highs, tenkanP, i) + minLast(lows, tenkanP, i)) / 2
+    const k = (maxLast(highs, kijunP, i) + minLast(lows, kijunP, i)) / 2
+    return { t, k }
+  }
+  const now = at(n - 1)
+  const prev = at(n - 2)
+  const cloudAt = (i: number) => {
+    const base = at(i)
+    const sa = (base.t + base.k) / 2
+    const sb = (maxLast(highs, senkouBP, i) + minLast(lows, senkouBP, i)) / 2
+    return { top: Math.max(sa, sb), bottom: Math.min(sa, sb) }
+  }
+  const cloudNow = cloudAt(n - 1 - displacement)
+  return {
+    tenkanNow: now.t,
+    kijunNow: now.k,
+    tenkanPrev: prev.t,
+    kijunPrev: prev.k,
+    cloudTop: Number.isFinite(cloudNow.top) ? cloudNow.top : NaN,
+    cloudBottom: Number.isFinite(cloudNow.bottom) ? cloudNow.bottom : NaN,
+  }
+}
+
+function cciAt(candles: CandleInput[], idx: number, period = 20): number {
+  if (idx < period - 1) return NaN
+  const tps: number[] = []
+  for (let j = idx - period + 1; j <= idx; j++) tps.push((candles[j].high + candles[j].low + candles[j].close) / 3)
+  const last = tps[tps.length - 1]
+  const mean = tps.reduce((a, b) => a + b, 0) / period
+  let md = 0
+  for (const t of tps) md += Math.abs(t - mean)
+  md /= period
+  if (!(md > 1e-12)) return NaN
+  return (last - mean) / (0.015 * md)
+}
+
+function williamsAt(candles: CandleInput[], idx: number, period = 14): number {
+  if (idx < period - 1) return NaN
+  const h = maxLast(candles.map((c) => c.high), period, idx)
+  const l = minLast(candles.map((c) => c.low), period, idx)
+  const rng = h - l
+  if (!(rng > 1e-12)) return NaN
+  return ((h - candles[idx].close) / rng) * -100
+}
+
+function vwapAt(candles: CandleInput[], end: number): number {
+  const start = Math.max(0, end - 287)
+  let pv = 0
+  let v = 0
+  for (let j = start; j <= end; j++) {
+    pv += ((candles[j].high + candles[j].low + candles[j].close) / 3) * candles[j].volume
+    v += candles[j].volume
+  }
+  if (!(v > 0)) return NaN
+  return pv / v
+}
+
+function trailingPivots(v: number[], window: number): { high: boolean[]; low: boolean[] } {
+  const span = window * 2 + 1
+  const n = v.length
+  const high = new Array<boolean>(n).fill(false)
+  const low = new Array<boolean>(n).fill(false)
+  for (let i = span - 1; i < n; i++) {
+    let h = -Infinity
+    let l = Infinity
+    for (let j = i - span + 1; j <= i; j++) {
+      if (v[j] > h) h = v[j]
+      if (v[j] < l) l = v[j]
+    }
+    high[i] = v[i] === h
+    low[i] = v[i] === l
+  }
+  return { high, low }
+}
+
+function pivotIndices(flags: boolean[]): number[] {
+  const out: number[] = []
+  for (let i = 0; i < flags.length; i++) if (flags[i]) out.push(i)
+  return out
+}
+
+function donchianAt(highs: number[], lows: number[], end: number, period: number): { up: number; low: number } {
+  let up = -Infinity
+  let low = Infinity
+  for (let j = Math.max(0, end - period + 1); j <= end; j++) {
+    if (highs[j] > up) up = highs[j]
+    if (lows[j] < low) low = lows[j]
+  }
+  return { up, low }
+}
+
+function retestSignal(candles: CandleInput[], tail = 120): 'long' | 'short' | null {
+  const n = candles.length
+  if (n < 40) return null
+  const start = Math.max(0, n - tail)
+  const closes = candles.map((c) => c.close)
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+  const atr = atrSeries(candles, 14)
+  let state: 'await_long' | 'await_short' | null = null
+  let level = 0
+  let barsLeft = 0
+  let position: 'long' | 'short' | null = null
+  let positionBar = -1
+  for (let i = Math.max(start + 20, 21); i < n; i++) {
+    const c = closes[i]
+    if (position == null && state == null) {
+      const dc = donchianAt(highs, lows, i - 1, 20)
+      if (c > dc.up) {
+        state = 'await_long'
+        level = dc.up
+        barsLeft = 10
+      } else if (c < dc.low) {
+        state = 'await_short'
+        level = dc.low
+        barsLeft = 10
+      }
+    } else if (state != null) {
+      const tol = 0.3 * (Number.isFinite(atr[i]) ? atr[i] : 0)
+      if (state === 'await_long') {
+        if (c >= level - tol && c <= level + tol) {
+          position = 'long'
+          positionBar = i
+          state = null
+        } else if (c < level - tol) {
+          state = null
+        }
+      } else {
+        if (c >= level - tol && c <= level + tol) {
+          position = 'short'
+          positionBar = i
+          state = null
+        } else if (c > level + tol) {
+          state = null
+        }
+      }
+      if (state != null) {
+        barsLeft--
+        if (barsLeft <= 0) state = null
+      }
+    }
+    if (position != null) break
+  }
+  if (position != null && positionBar === n - 1) return position
+  return null
+}
+
+function failedBreakoutSignal(candles: CandleInput[], tail = 40): 'long' | 'short' | null {
+  const n = candles.length
+  if (n < 13) return null
+  const start = Math.max(0, n - tail)
+  const closes = candles.map((c) => c.close)
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+  for (let i = start + 11; i < n; i++) {
+    const dc = donchianAt(highs, lows, i - 2, 10)
+    const cPrev = closes[i - 1]
+    if (cPrev > dc.up && closes[i] <= dc.up) return i === n - 1 ? 'short' : null
+    if (cPrev < dc.low && closes[i] >= dc.low) return i === n - 1 ? 'long' : null
+  }
+  return null
+}
+
+function supportResistanceBounce(candles: CandleInput[], pivotWindow = 5): 'long' | 'short' | null {
+  const closes = candles.map((c) => c.close)
+  const n = closes.length
+  if (n < 30) return null
+  // Nearest round level below/above the last close from swings on a TIGHT
+  // window (psychological density) -- simpler: pivot extremes as SR.
+  const { high, low } = trailingPivots(closes, pivotWindow)
+  const hi = pivotIndices(high)
+  const lo = pivotIndices(low)
+  const c = closes[n - 1]
+  const cPrev = closes[n - 2]
+  let bestSup = 0
+  let bestSupDist = Infinity
+  let bestRes = 0
+  let bestResDist = Infinity
+  for (const idx of lo) {
+    const lv = closes[idx]
+    if (lv <= c) {
+      const d = c - lv
+      if (d < bestSupDist) {
+        bestSupDist = d
+        bestSup = lv
+      }
+    }
+  }
+  for (const idx of hi) {
+    const h = closes[idx]
+    if (h >= c) {
+      const d = h - c
+      if (d < bestResDist) {
+        bestResDist = d
+        bestRes = h
+      }
+    }
+  }
+  if (bestSupDist !== Infinity && bestSupDist <= 0.0015 * c && cPrev < bestSup && c > bestSup) return 'long'
+  if (bestResDist !== Infinity && bestResDist <= 0.0015 * c && cPrev > bestRes && c < bestRes) return 'short'
+  return null
+}
+
+function roundLevelReject(candles: CandleInput[]): 'long' | 'short' | null {
+  const closes = candles.map((c) => c.close)
+  const lows = candles.map((c) => c.low)
+  const highs = candles.map((c) => c.high)
+  const n = closes.length
+  if (n < 5) return null
+  const c = closes[n - 1]
+  const cPrev = closes[n - 2]
+  const step = Math.pow(10, Math.floor(Math.log10(Math.max(Math.abs(c), 1e-12))) - 2)
+  const base = Math.floor(c / step) * step
+  const below = base
+  const above = base + step
+  const tol = 0.0002 * c
+  if (lows[n - 1] >= below - tol && lows[n - 1] <= below + tol && c > below + tol && cPrev >= c) return 'long'
+  if (highs[n - 1] >= above - tol && highs[n - 1] <= above + tol && c < above - tol && cPrev <= c) return 'short'
+  return null
+}
+
+function engulfing(candles: CandleInput[]): 'bull' | 'bear' | null {
+  if (candles.length < 3) return null
+  const i = candles.length - 1
+  const prev = candles[i - 1]
+  const cur = candles[i]
+  const prevRed = prev.close < prev.open
+  const curGreen = cur.close > cur.open
+  const prevGreen = prev.close > prev.open
+  const curRed = cur.close < cur.open
+  if (prevRed && curGreen && cur.close > prev.open && cur.open < prev.close) return 'bull'
+  if (prevGreen && curRed && cur.close < prev.open && cur.open > prev.close) return 'bear'
+  return null
+}
+
+function hammerStar(candles: CandleInput[], minRatio = 2): 'bull' | 'bear' | null {
+  if (candles.length < 4) return null
+  const c = candles[candles.length - 1]
+  const closes = candles.map((x) => x.close)
+  const body = Math.abs(c.close - c.open)
+  if (!(body > 0)) return null
+  const lowerWick = Math.min(c.close, c.open) - c.low
+  const upperWick = c.high - Math.max(c.close, c.open)
+  const rng = c.high - c.low
+  if (!(rng > 0)) return null
+  const downMove = closes[candles.length - 2] < closes[candles.length - 3]
+  if (downMove && lowerWick >= minRatio * body && upperWick <= 0.5 * body && c.close >= c.open) return 'bull'
+  const upMove = closes[candles.length - 2] > closes[candles.length - 3]
+  if (upMove && upperWick >= minRatio * body && lowerWick <= 0.5 * body && c.close <= c.open) return 'bear'
+  return null
+}
+
+function dojiSet(candles: CandleInput[]): 'bull' | 'bear' | null {
+  if (candles.length < 4) return null
+  const i = candles.length - 1
+  const d = candles[i - 1]
+  const dRange = d.high - d.low
+  if (!(dRange > 0) || Math.abs(d.close - d.open) > 0.1 * dRange) return null
+  const c = candles[i].close
+  if (c > d.high) return 'bull'
+  if (c < d.low) return 'bear'
+  return null
+}
+
+function starSet(candles: CandleInput[]): 'bull' | 'bear' | null {
+  if (candles.length < 4) return null
+  const i = candles.length - 1
+  const c1 = candles[i - 2]
+  const c2 = candles[i - 1]
+  const c3 = candles[i]
+  const body1 = c1.close - c1.open
+  if (body1 < 0) {
+    const size1 = -body1
+    if (size1 > 0 && Math.abs(c2.close - c2.open) <= 0.35 * size1 && c3.close > c3.open && c3.close - c3.open >= 0.5 * size1 && c2.close < c1.open && c3.close > c2.close) {
+      return 'bull'
+    }
+    return null
+  }
+  if (body1 > 0) {
+    const size1 = body1
+    if (Math.abs(c2.close - c2.open) <= 0.35 * size1 && c3.close < c3.open && c3.open - c3.close >= 0.5 * size1 && c2.close > c1.open && c3.close < c2.close) {
+      return 'bear'
+    }
+  }
+  return null
+}
+
+function insideBarSet(candles: CandleInput[]): 'bull' | 'bear' | null {
+  if (candles.length < 3) return null
+  const i = candles.length - 1
+  const prev = candles[i - 1]
+  const inside = candles[i - 2]
+  const insideRng = inside.high - inside.low
+  if (!(insideRng > 0)) return null
+  if (prev.high > inside.high || prev.low < inside.low || prev.high - prev.low > insideRng) return null
+  if (candles[i].close > inside.high) return 'bull'
+  if (candles[i].close < inside.low) return 'bear'
+  return null
+}
+
+function soldiersCrows(candles: CandleInput[]): 'bull' | 'bear' | null {
+  if (candles.length < 5) return null
+  const closes = candles.map((c) => c.close)
+  const opens = candles.map((c) => c.open)
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+  const n = candles.length
+  const nearHigh = (j: number) => highs[j] > lows[j] && closes[j] >= lows[j] + 0.7 * (highs[j] - lows[j])
+  const nearLow = (j: number) => highs[j] > lows[j] && closes[j] <= lows[j] + 0.3 * (highs[j] - lows[j])
+  const soldiers = () => {
+    for (const j of [n - 3, n - 2, n - 1]) {
+      if (closes[j] <= opens[j]) return false
+      if (j > n - 3 && closes[j] <= closes[j - 1]) return false
+      if (!nearHigh(j)) return false
+    }
+    for (const j of [n - 2, n - 1]) {
+      const p = j - 1
+      if (Math.min(opens[p], closes[p]) > opens[j] || opens[j] > Math.max(opens[p], closes[p])) return false
+      if (closes[j] <= closes[j - 1]) return false
+    }
+    return true
+  }
+  const crows = () => {
+    for (const j of [n - 3, n - 2, n - 1]) {
+      if (closes[j] >= opens[j]) return false
+      if (j > n - 3 && closes[j] >= closes[j - 1]) return false
+      if (!nearLow(j)) return false
+    }
+    for (const j of [n - 2, n - 1]) {
+      const p = j - 1
+      if (Math.min(opens[p], closes[p]) > opens[j] || opens[j] > Math.max(opens[p], closes[p])) return false
+      if (closes[j] >= closes[j - 1]) return false
+    }
+    return true
+  }
+  if (soldiers() && closes[n - 1] > closes[n - 2] && closes[n - 1] >= opens[n - 1]) return 'bull'
+  if (crows() && closes[n - 1] < closes[n - 2] && closes[n - 1] <= opens[n - 1]) return 'bear'
+  return null
+}
+
+function doubleTopBottom(candles: CandleInput[]): 'bull' | 'bear' | null {
+  const closes = candles.map((c) => c.close)
+  const n = closes.length
+  if (n < 40) return null
+  const { high, low } = trailingPivots(closes, 5)
+  const hpi = pivotIndices(high)
+  if (hpi.length >= 2) {
+    const h1 = closes[hpi[hpi.length - 2]]
+    const h2 = closes[hpi[hpi.length - 1]]
+    if (h2 <= h1 * 1.002 && h2 >= h1 * 0.998) {
+      let neck = Infinity
+      for (let j = Math.max(0, n - 21); j < n - 1; j++) if (closes[j] < neck) neck = closes[j]
+      if (closes[n - 1] < neck) return 'bear'
+    }
+  }
+  const lpi = pivotIndices(low)
+  if (lpi.length >= 2) {
+    const l1 = closes[lpi[lpi.length - 2]]
+    const l2 = closes[lpi[lpi.length - 1]]
+    if (l2 <= l1 * 1.002 && l2 >= l1 * 0.998) {
+      let neck = -Infinity
+      for (let j = Math.max(0, n - 21); j < n - 1; j++) if (closes[j] > neck) neck = closes[j]
+      if (closes[n - 1] > neck) return 'bull'
+    }
+  }
+  return null
+}
+
+function headAndShoulders(candles: CandleInput[]): 'bull' | 'bear' | null {
+  const closes = candles.map((c) => c.close)
+  const n = closes.length
+  if (n < 40) return null
+  const { high, low } = trailingPivots(closes, 5)
+  const hpi = pivotIndices(high)
+  if (hpi.length >= 3) {
+    const i1 = hpi[hpi.length - 3]
+    const i2 = hpi[hpi.length - 2]
+    const i3 = hpi[hpi.length - 1]
+    const v1 = closes[i1]
+    const v2 = closes[i2]
+    const v3 = closes[i3]
+    if (v2 > v1 && v2 > v3 && Math.abs(v1 - v3) <= 0.003 * Math.max(v1, v3)) {
+      let neck = Infinity
+      for (let j = i2; j <= i3; j++) if (closes[j] < neck) neck = closes[j]
+      if (closes[n - 1] < neck) return 'bear'
+    }
+  }
+  const lpi = pivotIndices(low)
+  if (lpi.length >= 3) {
+    const i1 = lpi[lpi.length - 3]
+    const i2 = lpi[lpi.length - 2]
+    const i3 = lpi[lpi.length - 1]
+    const v1 = closes[i1]
+    const v2 = closes[i2]
+    const v3 = closes[i3]
+    if (v2 < v1 && v2 < v3 && Math.abs(v1 - v3) <= 0.003 * Math.max(v1, v3)) {
+      let neck = -Infinity
+      for (let j = i2; j <= i3; j++) if (closes[j] > neck) neck = closes[j]
+      if (closes[n - 1] > neck) return 'bull'
+    }
+  }
+  return null
+}
+
+function triangleBreak(candles: CandleInput[], regress = 40): 'bull' | 'bear' | null {
+  if (candles.length < regress + 2) return null
+  const highs = candles.slice(-regress).map((c) => c.high)
+  const lows = candles.slice(-regress).map((c) => c.low)
+  const fit = (y: number[]) => {
+    let sx = 0
+    let sy = 0
+    let sxx = 0
+    let sxy = 0
+    for (let i = 0; i < y.length; i++) {
+      sx += i
+      sy += y[i]
+      sxx += i * i
+      sxy += i * y[i]
+    }
+    const d = y.length * sxx - sx * sx
+    if (Math.abs(d) < 1e-12) return { slope: 0, intercept: 0 }
+    const slope = (y.length * sxy - sx * sy) / d
+    return { slope, intercept: (sy - slope * sx) / y.length }
+  }
+  const r = fit(highs)
+  const s = fit(lows)
+  if (r.slope < 0 && s.slope > 0) {
+    const resNow = r.slope * (regress - 1) + r.intercept
+    const supNow = s.slope * (regress - 1) + s.intercept
+    const c = candles[candles.length - 1].close
+    if (c > resNow) return 'bull'
+    if (c < supNow) return 'bear'
+  }
+  return null
+}
+
+export function computeStrategyExtra(candles: CandleInput[]): StrategyExtra {
+  const closes = candles.map((c) => c.close)
+  const n = candles.length
+  const last = n - 1
+  const prev = Math.max(last - 1, 0)
+
+  const st = supertrendDir(candles)
+  const psar = psarValues(candles)
+  const ichi = ichimokuLast(candles)
+  const rsi2Arr = rsiSeries(closes, 2)
+
+  const bbPrev = {
+    upper: rollingMean(closes.slice(-21, -1), 20) + 2 * rollingStd(closes.slice(-21, -1), 20),
+    lower: rollingMean(closes.slice(-21, -1), 20) - 2 * rollingStd(closes.slice(-21, -1), 20),
+  }
+
+  return {
+    stNow: st.now,
+    stPrev: st.prev,
+    psarNow: psar.now,
+    psarPrev: psar.prev,
+    ...ichi,
+    sma50Now: smaLast(closes, 50, last),
+    sma50Prev: smaLast(closes, 50, prev),
+    sma200Now: smaLast(closes, 200, last),
+    sma200Prev: smaLast(closes, 200, prev),
+    rsi2Now: rsi2Arr[last],
+    rsi2Prev: rsi2Arr[prev],
+    rsi14Prev: n > 1 ? rsiSeries(closes, 14)[prev] : NaN,
+    vwapNow: n > 0 ? vwapAt(candles, last) : NaN,
+    vwapPrev: n > 1 ? vwapAt(candles, prev) : NaN,
+    cciNow: n > 0 ? cciAt(candles, last) : NaN,
+    cciPrev: n > 1 ? cciAt(candles, prev) : NaN,
+    wrNow: n > 0 ? williamsAt(candles, last) : NaN,
+    wrPrev: n > 1 ? williamsAt(candles, prev) : NaN,
+    prevBbUpper: bbPrev.upper,
+    prevBbLower: bbPrev.lower,
+    retest: retestSignal(candles),
+    failedBk: failedBreakoutSignal(candles),
+    srBounce: supportResistanceBounce(candles),
+    roundReject: roundLevelReject(candles),
+    engulf: engulfing(candles),
+    hammerStar: hammerStar(candles),
+    dojiSet: dojiSet(candles),
+    starSet: starSet(candles),
+    insideBar: insideBarSet(candles),
+    soldiers: soldiersCrows(candles),
+    doubleTB: doubleTopBottom(candles),
+    hs: headAndShoulders(candles),
+    triBreak: triangleBreak(candles),
+  }
+}
+
 // ─── Indicator snapshot ──────────────────────────────────────────────────────
 
 export interface IndicatorSnapshot {
@@ -395,6 +1017,55 @@ export interface IndicatorSnapshot {
   keltLower: number
   prevKeltUpper: number
   prevKeltLower: number
+  // Ported "100 strategies" extra inputs — trend-followers (supertrend, PSAR,
+  // ichimoku, golden/death cross), reversion (VWAP, CCI, Williams %R, RSI2,
+  // volatility squeeze), and candlestick/pattern detectors that resolve on
+  // the LAST bar only (never persist across bars).
+  extra: StrategyExtra
+}
+
+// Inputs for the ported 25 strategies, computed fresh per analysis. Every
+// field carries the *prev* value required for a two-bar cross test so voters
+// only fire on a FRESH event, mirroring the Python bot strategies.
+export interface StrategyExtra {
+  stNow: number
+  stPrev: number
+  psarNow: number
+  psarPrev: number
+  tenkanNow: number
+  kijunNow: number
+  tenkanPrev: number
+  kijunPrev: number
+  cloudTop: number
+  cloudBottom: number
+  sma50Now: number
+  sma50Prev: number
+  sma200Now: number
+  sma200Prev: number
+  rsi2Now: number
+  rsi2Prev: number
+  rsi14Prev: number
+  vwapNow: number
+  vwapPrev: number
+  cciNow: number
+  cciPrev: number
+  wrNow: number
+  wrPrev: number
+  prevBbUpper: number
+  prevBbLower: number
+  retest: 'long' | 'short' | null
+  failedBk: 'long' | 'short' | null
+  srBounce: 'long' | 'short' | null
+  roundReject: 'long' | 'short' | null
+  engulf: 'bull' | 'bear' | null
+  hammerStar: 'bull' | 'bear' | null
+  dojiSet: 'bull' | 'bear' | null
+  starSet: 'bull' | 'bear' | null
+  insideBar: 'bull' | 'bear' | null
+  soldiers: 'bull' | 'bear' | null
+  doubleTB: 'bull' | 'bear' | null
+  hs: 'bull' | 'bear' | null
+  triBreak: 'bull' | 'bear' | null
 }
 
 export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | null {
@@ -507,6 +1178,7 @@ export function computeIndicators(candles: CandleInput[]): IndicatorSnapshot | n
     keltLower: ema20[i] - 2 * atr14[i],
     prevKeltUpper,
     prevKeltLower,
+    extra: computeStrategyExtra(candles),
   }
 }
 
@@ -524,6 +1196,29 @@ export type StrategyId =
   | 'adx_trend'
   | 'stochastic_reversion'
   | 'atr_channel_breakout'
+  | 'supertrend'
+  | 'parabolic_sar'
+  | 'ichimoku'
+  | 'golden_death_cross'
+  | 'buy_the_dip'
+  | 'connors_rsi2'
+  | 'vwap_reversion'
+  | 'cci_reversion'
+  | 'williams_r_reversion'
+  | 'volatility_squeeze'
+  | 'retest_entry'
+  | 'failed_breakout_reversal'
+  | 'support_resistance_bounce'
+  | 'round_number_levels'
+  | 'engulfing'
+  | 'hammer_shooting_star'
+  | 'doji_confirmation'
+  | 'morning_evening_star'
+  | 'inside_bar_breakout'
+  | 'three_soldiers_crows'
+  | 'double_top_bottom'
+  | 'head_and_shoulders'
+  | 'triangle_wedge_breakout'
 
 export interface RawSignal {
   direction: 'long' | 'short' | null
@@ -533,6 +1228,12 @@ export interface RawSignal {
 }
 
 export function bestRawSignal(s: IndicatorSnapshot): RawSignal {
+  const candidates = evaluateRawSignals(s)
+  if (candidates.length === 0) return { direction: null, strategy: 'trend', strength: 0, label: '' }
+  return candidates.reduce((a, b) => (b.strength > a.strength ? b : a))
+}
+
+function evaluateRawSignals(s: IndicatorSnapshot): RawSignal[] {
   const crossedUp = s.prevEma20 <= s.prevEma50 && s.ema20 > s.ema50
   const crossedDown = s.prevEma20 >= s.prevEma50 && s.ema20 < s.ema50
   const trending = s.adx14 > 20
@@ -737,8 +1438,183 @@ export function bestRawSignal(s: IndicatorSnapshot): RawSignal {
       label: '2-bar break below ATR channel',
     })
 
-  if (candidates.length === 0) return { direction: null, strategy: 'trend', strength: 0, label: '' }
-  return candidates.reduce((a, b) => (b.strength > a.strength ? b : a))
+  // ─── Ported "100 strategies" voters ────────────────────────────────────
+  // Each keys off a FRESH event: a two-bar cross, a flip between the last two
+  // bars, or a pattern that RESOLVES on the final bar. Nothing persists.
+
+  const e = s.extra
+  const fin = (v: number) => Number.isFinite(v)
+
+  // 9. Supertrend flip.
+  if (e.stPrev === -1 && e.stNow === 1)
+    candidates.push({ direction: 'long', strategy: 'supertrend', strength: 0.7, label: 'Supertrend flipped bullish' })
+  if (e.stPrev === 1 && e.stNow === -1)
+    candidates.push({ direction: 'short', strategy: 'supertrend', strength: 0.7, label: 'Supertrend flipped bearish' })
+
+  // 7. Parabolic SAR — close crossed back through SAR between the last two bars.
+  if (fin(e.psarPrev) && fin(e.psarNow) && s.prevClose < e.psarPrev && s.lastClose > e.psarNow)
+    candidates.push({ direction: 'long', strategy: 'parabolic_sar', strength: 0.65, label: 'Parabolic SAR bullish flip' })
+  if (fin(e.psarPrev) && fin(e.psarNow) && s.prevClose > e.psarPrev && s.lastClose < e.psarNow)
+    candidates.push({ direction: 'short', strategy: 'parabolic_sar', strength: 0.65, label: 'Parabolic SAR bearish flip' })
+
+  // 8. Ichimoku — Tenkan/Kijun cross with cloud confirmation.
+  if (
+    fin(e.tenkanNow) &&
+    fin(e.kijunNow) &&
+    e.tenkanPrev <= e.kijunPrev &&
+    e.tenkanNow > e.kijunNow &&
+    s.lastClose > e.cloudTop
+  )
+    candidates.push({ direction: 'long', strategy: 'ichimoku', strength: 0.7, label: 'Ichimoku TK cross above cloud' })
+  if (
+    fin(e.tenkanNow) &&
+    fin(e.kijunNow) &&
+    e.tenkanPrev >= e.kijunPrev &&
+    e.tenkanNow < e.kijunNow &&
+    s.lastClose < e.cloudBottom
+  )
+    candidates.push({ direction: 'short', strategy: 'ichimoku', strength: 0.7, label: 'Ichimoku TK cross below cloud' })
+
+  // 2. Golden cross (SMA50 over SMA200) / death cross.
+  if (fin(e.sma50Now) && fin(e.sma200Now) && e.sma50Prev <= e.sma200Prev && e.sma50Now > e.sma200Now)
+    candidates.push({
+      direction: 'long',
+      strategy: 'golden_death_cross',
+      strength: Math.min(Math.abs(e.sma50Now - e.sma200Now) / (s.lastClose * 0.002) + 0.4, 1),
+      label: 'Golden cross — SMA50 above SMA200',
+    })
+  if (fin(e.sma50Now) && fin(e.sma200Now) && e.sma50Prev >= e.sma200Prev && e.sma50Now < e.sma200Now)
+    candidates.push({
+      direction: 'short',
+      strategy: 'golden_death_cross',
+      strength: Math.min(Math.abs(e.sma50Now - e.sma200Now) / (s.lastClose * 0.002) + 0.4, 1),
+      label: 'Death cross — SMA50 below SMA200',
+    })
+
+  // 15. Buy the dip — above SMA200, RSI14 dips below 40 then turns back up.
+  if (fin(e.sma200Now) && fin(s.rsi14) && fin(e.rsi14Prev) && s.lastClose > e.sma200Now && s.rsi14 < 40 && s.rsi14 > e.rsi14Prev)
+    candidates.push({
+      direction: 'long',
+      strategy: 'buy_the_dip',
+      strength: Math.min((40 - s.rsi14) / 40 + 0.4, 1),
+      label: `Buy-the-dip — RSI ${s.rsi14.toFixed(0)} turning up above SMA200`,
+    })
+
+  // 17. Connors RSI(2) — RSI2 climbs out of oversold (or falls from overbought).
+  if (fin(e.rsi2Now) && fin(e.rsi2Prev) && fin(e.sma200Now) && e.rsi2Now < 10 && e.rsi2Now > e.rsi2Prev && s.lastClose > e.sma200Now)
+    candidates.push({ direction: 'long', strategy: 'connors_rsi2', strength: 0.7, label: `Connors RSI2 ${e.rsi2Now.toFixed(0)} recovering` })
+  if (fin(e.rsi2Now) && fin(e.rsi2Prev) && fin(e.sma200Now) && e.rsi2Now > 90 && e.rsi2Now < e.rsi2Prev && s.lastClose < e.sma200Now)
+    candidates.push({ direction: 'short', strategy: 'connors_rsi2', strength: 0.7, label: `Connors RSI2 ${e.rsi2Now.toFixed(0)} rolling over` })
+
+  // 23. VWAP reversion — close stretched below/above VWAP closes the gap.
+  if (fin(e.vwapNow) && fin(e.vwapPrev)) {
+    const belowNow = 1 - s.lastClose / e.vwapNow > 0.006
+    const belowPrev = 1 - s.prevClose / e.vwapPrev > 0.006
+    if (belowPrev && !belowNow)
+      candidates.push({
+        direction: 'long',
+        strategy: 'vwap_reversion',
+        strength: Math.min(Math.max(1 - s.lastClose / e.vwapNow, 0) / 0.006, 1),
+        label: `VWAP fade — price ${(Math.abs(1 - s.lastClose / e.vwapNow) * 100).toFixed(2)}% below VWAP`,
+      })
+    const aboveNow = s.lastClose / e.vwapNow - 1 > 0.006
+    const abovePrev = s.prevClose / e.vwapPrev - 1 > 0.006
+    if (abovePrev && !aboveNow)
+      candidates.push({
+        direction: 'short',
+        strategy: 'vwap_reversion',
+        strength: Math.min(Math.max(s.lastClose / e.vwapNow - 1, 0) / 0.006, 1),
+        label: `VWAP fade — price ${(Math.abs(s.lastClose / e.vwapNow - 1) * 100).toFixed(2)}% above VWAP`,
+      })
+  }
+
+  // 25. CCI reversion — cross back through ±100.
+  if (fin(e.cciPrev) && fin(e.cciNow) && e.cciPrev < -100 && e.cciNow > -100)
+    candidates.push({
+      direction: 'long',
+      strategy: 'cci_reversion',
+      strength: Math.min(Math.abs(e.cciNow) / 150 + 0.4, 1),
+      label: `CCI ${e.cciNow.toFixed(0)} crossed back above −100`,
+    })
+  if (fin(e.cciPrev) && fin(e.cciNow) && e.cciPrev > 100 && e.cciNow < 100)
+    candidates.push({
+      direction: 'short',
+      strategy: 'cci_reversion',
+      strength: Math.min(Math.abs(e.cciNow) / 150 + 0.4, 1),
+      label: `CCI ${e.cciNow.toFixed(0)} crossed back below +100`,
+    })
+
+  // 26. Williams %R reversion — cross back through −80 / −20.
+  if (fin(e.wrPrev) && fin(e.wrNow) && e.wrPrev <= -80 && e.wrNow > -80)
+    candidates.push({
+      direction: 'long',
+      strategy: 'williams_r_reversion',
+      strength: Math.min(Math.abs(e.wrNow) / 80 + 0.3, 1),
+      label: `Williams %R ${e.wrNow.toFixed(0)} broke back from oversold`,
+    })
+  if (fin(e.wrPrev) && fin(e.wrNow) && e.wrPrev >= -20 && e.wrNow < -20)
+    candidates.push({
+      direction: 'short',
+      strategy: 'williams_r_reversion',
+      strength: Math.min(Math.abs(e.wrNow) / 80 + 0.3, 1),
+      label: `Williams %R ${e.wrNow.toFixed(0)} broke back from overbought`,
+    })
+
+  // 31. Volatility squeeze — BB locked inside Keltner then released with a break.
+  const squeezedPrev =
+    fin(e.prevBbUpper) && fin(e.prevBbLower) && fin(s.prevKeltUpper) && fin(s.prevKeltLower) && e.prevBbUpper < s.prevKeltUpper && e.prevBbLower > s.prevKeltLower
+  if (squeezedPrev && s.lastClose > s.bbUpper)
+    candidates.push({ direction: 'long', strategy: 'volatility_squeeze', strength: 0.7, label: 'Volatility squeeze release — break above BB upper' })
+  if (squeezedPrev && s.lastClose < s.bbLower)
+    candidates.push({ direction: 'short', strategy: 'volatility_squeeze', strength: 0.7, label: 'Volatility squeeze release — break below BB lower' })
+
+  // 32. Retest entry — breakout then successful pullback test, resolved at last bar.
+  if (e.retest === 'long') candidates.push({ direction: 'long', strategy: 'retest_entry', strength: 0.7, label: 'Retest of breakout level (bullish)' })
+  if (e.retest === 'short') candidates.push({ direction: 'short', strategy: 'retest_entry', strength: 0.7, label: 'Retest of breakdown level (bearish)' })
+
+  // 33. Failed breakout reversal.
+  if (e.failedBk === 'long') candidates.push({ direction: 'long', strategy: 'failed_breakout_reversal', strength: 0.7, label: 'Failed downside breakdown — reversal' })
+  if (e.failedBk === 'short') candidates.push({ direction: 'short', strategy: 'failed_breakout_reversal', strength: 0.7, label: 'Failed upside breakout — reversal' })
+
+  // 34. Support/resistance bounce.
+  if (e.srBounce === 'long') candidates.push({ direction: 'long', strategy: 'support_resistance_bounce', strength: 0.6, label: 'Bounce off swing support' })
+  if (e.srBounce === 'short') candidates.push({ direction: 'short', strategy: 'support_resistance_bounce', strength: 0.6, label: 'Rejection at swing resistance' })
+
+  // 37. Round-number levels.
+  if (e.roundReject === 'long') candidates.push({ direction: 'long', strategy: 'round_number_levels', strength: 0.6, label: 'Rejection at round-number support' })
+  if (e.roundReject === 'short') candidates.push({ direction: 'short', strategy: 'round_number_levels', strength: 0.6, label: 'Rejection at round-number resistance' })
+
+  // 43-48. Candlestick patterns (resolve on last bar only).
+  if (e.engulf === 'bull') candidates.push({ direction: 'long', strategy: 'engulfing', strength: 0.65, label: 'Bullish engulfing' })
+  if (e.engulf === 'bear') candidates.push({ direction: 'short', strategy: 'engulfing', strength: 0.65, label: 'Bearish engulfing' })
+  if (e.hammerStar === 'bull') candidates.push({ direction: 'long', strategy: 'hammer_shooting_star', strength: 0.6, label: 'Hammer at lows' })
+  if (e.hammerStar === 'bear') candidates.push({ direction: 'short', strategy: 'hammer_shooting_star', strength: 0.6, label: 'Shooting star at highs' })
+  if (e.dojiSet === 'bull') candidates.push({ direction: 'long', strategy: 'doji_confirmation', strength: 0.55, label: 'Doji followed by upside break' })
+  if (e.dojiSet === 'bear') candidates.push({ direction: 'short', strategy: 'doji_confirmation', strength: 0.55, label: 'Doji followed by downside break' })
+  if (e.starSet === 'bull') candidates.push({ direction: 'long', strategy: 'morning_evening_star', strength: 0.7, label: 'Morning star confirmed' })
+  if (e.starSet === 'bear') candidates.push({ direction: 'short', strategy: 'morning_evening_star', strength: 0.7, label: 'Evening star confirmed' })
+  if (e.insideBar === 'bull') candidates.push({ direction: 'long', strategy: 'inside_bar_breakout', strength: 0.55, label: 'Inside-bar runaway close' })
+  if (e.insideBar === 'bear') candidates.push({ direction: 'short', strategy: 'inside_bar_breakout', strength: 0.55, label: 'Inside-bar breakdown close' })
+  if (e.soldiers === 'bull') candidates.push({ direction: 'long', strategy: 'three_soldiers_crows', strength: 0.75, label: 'Three white soldiers' })
+  if (e.soldiers === 'bear') candidates.push({ direction: 'short', strategy: 'three_soldiers_crows', strength: 0.75, label: 'Three black crows' })
+
+  // 40. Double top/bottom.
+  if (e.doubleTB === 'bull') candidates.push({ direction: 'long', strategy: 'double_top_bottom', strength: 0.7, label: 'Double bottom neckline break' })
+  if (e.doubleTB === 'bear') candidates.push({ direction: 'short', strategy: 'double_top_bottom', strength: 0.7, label: 'Double top neckline break' })
+
+  // 39. Head and shoulders.
+  if (e.hs === 'bull') candidates.push({ direction: 'long', strategy: 'head_and_shoulders', strength: 0.75, label: 'Inverse head-and-shoulders break' })
+  if (e.hs === 'bear') candidates.push({ direction: 'short', strategy: 'head_and_shoulders', strength: 0.75, label: 'Head-and-shoulders neckline break' })
+
+  // 35/42. Triangle / wedge breakout.
+  if (e.triBreak === 'bull') candidates.push({ direction: 'long', strategy: 'triangle_wedge_breakout', strength: 0.7, label: 'Ascending triangle/wedge breakout' })
+  if (e.triBreak === 'bear') candidates.push({ direction: 'short', strategy: 'triangle_wedge_breakout', strength: 0.7, label: 'Descending triangle/wedge breakdown' })
+
+  return candidates
+}
+
+export function allRawSignals(s: IndicatorSnapshot): RawSignal[] {
+  return evaluateRawSignals(s)
 }
 
 // ─── Confluence scoring ─────────────────────────────────────────────────────

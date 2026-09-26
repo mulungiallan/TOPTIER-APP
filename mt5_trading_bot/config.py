@@ -110,7 +110,7 @@ BARS_TO_FETCH = 500                                    # live-scan history lengt
 # on purpose, as a safety margin against the backtest being optimistic
 # (it almost always is, to some degree, vs. live results).
 # ----------------------------------------------------------------------
-BACKTEST_BARS = 2000            # bars of history used to evaluate each combo
+BACKTEST_BARS = 1000            # bars of history used to evaluate each combo
 MIN_WIN_RATE_PCT = 35.0          # breakeven is 25% at a 1:3 RR -- this adds a safety margin
 MIN_PROFIT_FACTOR = 1.3          # gross profit / gross loss must exceed this to qualify
 MIN_TRADES_FOR_VALIDITY = 10     # need at least this many backtested trades to trust the stats
@@ -274,6 +274,32 @@ USE_MACD_CROSS = True           # MACD histogram sign/slope (is.txt #3)
 USE_ADX_TREND = True            # ADX filter, trade the stronger DI (is.txt #4)
 USE_STOCHASTIC_REVERSION = True # %K/%D cross at overbought/oversold (is.txt #16-20)
 USE_ATR_CHANNEL_BREAKOUT = True # EMA +/- N*ATR channel breakout (Keltner)
+# --- trading_app "100 strategies" ports (all backtested, see backtest.py) ---
+USE_SUPERTREND = True            # ATR band flip (reference #9)
+USE_PARABOLIC_SAR = True         # trailing SAR flip (reference #7)
+USE_ICHIMOKU = True              # tenkan/kijun cross within cloud (reference #8)
+USE_TURTLE_SYSTEM = True         # Donchian breakout entry (reference #6)
+USE_BUY_THE_DIP = True           # RSI dip buy in up-trend (reference #15)
+USE_GOLDEN_DEATH_CROSS = True    # SMA50/200 cross (reference #2)
+USE_RSI_REVERSION = True         # RSI 30/70 cross reversion (reference #16)
+USE_CONNORS_RSI2 = True          # 2-period RSI dip / 200-SMA trend (reference #17)
+USE_VWAP_REVERSION = True        # session VWAP stretch reversion (reference #23)
+USE_CCI_REVERSION = True         # CCI +/-100 cross reversion (reference #25)
+USE_WILLIAMS_R_REVERSION = True  # Williams %R -80/-20 cross (reference #26)
+USE_VOLATILITY_SQUEEZE = True    # Bollinger-in-Keltner squeeze release (reference #31)
+USE_RETEST_ENTRY = True          # post-breakout Donchian retest (reference #32)
+USE_FAILED_BREAKOUT_REVERSAL = True  # broken breakout reverses (reference #33)
+USE_SUPPORT_RESISTANCE_BOUNCE = True  # nearest-pivot bounce (reference #34)
+USE_ROUND_NUMBER_LEVELS = True   # psychology-level rejections (reference #37)
+USE_ENGULFING = True             # bullish/bearish engulfing (reference #43)
+USE_HAMMER_SHOOTING_STAR = True  # hammer / shooting star (reference #44)
+USE_DOJI_CONFIRMATION = True     # doji range breakout (reference #45)
+USE_MORNING_EVENING_STAR = True  # 3-bar reversal star (reference #46)
+USE_INSIDE_BAR_BREAKOUT = True   # inside bar range breakout (reference #47)
+USE_THREE_SOLDIERS_CROWS = True  # 3 soldiers / 3 crows + confirm (reference #48)
+USE_DOUBLE_TOP_BOTTOM = True     # double top/bottom neck break (reference #40)
+USE_HEAD_AND_SHOULDERS = True    # H&S neck break (reference #39)
+USE_TRIANGLE_WEDGE_BREAKOUT = True  # converging TL breakout (reference #35/#42)
 
 MIN_VOTES_TO_TRADE = 3          # how many strategies must agree (same direction) to act -- this is
                                   # the BASE value; trade_frequency.py can temporarily lower it (never
@@ -341,10 +367,19 @@ HIGH_VOL_MAX_LOT_FLOOR_MULTIPLE = 5.0  # legacy -- unused (lot-floor check is no
 
 # High-vol branch strategy map -- scalping + momentum dominant on all buckets
 HIGH_VOL_STRATEGY_MAP = {
-    "LOW": ["momentum", "swing_trading", "stat_arbitrage", "ema_cross"],
-    "MEDIUM": ["momentum", "scalping", "breakout", "macd_cross"],
-    "HIGH": ["scalping", "momentum", "trend_following", "breakout", "atr_channel_breakout"],
-    "EXTREME": ["scalping", "momentum", "market_making_bias", "atr_channel_breakout"],
+    "LOW": ["momentum", "swing_trading", "stat_arbitrage", "ema_cross",
+            "rsi_reversion", "connors_rsi2", "cci_reversion", "buy_the_dip"],
+    "MEDIUM": ["momentum", "scalping", "breakout", "macd_cross",
+               "supertrend", "golden_death_cross", "ichimoku", "turtle_system",
+               "support_resistance_bounce"],
+    "HIGH": ["scalping", "momentum", "trend_following", "breakout", "atr_channel_breakout",
+             "parabolic_sar", "volatility_squeeze", "retest_entry",
+             "failed_breakout_reversal", "engulfing", "hammer_shooting_star",
+             "morning_evening_star"],
+    "EXTREME": ["scalping", "momentum", "market_making_bias", "atr_channel_breakout",
+                "triangle_wedge_breakout", "double_top_bottom", "head_and_shoulders",
+                "inside_bar_breakout", "round_number_levels", "williams_r_reversion",
+                "vwap_reversion", "doji_confirmation", "three_soldiers_crows"],
 }
 
 # Scan priority -- high-vol is checked first EACH scan cycle
@@ -360,10 +395,20 @@ VOLATILITY_HIGH_PERCENTILE = 80
 VOLATILITY_REFRESH_EVERY_N_SCANS = 60
 
 STRATEGY_VOLATILITY_MAP = {
-    "LOW": ["mean_reversion", "swing_trading", "stat_arbitrage", "market_making_bias", "stochastic_reversion"],
-    "MEDIUM": ["swing_trading", "trend_following", "market_making_bias", "breakout", "ema_cross", "macd_cross"],
-    "HIGH": ["trend_following", "momentum", "breakout", "stat_arbitrage", "macd_cross", "adx_trend"],
-    "EXTREME": ["scalping", "momentum", "breakout", "market_making_bias", "adx_trend", "atr_channel_breakout"],
+    "LOW": ["mean_reversion", "swing_trading", "stat_arbitrage", "market_making_bias", "stochastic_reversion",
+            "rsi_reversion", "connors_rsi2", "cci_reversion", "williams_r_reversion",
+            "vwap_reversion", "buy_the_dip"],
+    "MEDIUM": ["swing_trading", "trend_following", "market_making_bias", "breakout", "ema_cross", "macd_cross",
+               "supertrend", "golden_death_cross", "ichimoku", "turtle_system",
+               "support_resistance_bounce", "round_number_levels",
+               "three_soldiers_crows", "doji_confirmation"],
+    "HIGH": ["trend_following", "momentum", "breakout", "stat_arbitrage", "macd_cross", "adx_trend",
+             "parabolic_sar", "volatility_squeeze", "retest_entry",
+             "failed_breakout_reversal", "engulfing", "hammer_shooting_star",
+             "morning_evening_star", "inside_bar_breakout"],
+    "EXTREME": ["scalping", "momentum", "breakout", "market_making_bias", "adx_trend", "atr_channel_breakout",
+                "triangle_wedge_breakout", "double_top_bottom", "head_and_shoulders",
+                "supertrend", "parabolic_sar", "volatility_squeeze"],
 }
 
 # ----------------------------------------------------------------------

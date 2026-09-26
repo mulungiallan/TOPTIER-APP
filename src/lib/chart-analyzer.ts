@@ -114,7 +114,7 @@ Respond with ONLY valid JSON (no markdown, no explanation outside JSON) in this 
   "trend": "bullish" | "bearish" | "neutral",
   "detectedAsset": "<symbol like EUR/USD, BTC/USD, AAPL — or null if unclear>",
   "detectedTimeframe": "<1m, 5m, 15m, 1H, 4H, 1D — or null if unclear>",
-  "strategy": "<best matching strategy name from this list, or null: ema_cross, macd_cross, adx_trend, stochastic_reversion, atr_channel_breakout, trend_following, mean_reversion, breakout, momentum, stat_arbitrage, market_making>",
+  "strategy": "<best matching strategy name from this list, or null: ema_cross, macd_cross, adx_trend, stochastic_reversion, atr_channel_breakout, trend_following, mean_reversion, breakout, momentum, stat_arbitrage, market_making, supertrend, parabolic_sar, ichimoku, golden_death_cross, buy_the_dip, connors_rsi2, vwap_reversion, cci_reversion, williams_r_reversion, volatility_squeeze, retest_entry, failed_breakout_reversal, support_resistance_bounce, round_number_levels, engulfing, hammer_shooting_star, doji_confirmation, morning_evening_star, inside_bar_breakout, three_soldiers_crows, double_top_bottom, head_and_shoulders, triangle_wedge_breakout>",
   "entryPrice": <number or null>,
   "stopLoss": <number or null>,
   "takeProfit1": <number or null>,
@@ -573,7 +573,7 @@ export class ChartAnalyzer {
           try {
             // Key as a query param (`?key=`), NOT the header — some keys only
             // authenticate via the query string.
-            let res = await fetch(`${url}?key=${apiKey}`, {
+            const res = await fetch(`${url}?key=${apiKey}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body,
@@ -1029,6 +1029,29 @@ export class ChartAnalyzer {
       'momentum',
       'stat_arbitrage',
       'market_making',
+      'supertrend',
+      'parabolic_sar',
+      'ichimoku',
+      'golden_death_cross',
+      'buy_the_dip',
+      'connors_rsi2',
+      'vwap_reversion',
+      'cci_reversion',
+      'williams_r_reversion',
+      'volatility_squeeze',
+      'retest_entry',
+      'failed_breakout_reversal',
+      'support_resistance_bounce',
+      'round_number_levels',
+      'engulfing',
+      'hammer_shooting_star',
+      'doji_confirmation',
+      'morning_evening_star',
+      'inside_bar_breakout',
+      'three_soldiers_crows',
+      'double_top_bottom',
+      'head_and_shoulders',
+      'triangle_wedge_breakout',
     ]
     return known.includes(v) ? v : null
   }
