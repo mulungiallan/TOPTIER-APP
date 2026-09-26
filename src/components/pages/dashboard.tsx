@@ -27,6 +27,7 @@ import {
   Globe,
   Bot,
   Copy,
+  GraduationCap,
 } from 'lucide-react'
 import {
   Tooltip as RechartsTooltip,
@@ -48,6 +49,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
+import { isAdminRole } from '@/lib/admin-permissions'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -937,6 +939,67 @@ function SubscriptionBanner() {
   )
 }
 
+function MentorshipCard() {
+  const user = useStore((s) => s.user)
+  const setPage = useStore((s) => s.setPage)
+  const now = useMemo(() => Date.now(), [])
+  const mentorshipExpiry = user?.mentorshipExpiresAt ? new Date(user.mentorshipExpiresAt).getTime() : 0
+  const hasMentorship = isAdminRole(user?.role || '') || mentorshipExpiry > now
+  const type = user?.mentorshipType === 'physical' ? 'In Person' : user?.mentorshipType === 'online' ? 'Online' : null
+
+  return (
+    <Card className="border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-transparent to-cyan-500/10">
+      <CardContent className="p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/15">
+              <GraduationCap className="size-4 text-indigo-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">1-on-1 Mentorship</p>
+                {hasMentorship && (
+                  <Badge className="capitalize">
+                    {type ? `${type} · Active` : 'Active'}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {hasMentorship
+                  ? `Active until ${new Date(mentorshipExpiry).toLocaleDateString()}`
+                  : 'Work 1-on-1 with a professional trader to build your personal strategy.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="flex gap-2">
+              {[
+                { name: 'Online', price: '$100', color: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30' },
+                { name: 'In Person', price: '$150', color: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/30' },
+              ].map((o) => (
+                <span
+                  key={o.name}
+                  className={cn('inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-medium', o.color)}
+                >
+                  {o.name} · {o.price}/2 mo
+                </span>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={() => setPage('subscriptions')}
+            >
+              <GraduationCap className="size-3.5" />
+              {hasMentorship ? 'Manage Mentorship' : 'Get Mentorship'}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function WinLossBar({ wins, losses, total }: { wins: number; losses: number; total: number }) {
   const winPct = total > 0 ? (wins / total) * 100 : 0
 
@@ -1236,6 +1299,9 @@ export function DashboardPage() {
 
       {/* Subscription Banner */}
       <SubscriptionBanner />
+
+      {/* Mentorship Promo */}
+      <MentorshipCard />
 
       {/* Welcome Header */}
       <div className="flex items-center justify-between">
