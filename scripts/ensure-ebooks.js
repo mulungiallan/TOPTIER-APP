@@ -1,7 +1,15 @@
 // Boot-time seed: makes sure the E-Books store has the starter titles.
 // Idempotent — existing books (by slug) are left untouched so admin edits are
 // never clobbered on a redeploy. Mirrors src/lib/ebooks/seed (inline content).
-const { PrismaClient } = require('@prisma/client')
+//
+// NOTE: this must require the SAME client the app uses (src/generated/prisma,
+// set by `output` in prisma/schema.prisma) — NOT '@prisma/client'. The
+// default @prisma/client entry is not regenerated when a custom output is
+// configured, so it is stale: it had no `eBook` delegate at all, and the boot
+// chain died on `Cannot read properties of undefined (reading 'findUnique')`.
+// Because the Railway start command is `&&`-chained, that exit code 1 stopped
+// the chain before the server ever started.
+const { PrismaClient } = require('../src/generated/prisma')
 
 const EBOOKS = [
   {

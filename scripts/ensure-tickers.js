@@ -1,7 +1,7 @@
 // Boot-time sync of the TickerSymbol catalog (used by the Ticker Tape).
 // Idempotent upsert so restarting the service never creates duplicates and
 // newly added symbols (e.g. VIX) appear without a manual seed.
-const { PrismaClient } = require('@prisma/client')
+const { PrismaClient } = require('../src/generated/prisma')
 
 const TICKERS = [
   // Forex

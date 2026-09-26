@@ -1,7 +1,7 @@
 // Boot-time catalog sync: makes sure the sellable Premium packages are the
 // daily / weekly / quarterly / yearly tiers, and legacy packages are inactive.
 // Mirrors prisma/seed-packages.ts so the catalog is stable across restarts.
-const { PrismaClient } = require('@prisma/client')
+const { PrismaClient } = require('../src/generated/prisma')
 
 const PACKAGES = [
   {
