@@ -28,6 +28,7 @@ import {
   Bot,
   Copy,
   GraduationCap,
+  Lock,
 } from 'lucide-react'
 import {
   Tooltip as RechartsTooltip,
@@ -93,6 +94,18 @@ interface EconomicEvent {
   actual?: string | null
   forecast?: string | null
   previous?: string | null
+}
+
+interface EBookSummary {
+  id: string
+  title: string
+  author?: string | null
+  emoji?: string | null
+  coverColor?: string | null
+  category?: string | null
+  level?: string | null
+  price?: number
+  owned?: boolean
 }
 
 interface MarketItem {
@@ -306,7 +319,77 @@ function PerformanceChart({ data, pnlTotal }: { data: { date: string; pnl: numbe
   )
 }
 
-function RecentSignalsList({ signals, loading }: { signals: DashboardSignal[]; loading: boolean }) {
+function LockedSignalsState() {
+  const setPage = useStore((s) => s.setPage)
+  return (
+    <div className="py-8 px-2 text-center text-sm text-muted-foreground">
+      <Lock className="size-8 mx-auto mb-2 opacity-40" />
+      <p className="font-medium text-foreground">Signals are a paid feature</p>
+      <p className="mt-1 text-xs">
+        Subscribe to Signals ($20/month) to see today&apos;s top signals.
+      </p>
+      <Button size="sm" className="mt-3" onClick={() => setPage('pricing')}>
+        Unlock signals
+      </Button>
+    </div>
+  )
+}
+
+function EBooksCard({ books }: { books: EBookSummary[] }) {
+  // This app is a page state machine, not a router: screens are swapped by
+  // app-shell.tsx, so an <a href> would leave the SPA and 404. Navigation has
+  // to go through the store's setPage.
+  const setPage = useStore((s) => s.setPage)
+
+  if (books.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">E-Books</CardTitle>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setPage('ebooks')}>
+            View all
+            <ChevronRight className="ml-1 size-3" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+          {books.slice(0, 4).map((book) => (
+            <button
+              key={book.id}
+              type="button"
+              onClick={() => setPage('ebooks')}
+              className="flex w-full items-center gap-3 rounded-lg border border-border/60 p-2 text-left transition-colors hover:bg-accent/50"
+            >
+              <div
+                className="flex size-10 shrink-0 items-center justify-center rounded-md text-lg"
+                style={{ backgroundColor: book.coverColor || '#1f2937' }}
+              >
+                {book.emoji || '📘'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{book.title}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {book.owned ? 'In your library' : `$${(book.price ?? 0).toFixed(2)}`}
+                  {book.category ? ` · ${book.category}` : ''}
+                </p>
+              </div>
+              {book.owned ? (
+                <Badge variant="outline" className="shrink-0 text-[10px]">Owned</Badge>
+              ) : (
+                <Badge variant="secondary" className="shrink-0 text-[10px]">Buy</Badge>
+              )}
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RecentSignalsList({ signals, loading, locked }: { signals: DashboardSignal[]; loading: boolean; locked?: boolean }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // Fetch live prices for every asset referenced by the recent signals
@@ -359,10 +442,14 @@ function RecentSignalsList({ signals, loading }: { signals: DashboardSignal[]; l
       <CardContent className="pt-0">
         <div className="space-y-2 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
           {signals.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              <Activity className="size-8 mx-auto mb-2 opacity-40" />
-              No recent signals
-            </div>
+            locked ? (
+              <LockedSignalsState />
+            ) : (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                <Activity className="size-8 mx-auto mb-2 opacity-40" />
+                No recent signals
+              </div>
+            )
           ) : (
             signals.map((signal) => {
               const isBuy = signal.direction === 'BUY'
@@ -1181,6 +1268,8 @@ export function DashboardPage() {
   const [signals, setSignals] = useState<DashboardSignal[]>([])
   const [stats, setStats] = useState<PerformanceStats | null>(null)
   const [events, setEvents] = useState<EconomicEvent[]>([])
+  const [signalsLocked, setSignalsLocked] = useState(false)
+  const [books, setBooks] = useState<EBookSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -1190,13 +1279,28 @@ export function DashboardPage() {
       setError(null)
 
       // Fetch all data in parallel — NOTE: api client already prepends /api
-      const [signalsRes, perfRes, eventsRes] = await Promise.allSettled([
+      const [signalsRes, perfRes, eventsRes, booksRes] = await Promise.allSettled([
         api.get('/signals?status=active&limit=5', { signal }),
         api.get('/performance', { signal }),
         api.get('/calendar?impact=high&limit=3', { signal }),
+        api.get('/ebooks', { signal }),
       ])
 
       if (signal?.aborted) return
+
+      // /api/signals answers 403 with code 'signals_paywall' when the signed-in
+      // user has no signals entitlement. Promise.allSettled turns that into a
+      // silently rejected result, so the dashboard used to render an empty
+      // "Recent Signals" card that looked identical to a quiet news day. Surface
+      // the paywall so the user gets an upgrade prompt instead of a blank list.
+      if (signalsRes.status === 'rejected') {
+        const code = (signalsRes.reason as { code?: string } | undefined)?.code
+        if (code === 'signals_paywall' || code === 'bot_paywall') {
+          setSignalsLocked(true)
+        }
+      } else {
+        setSignalsLocked(false)
+      }
 
       // Process signals — API returns { data: { signals: [...] } }
       if (signalsRes.status === 'fulfilled' && signalsRes.value) {
@@ -1280,6 +1384,23 @@ export function DashboardPage() {
             previous: e.previousValue ?? e.previous ?? null,
           }))
         )
+      }
+
+      // Process e-books — the dashboard had no e-book section at all, so a
+      // user's purchased books were invisible outside the dedicated library
+      // page. /api/ebooks returns { data: { books: [...] } } with `owned`.
+      if (booksRes.status === 'fulfilled' && booksRes.value) {
+        const res = booksRes.value as any
+        const rawBooks = Array.isArray(res?.data?.books)
+          ? res.data.books
+          : Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res?.books)
+              ? res.books
+              : []
+        setBooks(rawBooks.filter((b: any) => b?.isActive !== false))
+      } else {
+        setBooks([])
       }
     } catch (err) {
       console.error('Dashboard fetch error:', err)
@@ -1385,13 +1506,14 @@ export function DashboardPage() {
       {/* Performance Chart + Recent Signals */}
       <div className="grid gap-3 lg:grid-cols-3">
         <PerformanceChart data={performanceData} pnlTotal={pnlTotal} />
-        <RecentSignalsList signals={signals} loading={false} />
+        <RecentSignalsList signals={signals} loading={false} locked={signalsLocked} />
       </div>
 
-      {/* Quick Actions + Upcoming Events + Screenshot Usage */}
+      {/* Quick Actions + Upcoming Events + E-Books + Screenshot Usage */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         <QuickActions />
         <UpcomingEvents events={events} loading={false} onRetry={fetchDashboardData} />
+        <EBooksCard books={books} />
         <div className="space-y-3">
           <PlanUsageCard />
           <ScreenshotUsageCard />
