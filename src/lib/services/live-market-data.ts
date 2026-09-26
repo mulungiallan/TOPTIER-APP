@@ -225,7 +225,9 @@ export class LiveMarketData {
 
   /**
    * Get multiple prices at once. Batches parallel requests to respect rate
-   * limits (Finnhub free tier: 60 req/min).
+   * limits (Finnhub free tier: 60 req/min). Yahoo throttles parallel bursts,
+   * so any symbol that failed in a parallel chunk is retried SEQUENTIALLY —
+   * that's the pattern that reliably succeeds when parallel calls get 429'd.
    */
   async getMultiplePrices(symbols: string[]): Promise<Map<string, LivePrice>> {
     const results = new Map<string, LivePrice>()
@@ -239,6 +241,18 @@ export class LiveMarketData {
       prices.forEach((p, idx) => {
         if (p) results.set(chunk[idx], p)
       })
+    }
+
+    // Go back for the misses one-by-one (sequential Yahoo requests pass even
+    // when the parallel burst was throttled). Bounded to keep worst-case
+    // latency sane for the /api/signals live overlay.
+    let misses = 0
+    for (const s of unique) {
+      if (results.has(s)) continue
+      if (misses >= 12) break
+      misses++
+      const p = await this.getPrice(s)
+      if (p) results.set(s, p)
     }
 
     return results
