@@ -109,6 +109,28 @@ async function deliver(
       },
       select: { id: true },
     })
+
+    // Instant push over WebSocket when the socket server is running (dev /
+    // local). In production the standalone server has no socket server, so this
+    // safely no-ops and the client's notification poller covers delivery.
+    if (notification?.id) {
+      try {
+        const { emitToUser } = await import('@/lib/socket-server')
+        emitToUser(userId, 'notification:new', {
+          notification: {
+            id: notification.id,
+            type: data.type,
+            title: data.title,
+            message: data.message,
+            actionUrl: data.actionUrl ?? null,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          },
+        })
+      } catch {
+        // socket.io unavailable — polling handles it
+      }
+    }
   }
 
   // Web push (best-effort; logged loudly on failure).

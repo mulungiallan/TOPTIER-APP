@@ -3,8 +3,20 @@ import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { notifyUsers } from '@/lib/services/notifications'
 import { signalGenerator } from '@/lib/services/signal-generator'
+import { signalOutcomes } from '@/lib/services/signal-outcomes'
+import { liveMarketData } from '@/lib/services/live-market-data'
 import { hasSignalsAccess, isAdminUser, SIGNALS_PAYWALL_MESSAGE, type EntitlementRow } from '@/lib/entitlements'
 import type { Signal } from '@/generated/prisma'
+
+interface SignalWithLive extends Signal {
+  live: {
+    price: number
+    change: number
+    changePercent: number
+    timestamp: string
+    source: string
+  } | null
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,6 +56,12 @@ export async function GET(request: NextRequest) {
     // internally, max once per 5 min) so the feed updates as the market moves
     // instead of showing the same stale entries forever.
     await signalGenerator.ensureSignals()
+
+    // Outcome monitor self-heal: before serving the feed, give the resolver a
+    // chance to mark any signal that has just hit TP/SL/expired (throttled to
+    // 30s + coalesced, so this is cheap). Fire-and-forget so the request never
+    // waits on upstream price calls.
+    void signalOutcomes.ensureOutcomes().catch(() => {})
 
     // Signal quotas apply to paying users only: the Signals product delivers
     // exactly the 2 BEST signals per day (ranked by confidence). Admins and the
@@ -88,7 +106,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return successResponse({ signals, total: signals.length, limit: isAdmin ? null : FALLBACK_QUOTA, offset: 0 })
+    // ─── Live price overlay ──────────────────────────────────────────────
+    // Attach the current market price (15s-cached) to every returned signal so
+    // the UI can show live entry-vs-now moves, distance to TP/SL, and honest
+    // "LIVE" coverage details. Signals whose asset has no quote carry `live: null`.
+    const assets = [...new Set(signals.map(s => s.asset))]
+    const priceMap = assets.length > 0 ? await liveMarketData.getMultiplePrices(assets) : new Map()
+    const enriched: SignalWithLive[] = signals.map(s => {
+      const lp = priceMap.get(s.asset)
+      return {
+        ...s,
+        live: lp
+          ? {
+              price: lp.price,
+              change: lp.change,
+              changePercent: lp.changePercent,
+              timestamp: lp.timestamp.toISOString(),
+              source: lp.source,
+            }
+          : null,
+      }
+    })
+
+    return successResponse({ signals: enriched, total: enriched.length, limit: isAdmin ? null : FALLBACK_QUOTA, offset: 0 })
   } catch (error) {
     console.error('Signals GET error:', error)
     return errorResponse('Failed to fetch signals', 500)

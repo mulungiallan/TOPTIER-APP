@@ -61,6 +61,11 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -69,6 +74,8 @@ import {
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePwaInstall } from '@/hooks/use-pwa-install'
+import { notificationPageFromUrl, timeAgo } from '@/hooks/use-notifications-center'
+import { api } from '@/lib/api'
 import { t, isRTL, locales } from '@/lib/i18n/config'
 import { toast } from 'sonner'
 import { Download } from 'lucide-react'
@@ -435,6 +442,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useStore((s) => s.toggleSidebarCollapsed)
   const notificationCount = useStore((s) => s.notificationCount)
+  const notifications = useStore((s) => s.notifications)
+  const markNotificationRead = useStore((s) => s.markNotificationRead)
+  const markAllNotificationsRead = useStore((s) => s.markAllNotificationsRead)
   const setPage = useStore((s) => s.setPage)
   const goBack = useStore((s) => s.goBack)
   const locale = useStore((s) => s.locale)
@@ -448,6 +458,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleLogout = () => {
     logout()
     toast.success(t('common.loggedOut', locale))
+  }
+
+  const openNotification = (id: string, actionUrl: string | null) => {
+    markNotificationRead(id)
+    const page = notificationPageFromUrl(actionUrl)
+    if (page) setPage(page)
+    void api.post('/notifications/center', { id }).catch(() => {})
+  }
+
+  const markAllRead = () => {
+    markAllNotificationsRead()
+    void api.post('/notifications/center', { readAll: true }).catch(() => {})
   }
 
   // Apply document language + direction (RTL for Arabic) to match the locale.
@@ -647,20 +669,75 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Button>
             )}
 
-            {/* Notification Bell */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative"
-              onClick={() => setPage('alerts')}
-            >
-              <Bell className="size-4" />
-              {notificationCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
-                  {notificationCount > 9 ? '9+' : notificationCount}
-                </span>
-              )}
-            </Button>
+            {/* Notification Bell + Center */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+                  <Bell className="size-4" />
+                  {notificationCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
+                      {notificationCount > 9 ? '9+' : notificationCount}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[340px] p-0" sideOffset={8}>
+                <div className="flex items-center justify-between border-b px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Bell className="size-4 text-primary" />
+                    <span className="text-sm font-semibold">Notifications</span>
+                    {notificationCount > 0 && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                        {notificationCount}
+                      </Badge>
+                    )}
+                  </div>
+                  {notificationCount > 0 && (
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px] font-medium" onClick={markAllRead}>
+                      Mark all read
+                    </Button>
+                  )}
+                </div>
+                {notifications.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <Bell className="size-6 text-muted-foreground/50" />
+                    <p className="mt-2 text-xs text-muted-foreground">No notifications yet</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/70">New signals and results will appear here.</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="max-h-[380px]">
+                    <div className="divide-y divide-border/60">
+                      {notifications.map((n) => (
+                        <button
+                          key={n.id}
+                          onClick={() => openNotification(n.id, n.actionUrl)}
+                          className={cn(
+                            'flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-muted/60',
+                            !n.isRead && 'bg-primary/[0.03]'
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              'mt-1 size-2 shrink-0 rounded-full',
+                              n.isRead ? 'bg-muted-foreground/25' : 'bg-primary'
+                            )}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs font-semibold leading-tight">{n.title}</span>
+                            <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground line-clamp-2">
+                              {n.message}
+                            </span>
+                            <span className="mt-1 block text-[10px] text-muted-foreground/70">
+                              {timeAgo(n.createdAt)}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </PopoverContent>
+            </Popover>
 
             {/* Logout */}
             <Button

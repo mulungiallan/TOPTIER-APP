@@ -29,13 +29,10 @@ export async function GET(request: NextRequest) {
     }
 
     // ─── Lazy population ─────────────────────────────────────────────────
-    // If the news table is empty/stale, pull fresh articles from Finnhub
-    // on-the-fly so the page is never blank. Ingest throttled internally
-    // (refresh at most once per 15 minutes, only when stale).
-    const count = await db.newsArticle.count()
-    if (count === 0) {
-      await newsIngester.ensureNews()
-    }
+    // Always give the ingester a chance to refresh so the feed never goes
+    // stale. The ingester is time-throttled internally (<=1 upstream batch
+    // every 15 min, deduped by URL), so calling it on every read is cheap.
+    await newsIngester.ensureNews()
 
     const [articles, total] = await Promise.all([
       db.newsArticle.findMany({

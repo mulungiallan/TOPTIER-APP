@@ -59,6 +59,12 @@ export async function register() {
     const { signalGenerator } = await import("./lib/services/signal-generator");
     signalGenerator.startBackgroundRefresh();
 
+    // Mark signals hit_tp / hit_sl / expired against the LIVE market as soon as
+    // those levels are traded through, and notify admins of each outcome so
+    // they can monitor signal performance without opening the DB.
+    const { signalOutcomes } = await import("./lib/services/signal-outcomes");
+    signalOutcomes.startBackgroundMonitor();
+
     // Chart/screenshot analyses are kept for 1 hour then deleted automatically.
     // Purge on a schedule (not just on API access) so expired records never
     // linger.

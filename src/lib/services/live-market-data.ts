@@ -592,11 +592,19 @@ export class LiveMarketData {
     const symbols = [
       'EUR/USD',
       'GBP/USD',
+      'USD/JPY',
+      'AUD/USD',
       'BTC/USD',
       'ETH/USD',
+      'SOL/USD',
+      'XRP/USD',
       'SPX500',
-      'GOLD',
+      'NASDAQ',
+      'DOW',
       'VIX',
+      'GOLD',
+      'SILVER',
+      'OIL',
     ]
     const map = await this.getMultiplePrices(symbols)
     return symbols

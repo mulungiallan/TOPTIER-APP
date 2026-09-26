@@ -106,17 +106,22 @@ function getMarketSessions(): MarketSession[] {
   })
 }
 
-const topGainers: MarketMover[] = [
-  { asset: 'GBP/JPY', change: '+128', changePercent: '+0.67%', direction: 'up' },
-  { asset: 'AUD/USD', change: '+0.0045', changePercent: '+0.58%', direction: 'up' },
-  { asset: 'BTC/USD', change: '+1,245', changePercent: '+1.32%', direction: 'up' },
+// ─── Static sidebar data (no API for these) ────────────────────────────────────
+
+// Symbol watchlist used for the live Top Movers sidebar. Prices come from the
+// same Finnhub → Yahoo pipeline as every other screen (never hardcoded).
+const MOVER_WATCHLIST = [
+  'BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD',
+  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD',
+  'GOLD', 'SILVER', 'OIL',
+  'SPX500', 'NASDAQ', 'DOW', 'VIX',
+  'AAPL', 'TSLA', 'MSFT', 'NVDA',
 ]
 
-const topLosers: MarketMover[] = [
-  { asset: 'EUR/USD', change: '-0.0032', changePercent: '-0.29%', direction: 'down' },
-  { asset: 'XAU/USD', change: '-18.50', changePercent: '-0.63%', direction: 'down' },
-  { asset: 'ETH/USD', change: '-42.30', changePercent: '-1.85%', direction: 'down' },
-]
+function formatMoverChange(change: number): string {
+  const rounded = Math.abs(change) >= 100 ? Math.round(change).toLocaleString('en-US') : change < 1 ? change.toFixed(4) : change.toFixed(2)
+  return change >= 0 ? `+${rounded}` : rounded
+}
 
 const categoryFilters: Array<'All' | MarketCategory> = ['All', 'Forex', 'Crypto', 'Stocks', 'Commodities', 'Economy']
 const sentimentFilters: Array<'All' | Sentiment> = ['All', 'bullish', 'bearish', 'neutral']
@@ -364,6 +369,43 @@ export function NewsPage() {
     return () => clearInterval(id)
   }, [])
 
+  // ─── Live Top Movers ────────────────────────────────────────────────────────
+  // Computed from REAL current quotes (Finnhub → Yahoo) over the watchlist, so
+  // the sidebar always reflects the actual market — gainers/losers by change%.
+  const [movers, setMovers] = useState<{ gainers: MarketMover[]; losers: MarketMover[] }>({ gainers: [], losers: [] })
+
+  const fetchMovers = useCallback(async () => {
+    try {
+      const result = await api.get(`/market/live?action=quotes&symbols=${MOVER_WATCHLIST.join(',')}`)
+      const prices = (result?.data?.prices || []) as Array<{
+        symbol: string
+        change: number
+        changePercent: number
+      }>
+      const rows: MarketMover[] = prices
+        .filter((p) => Number.isFinite(p.changePercent))
+        .map((p) => ({
+          asset: p.symbol,
+          change: formatMoverChange(p.change || 0),
+          changePercent: `${p.changePercent >= 0 ? '+' : ''}${p.changePercent.toFixed(2)}%`,
+          direction: p.changePercent >= 0 ? 'up' : 'down',
+        }))
+      const sorted = [...rows].sort((a, b) => parseFloat(b.changePercent) - parseFloat(a.changePercent))
+      setMovers({
+        gainers: sorted.filter((m) => m.direction === 'up').slice(0, 3),
+        losers: sorted.filter((m) => m.direction === 'down').slice(-3).reverse(),
+      })
+    } catch {
+      // Keep the last known movers; on first load we show an honest placeholder.
+    }
+  }, [])
+
+  useEffect(() => {
+    void fetchMovers()
+    const id = setInterval(() => void fetchMovers(), 30_000)
+    return () => clearInterval(id)
+  }, [fetchMovers])
+
   // Debounce search input
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   useEffect(() => {
@@ -431,6 +473,15 @@ export function NewsPage() {
 
   useEffect(() => {
     fetchNews()
+  }, [fetchNews])
+
+  // Silently refresh the feed every 90s so new articles rotate in live (the
+  // server ingester self-throttles to <=1 upstream batch per 15 min).
+  useEffect(() => {
+    const id = setInterval(() => {
+      void fetchNews()
+    }, 90_000)
+    return () => clearInterval(id)
   }, [fetchNews])
 
   const bookmarkedArticles = useMemo(
@@ -624,18 +675,30 @@ export function NewsPage() {
                   <ArrowUpRight className="size-3" />
                   Gainers
                 </p>
-                {topGainers.map((m) => (
-                  <MoverRow key={m.asset} mover={m} />
-                ))}
+                {movers.gainers.length > 0 ? (
+                  movers.gainers.map((m) => (
+                    <MoverRow key={m.asset} mover={m} />
+                  ))
+                ) : (
+                  <p className="text-[10px] text-muted-foreground py-1.5">
+                    No live data right now
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium text-red-600 mb-2 flex items-center gap-1">
                   <ArrowDownRight className="size-3" />
                   Losers
                 </p>
-                {topLosers.map((m) => (
-                  <MoverRow key={m.asset} mover={m} />
-                ))}
+                {movers.losers.length > 0 ? (
+                  movers.losers.map((m) => (
+                    <MoverRow key={m.asset} mover={m} />
+                  ))
+                ) : (
+                  <p className="text-[10px] text-muted-foreground py-1.5">
+                    No live data right now
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>

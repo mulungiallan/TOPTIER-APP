@@ -102,6 +102,16 @@ interface SignalFilters {
   minConfidence: number
 }
 
+export interface AppNotification {
+  id: string
+  type: string
+  title: string
+  message: string
+  isRead: boolean
+  actionUrl: string | null
+  createdAt: string
+}
+
 interface AppState {
   // Auth
   isAuthenticated: boolean
@@ -119,6 +129,7 @@ interface AppState {
 
   // Notifications
   notificationCount: number
+  notifications: AppNotification[]
 
   // Signal Filters
   signalFilters: SignalFilters
@@ -133,6 +144,9 @@ interface AppState {
   setSidebarOpen: (open: boolean) => void
   toggleSidebarCollapsed: () => void
   setNotificationCount: (count: number) => void
+  setNotifications: (notifications: AppNotification[]) => void
+  markNotificationRead: (id: string) => void
+  markAllNotificationsRead: () => void
   updateUser: (data: Partial<User>) => void
   setSignalFilters: (filters: Partial<SignalFilters>) => void
   setLocale: (locale: string) => void
@@ -157,6 +171,7 @@ export const useStore = create<AppState>()(
 
       // Notifications (real count is fetched from the server on load)
       notificationCount: 0,
+      notifications: [],
 
       // Signal Filters
       signalFilters: {
@@ -225,6 +240,29 @@ export const useStore = create<AppState>()(
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
       setNotificationCount: (count) => set({ notificationCount: count }),
+
+      setNotifications: (notifications) =>
+        set({
+          notifications,
+          notificationCount: notifications.filter((n) => !n.isRead).length,
+        }),
+
+      markNotificationRead: (id) =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, isRead: true } : n
+          ),
+          notificationCount: Math.max(
+            0,
+            state.notificationCount - (state.notifications.find((n) => n.id === id && !n.isRead) ? 1 : 0)
+          ),
+        })),
+
+      markAllNotificationsRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((n) => (n.isRead ? n : { ...n, isRead: true })),
+          notificationCount: 0,
+        })),
 
       updateUser: (data) =>
         set((state) => ({

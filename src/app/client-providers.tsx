@@ -7,6 +7,7 @@ import { useAdsInit, useInterstitialOnPageChange, useInterstitialOnRouteChange }
 import { useStore } from "@/lib/store";
 import { shouldShowAds } from "@/lib/ads";
 import { initStatusBar } from "@/lib/native/status-bar";
+import { useNotificationsCenter } from "@/hooks/use-notifications-center";
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -16,6 +17,10 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
   useAdsInit(() => !shouldShowAds(useStore.getState().user));
   useInterstitialOnRouteChange();
   useInterstitialOnPageChange();
+
+  // Poll the notification center + pop instant sonner toasts when new signals,
+  // signal results, or system notices arrive while the app is open.
+  useNotificationsCenter(true);
 
   return (
     <ErrorBoundary name="root">
