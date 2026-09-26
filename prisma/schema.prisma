@@ -567,6 +567,28 @@ model AdminAuditLog {
   @@index([action])
 }
 
+// ─── App Expenses & P&L ─────────────────────────────────────────────────────
+// Manual admin bookkeeping for operating costs (hosting, marketing, salaries,
+// tools, API keys, etc.). The admin Finances tab subtracts these from the
+// PlatformEarning income ledger to report real net profit.
+
+model AppExpense {
+  id          String   @id @default(cuid())
+  category    String // hosting | marketing | salary | tools | api | ads | cloud | misc
+  description String
+  amount      Float
+  currency    String   @default("USD")
+  spentAt     DateTime @default(now())
+  reference   String?
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([spentAt])
+  @@index([category])
+}
+
 // ─── Premium Package System ─────────────────────────────────────────────────
 // Packages define sellable plans (Starter, Premium, Pro, Enterprise, Unlimited).
 // Orders track individual purchases. Analyses track per-analysis audit trail.

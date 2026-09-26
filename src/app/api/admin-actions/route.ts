@@ -26,6 +26,7 @@ import { ManagedCopyService } from '@/lib/services/managed-copy'
 import { escapeHtml } from '@/lib/security'
 import { fireOps } from '@/lib/ops-notify'
 import { refundReservedUserPayout } from '@/lib/payouts'
+import { EXPENSE_CATEGORIES } from '@/lib/services/expenses'
 
 // NOTE: The JWT secret comes from the shared auth module. There is no
 // hardcoded fallback — missing secret is a fatal misconfiguration.
@@ -97,6 +98,9 @@ function permForAction(action: string): string | null {
     confirm_payment: 'payments.write',
     reject_payment: 'payments.write',
     reconcile_pesapal: 'payments.write',
+    create_expense: 'payments.write',
+    update_expense: 'payments.write',
+    delete_expense: 'payments.write',
   }
   return map[action] ?? null
 }
@@ -226,6 +230,12 @@ export async function POST(request: NextRequest) {
         return await handleRejectPayment(adminId, body)
       case 'reconcile_pesapal':
         return await handleReconcilePesapal(adminId, body)
+      case 'create_expense':
+        return await handleCreateExpense(adminId, body)
+      case 'update_expense':
+        return await handleUpdateExpense(adminId, body)
+      case 'delete_expense':
+        return await handleDeleteExpense(adminId, body)
       // ── Trading ops ──
       case 'expire_signals':
         return await handleExpireSignals(adminId, body)
@@ -949,6 +959,23 @@ export async function GET(request: NextRequest) {
         optionalFields: ['currency', 'reference'],
       },
       {
+        action: 'create_expense',
+        description: 'Record an app expense for the P&L Finances tab',
+        requiredFields: ['category', 'description', 'amount'],
+        optionalFields: ['currency', 'spentAt', 'note', 'reference'],
+      },
+      {
+        action: 'update_expense',
+        description: 'Edit an existing app expense',
+        requiredFields: ['expenseId'],
+        optionalFields: ['category', 'description', 'amount', 'currency', 'spentAt', 'note'],
+      },
+      {
+        action: 'delete_expense',
+        description: 'Delete an app expense',
+        requiredFields: ['expenseId'],
+      },
+      {
         action: 'expire_signals',
         description: 'Expire all active signals past their expiry date',
       },
@@ -1293,6 +1320,76 @@ async function handleRecordEarning(adminId: string, body: any) {
   })
   await logAdminAction(adminId, 'RECORD_EARNING', { earningId: earning.id, source, amount: num })
   return successResponse(earning)
+}
+
+// ─── Expense bookkeeping (P&L, see src/lib/services/expenses.ts) ────────────
+
+async function handleCreateExpense(adminId: string, body: any) {
+  const { category, description, amount, currency, spentAt, note, reference } = body
+  if (!category || !description || amount === undefined) {
+    return errorResponse('category, description and amount required', 400)
+  }
+  const num = Number(amount)
+  if (!Number.isFinite(num) || num <= 0) return errorResponse('Invalid amount', 400)
+  if (!EXPENSE_CATEGORIES.includes(category)) {
+    return errorResponse(`category must be one of: ${EXPENSE_CATEGORIES.join(', ')}`, 400)
+  }
+
+  const expense = await db.appExpense.create({
+    data: {
+      category,
+      description: String(description),
+      amount: num,
+      currency: currency || 'USD',
+      spentAt: spentAt ? new Date(spentAt) : new Date(),
+      note: note || null,
+      reference: reference || null,
+      createdById: adminId,
+    },
+  })
+  await logAdminAction(adminId, 'EXPENSE_CREATE', { expenseId: expense.id, category, amount: num, description })
+  return successResponse(expense, 201)
+}
+
+async function handleUpdateExpense(adminId: string, body: any) {
+  const { expenseId, category, description, amount, currency, spentAt, note } = body
+  if (!expenseId) return errorResponse('expenseId required', 400)
+
+  const existing = await db.appExpense.findUnique({ where: { id: expenseId } })
+  if (!existing) return errorResponse('Expense not found', 404)
+
+  const updateData: Record<string, unknown> = {}
+  if (category) {
+    if (!EXPENSE_CATEGORIES.includes(category)) {
+      return errorResponse(`category must be one of: ${EXPENSE_CATEGORIES.join(', ')}`, 400)
+    }
+    updateData.category = category
+  }
+  if (description !== undefined) updateData.description = String(description)
+  if (amount !== undefined) {
+    const num = Number(amount)
+    if (!Number.isFinite(num) || num <= 0) return errorResponse('Invalid amount', 400)
+    updateData.amount = num
+  }
+  if (currency) updateData.currency = currency
+  if (spentAt) updateData.spentAt = new Date(spentAt)
+  if (note !== undefined) updateData.note = note || null
+
+  const updated = await db.appExpense.update({ where: { id: expenseId }, data: updateData })
+  await logAdminAction(adminId, 'EXPENSE_UPDATE', { expenseId, changes: updateData })
+  return successResponse(updated)
+}
+
+async function handleDeleteExpense(adminId: string, body: any) {
+  const { expenseId } = body
+  if (!expenseId) return errorResponse('expenseId required', 400)
+
+  const existing = await db.appExpense.findUnique({ where: { id: expenseId } })
+  if (!existing) return errorResponse('Expense not found', 404)
+
+  await db.appExpense.delete({ where: { id: expenseId } })
+  await logAdminAction(adminId, 'EXPENSE_DELETE', { expenseId, amount: existing.amount, category: existing.category })
+  return successResponse({ deleted: true, expenseId })
 }
 
 // ─── Manual (in-app bank) payment confirmation ────────────────────────────────

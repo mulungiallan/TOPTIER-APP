@@ -57,6 +57,10 @@ import {
   Wallet,
   Timer,
   Megaphone,
+  HandCoins,
+  ReceiptText,
+  Landmark,
+  Pencil,
 } from 'lucide-react'
 import {
   LineChart,
@@ -121,6 +125,32 @@ async function runAdminAction(action: string, body: Record<string, unknown>) {
 }
 
 // ─── Types (mirror /api/admin/overview) ───────────────────────────────────────
+
+interface FinanceSummary {
+  totalIncome: number
+  totalExpenses: number
+  netProfit: number
+  earningCount: number
+  expenseCount: number
+  incomeBySource: Array<{ source: string; total: number; available: number; paid: number }>
+  byCategory: Array<{ category: string; total: number; count: number }>
+  byMonth: Array<{ month: string; income: number; expense: number; net: number }>
+  monthToDate: { income: number; expense: number; net: number }
+  updatedAt: string
+}
+
+interface ExpenseRow {
+  id: string
+  category: string
+  description: string
+  amount: number
+  currency: string
+  spentAt: string
+  reference: string | null
+  note: string | null
+  createdById: string | null
+  createdAt: string
+}
 
 interface OverviewData {
   generatedAt: string
@@ -1245,6 +1275,307 @@ function CmdKShortcut({ onOpen }: { onOpen: () => void }) {
   return null
 }
 
+// ─── Finances / P&L ───────────────────────────────────────────────────────────
+// Expense bookkeeping + net-profit readout. Expense writes go through
+// admin-actions (create/update/delete_expense, permission payments.write);
+// income comes from the PlatformEarning ledger via /api/admin/finances.
+
+const EXPENSE_CATEGORY_OPTIONS: Array<[string, string]> = [
+  ['hosting', 'Hosting & Infra'],
+  ['marketing', 'Marketing & Ads'],
+  ['salary', 'Salaries / Payments'],
+  ['tools', 'Tools & Subscriptions'],
+  ['api', 'API & Data feeds'],
+  ['ads', 'Ad spend'],
+  ['cloud', 'Cloud services'],
+  ['misc', 'Other / Misc'],
+]
+
+const EXPENSE_CATEGORY_BADGE: Record<string, string> = {
+  hosting: 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30',
+  marketing: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/30',
+  salary: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
+  tools: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/30',
+  api: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30',
+  ads: 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/30',
+  cloud: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
+  misc: 'bg-muted text-muted-foreground border-border',
+}
+
+const INCOME_SOURCE_LABELS: Record<string, string> = {
+  premium_payment: 'Subscriptions & purchases',
+  copy_fee: 'Copy-trading fees',
+  bot_profit_share: 'Bot profit share',
+  referral_revenue: 'Referral revenue',
+  ads_revenue: 'Ad revenue',
+}
+
+function ExpenseDialog({ open, onOpenChange, expense, onSaved }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  expense?: ExpenseRow | null
+  onSaved: () => void
+}) {
+  const [category, setCategory] = useState(expense?.category || 'misc')
+  const [description, setDescription] = useState(expense?.description || '')
+  const [amount, setAmount] = useState(expense ? String(expense.amount) : '')
+  const [currency, setCurrency] = useState(expense?.currency || 'USD')
+  const [spentAt, setSpentAt] = useState(() =>
+    expense?.spentAt ? expense.spentAt.slice(0, 10) : new Date().toISOString().slice(0, 10)
+  )
+  const [note, setNote] = useState(expense?.note || '')
+  const [busy, setBusy] = useState(false)
+
+  const valid = description.trim().length > 0 && Number(amount) > 0
+
+  const submit = async () => {
+    if (!valid) return
+    setBusy(true)
+    try {
+      const body = {
+        category,
+        description: description.trim(),
+        amount: Number(amount),
+        currency: currency.toUpperCase().slice(0, 3) || 'USD',
+        spentAt: new Date(`${spentAt}T12:00:00`).toISOString(),
+        note: note.trim() || undefined,
+      }
+      await runAdminAction(expense ? 'update_expense' : 'create_expense', expense ? { expenseId: expense.id, ...body } : body)
+      toast.success(expense ? 'Expense updated' : 'Expense recorded')
+      onOpenChange(false)
+      onSaved()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save expense')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {!expense && (
+        <DialogTrigger asChild>
+          <Button size="sm" className="gap-2"><Plus className="h-4 w-4" /> Add Expense</Button>
+        </DialogTrigger>
+      )}
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{expense ? 'Edit expense' : 'Record app expense'}</DialogTitle>
+          <DialogDescription>Operating costs are subtracted from income to compute net profit.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="mb-1.5 block text-sm">Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {EXPENSE_CATEGORY_OPTIONS.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="mb-1.5 block text-sm">Amount</Label>
+              <Input type="number" step="0.01" min="0" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-sm">Currency</Label>
+              <Input placeholder="USD" maxLength={3} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+            </div>
+          </div>
+          <div>
+            <Label className="mb-1.5 block text-sm">Description</Label>
+            <Input placeholder="e.g. Railway hosting — March" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div>
+            <Label className="mb-1.5 block text-sm">Date spent</Label>
+            <Input type="date" value={spentAt} onChange={(e) => setSpentAt(e.target.value)} />
+          </div>
+          <div>
+            <Label className="mb-1.5 block text-sm">Note (optional)</Label>
+            <Input placeholder="Extra context" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button size="sm" disabled={busy || !valid} onClick={submit}>{busy ? 'Saving...' : expense ? 'Save Changes' : 'Record Expense'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function FinancesView({ summary, expenses, onExpensesChanged }: {
+  summary: FinanceSummary | null
+  expenses: ExpenseRow[]
+  onExpensesChanged: () => void
+}) {
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editing, setEditing] = useState<ExpenseRow | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const deleteExpense = async (e: ExpenseRow) => {
+    if (!window.confirm(`Delete expense "${e.description}" (${fmtMoney(e.amount)})?`)) return
+    setDeletingId(e.id)
+    try {
+      await runAdminAction('delete_expense', { expenseId: e.id })
+      toast.success('Expense deleted')
+      onExpensesChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const net = summary?.netProfit ?? 0
+  const netClass = net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+  const totalExpenses = summary?.totalExpenses ?? 0
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-4">
+        <StatCard title="Total Income" value={fmtMoney(summary?.totalIncome)} icon={HandCoins} sub={`${summary?.earningCount ?? 0} earning entries`} />
+        <StatCard title="Total Expenses" value={fmtMoney(summary?.totalExpenses)} icon={ReceiptText} sub={`${summary?.expenseCount ?? 0} expenses recorded`} className="border-red-500/20" />
+        <StatCard title="Net Profit" value={fmtMoney(net)} icon={Landmark} sub="Income − expenses" valueClassName={netClass} className={net >= 0 ? 'border-emerald-500/20' : 'border-red-500/20'} />
+        <StatCard title="This Month" value={fmtMoney(summary?.monthToDate?.net)} icon={Activity} sub={`${fmtMoney(summary?.monthToDate?.income)} in · ${fmtMoney(summary?.monthToDate?.expense)} out`} className="border-primary/20" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Monthly P&L</CardTitle>
+            <CardDescription>Income vs expenses, last 12 months</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              {!summary || summary.byMonth.length === 0 ? (
+                <EmptyState icon={BarChart3} text="No finance data yet." />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={summary.byMonth}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(value: number, name: string) => [fmtMoney(value), name === 'income' ? 'Income' : 'Expenses']} />
+                    <Bar dataKey="income" name="income" fill="#10b981" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="expense" name="expense" fill="#f43f5e" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Income by source</CardTitle>
+            <CardDescription>PlatformEarning ledger (accrues automatically from payments)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!summary || summary.incomeBySource.length === 0 ? (
+              <EmptyState icon={HandCoins} text="No earnings recorded yet." />
+            ) : (
+              <div className="space-y-2">
+                {summary.incomeBySource.map((s) => (
+                  <div key={s.source} className="flex items-center justify-between rounded-lg border p-2.5">
+                    <span className="text-sm font-medium">{INCOME_SOURCE_LABELS[s.source] || s.source}</span>
+                    <span className="text-sm font-semibold">{fmtMoney(s.total)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-5">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Expenses by category</CardTitle>
+            <CardDescription>Where the money goes</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!summary || summary.byCategory.length === 0 ? (
+              <EmptyState icon={ReceiptText} text="No expenses recorded yet." />
+            ) : (
+              <div className="space-y-3">
+                {summary.byCategory.map((c) => {
+                  const pct = totalExpenses > 0 ? Math.round((c.total / totalExpenses) * 100) : 0
+                  return (
+                    <div key={c.category}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="flex items-center gap-2">
+                          <Badge className={`${EXPENSE_CATEGORY_BADGE[c.category] || ''} text-xs`}>{c.category}</Badge>
+                          <span className="text-muted-foreground text-xs">{c.count}×</span>
+                        </span>
+                        <span className="font-medium">{fmtMoney(c.total)} <span className="text-muted-foreground text-xs ml-1">{pct}%</span></span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full rounded-full bg-foreground/70" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-3">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="text-lg">Expense history</CardTitle>
+              <CardDescription>All recorded operating costs</CardDescription>
+            </div>
+            <ExpenseDialog open={createOpen} onOpenChange={setCreateOpen} onSaved={onExpensesChanged} />
+          </CardHeader>
+          <CardContent>
+            {expenses.length === 0 ? (
+              <EmptyState icon={ReceiptText} text="No expenses yet — click Add Expense to record one." />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Date</TableHead>
+                      <TableHead className="text-xs">Category</TableHead>
+                      <TableHead className="text-xs">Description</TableHead>
+                      <TableHead className="text-xs">Note</TableHead>
+                      <TableHead className="text-xs">Amount</TableHead>
+                      <TableHead className="text-xs">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenses.map((e) => (
+                      <TableRow key={e.id}>
+                        <TableCell className="text-xs text-muted-foreground">{fmtDate(e.spentAt)}</TableCell>
+                        <TableCell><Badge className={`${EXPENSE_CATEGORY_BADGE[e.category] || ''} text-xs`}>{e.category}</Badge></TableCell>
+                        <TableCell className="text-sm">{e.description}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">{e.note || '—'}</TableCell>
+                        <TableCell className="text-sm font-medium">{fmtMoney(e.amount, e.currency)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditing(e)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-red-500" disabled={deletingId === e.id} onClick={() => deleteExpense(e)} title="Delete"><Trash2 className="h-3.5 w-3.5" /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            <ExpenseDialog open={!!editing} expense={editing} onOpenChange={(o) => { if (!o) setEditing(null) }} onSaved={onExpensesChanged} />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const user = useStore((s) => s.user)
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
@@ -1337,17 +1668,22 @@ export default function AdminPage() {
   // Export
   const [exporting, setExporting] = useState<string | null>(null)
 
+  // Finances (P&L + expenses)
+  const [financeSummary, setFinanceSummary] = useState<FinanceSummary | null>(null)
+  const [expenses, setExpenses] = useState<ExpenseRow[]>([])
+
   const fetchAll = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true)
       setError(null)
-      const [overviewRes, dataRes, settingsRes, secRes, jobsRes, aiRes] = await Promise.all([
+      const [overviewRes, dataRes, settingsRes, secRes, jobsRes, aiRes, financesRes] = await Promise.all([
         api.get<{ success: boolean; data: OverviewData }>('/admin/overview', { signal }),
         api.get<{ success: boolean; data: { users?: any[]; signals?: any[]; coupons?: any[]; tickets?: any[]; auditLog?: any[]; adUsage?: any[]; recentAdEvents?: any[]; payments?: any[] } }>('/admin/data', { signal }),
         api.get<{ success: boolean; data: { featureFlags?: any[]; appSettings?: any } }>('/admin/settings', { signal }),
         api.get<{ success: boolean; data: any }>('/admin/security', { signal }).catch(() => null),
         api.get<{ success: boolean; data: any }>('/admin/jobs', { signal }).catch(() => null),
         api.get<{ success: boolean; data: any }>('/admin/ai', { signal }).catch(() => null),
+        api.get<{ success: boolean; data: { summary?: FinanceSummary; expenses?: ExpenseRow[] } }>('/admin/finances', { signal }).catch(() => null),
       ])
       if (!signal?.aborted) {
         if (overviewRes?.success && overviewRes?.data) setOverview(overviewRes.data)
@@ -1373,6 +1709,8 @@ export default function AdminPage() {
         if (jobsRes?.success && jobsRes?.data?.jobs) setJobs(jobsRes.data.jobs)
         if (aiRes?.success && aiRes?.data?.anomalies) setAiAnomalies(aiRes.data.anomalies)
         if (overviewRes?.data?.ops?.pendingPayouts) setPayouts(overviewRes.data.ops.pendingPayouts)
+        if (financesRes?.data?.summary) setFinanceSummary(financesRes.data.summary)
+        if (financesRes?.data?.expenses) setExpenses(financesRes.data.expenses)
       }
     } catch (err: unknown) {
       if (!signal?.aborted) setError(err instanceof Error ? err.message : 'Failed to load admin data')
@@ -1696,6 +2034,7 @@ export default function AdminPage() {
           <TabsTrigger value="users" className="gap-1.5 text-xs">Users</TabsTrigger>
           <TabsTrigger value="payments" className="gap-1.5 text-xs">Payments</TabsTrigger>
           <TabsTrigger value="payouts" className="gap-1.5 text-xs">Payouts</TabsTrigger>
+          <TabsTrigger value="finances" className="gap-1.5 text-xs">Finances</TabsTrigger>
           <TabsTrigger value="signals" className="gap-1.5 text-xs">Signals</TabsTrigger>
           <TabsTrigger value="news" className="gap-1.5 text-xs">News</TabsTrigger>
           <TabsTrigger value="calendar" className="gap-1.5 text-xs">Calendar</TabsTrigger>
@@ -2989,6 +3328,11 @@ export default function AdminPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ─── Finances (P&L: expenses + net profit) ────────────── */}
+        <TabsContent value="finances" className="space-y-4 mt-4">
+          <FinancesView summary={financeSummary} expenses={expenses} onExpensesChanged={fetchAll} />
         </TabsContent>
 
         {/* ─── AI (top-1%: ask the panel + anomaly cards) ──────── */}
