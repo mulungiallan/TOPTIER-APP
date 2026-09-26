@@ -72,6 +72,7 @@ function permForAction(action: string): string | null {
     force_logout: 'users.admin',
     delete_user: 'users.gdpr',
     set_subscription: 'users.admin',
+    reactivate_entitlements: 'users.admin',
     generate_signal: 'signals.write',
     override_signal: 'signals.write',
     expire_signals: 'signals.write',
@@ -211,6 +212,8 @@ export async function POST(request: NextRequest) {
         return await handleDeleteUser(adminId, body)
       case 'set_subscription':
         return await handleSetSubscription(adminId, body)
+      case 'reactivate_entitlements':
+        return await handleReactivateEntitlements(adminId, body)
       case 'bulk_action':
         return await handleBulkAction(adminId, body)
       // ── Payments / ledger ──
@@ -1184,6 +1187,110 @@ async function handleSetSubscription(adminId: string, body: any) {
   })
   await logAdminAction(adminId, 'SET_SUBSCRIPTION', { targetUserId: userId, tier: tier || null, plan: plan || null, endDate: end ? end.toISOString() : null })
   return successResponse(updated)
+}
+
+// Re-activate entitlements that lapsed, for users who already paid.
+//
+// There is no "paused" flag on User: access is derived in
+// src/lib/entitlements.ts from tier/plan plus expiry dates, so a "paused"
+// subscription is really just an expiry date in the past. This pushes those
+// dates forward for people who demonstrably bought something.
+//
+// Deliberately does NOT touch:
+//   - free users (no paid marker) — that would hand out paid features
+//   - `trial` tier — a lapsed trial is supposed to lapse
+//   - admins/owner — they already bypass every gate via isAdminUser()
+//   - adsRemoved / lifetime — lifetime grants have no expiry to extend
+//   - mentorshipExpiresAt — a separately-priced programme, reported as a
+//     count for a human to decide on rather than silently extended
+async function handleReactivateEntitlements(adminId: string, body: any) {
+  const days = Math.min(Math.max(parseInt(body?.days) || 30, 1), 3650)
+  const botDays = Math.min(Math.max(parseInt(body?.botDays) || 90, 1), 3650)
+  const dryRun = body?.dryRun === true
+
+  const now = new Date()
+  const signalsUntil = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+  const botUntil = new Date(now.getTime() + botDays * 24 * 60 * 60 * 1000)
+  const subUntil = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+
+  const PAID_TIERS = ['premium', 'premium_with_ads', 'pro']
+  const PAID_PLANS = ['premium', 'pro', 'enterprise', 'unlimited']
+  // Admins bypass the gates entirely, so extending their dates is a no-op.
+  const notAdmin = { role: { notIn: ['admin', 'super_admin', 'owner'] } }
+  const paidOnly = {
+    OR: [
+      { signalsUnlocked: true },
+      { botExpiresAt: { not: null } },
+      { subscriptionTier: { in: PAID_TIERS } },
+      { plan: { in: PAID_PLANS } },
+    ],
+  }
+  const where = { AND: [notAdmin, paidOnly] }
+
+  const lapsed = await db.user.findMany({
+    where,
+    select: {
+      id: true, email: true, subscriptionTier: true, plan: true,
+      signalsUnlocked: true, signalsExpiresAt: true, botExpiresAt: true,
+      subscriptionEndDate: true, planExpiresAt: true, mentorshipExpiresAt: true,
+    },
+  })
+
+  const isPast = (d: Date | null | undefined) => !!d && new Date(d).getTime() <= now.getTime()
+  const missedMentorship = lapsed.filter(u => isPast(u.mentorshipExpiresAt)).length
+
+  const changed: { id: string; email: string; fields: string[] }[] = []
+  for (const u of lapsed) {
+    const data: Record<string, unknown> = {}
+    const fields: string[] = []
+
+    // Only extend an expiry that already exists AND has lapsed. A null expiry
+    // means "never bought" — leave it null.
+    if (u.signalsUnlocked && isPast(u.signalsExpiresAt)) {
+      data.signalsExpiresAt = signalsUntil
+      fields.push('signalsExpiresAt')
+    }
+    if (isPast(u.botExpiresAt)) {
+      data.botExpiresAt = botUntil
+      fields.push('botExpiresAt')
+    }
+    if (PAID_TIERS.includes(u.subscriptionTier) && isPast(u.subscriptionEndDate)) {
+      data.subscriptionEndDate = subUntil
+      fields.push('subscriptionEndDate')
+    }
+    if (PAID_PLANS.includes(u.plan) && isPast(u.planExpiresAt)) {
+      data.planExpiresAt = subUntil
+      fields.push('planExpiresAt')
+    }
+
+    if (fields.length === 0) continue
+    changed.push({ id: u.id, email: u.email, fields })
+    if (dryRun) continue
+
+    await db.user.update({ where: { id: u.id }, data })
+    await notifyUser(u.id, {
+      type: 'subscription',
+      title: 'Your access has been reactivated',
+      message: `Your ${fields.join(' and ').replace(/([A-Z])/g, ' $1').toLowerCase()} had expired and has been reactivated by support. Your features are working again.`,
+      actionUrl: '/pricing',
+    }).catch(() => {})
+  }
+
+  if (!dryRun) {
+    await logAdminAction(adminId, 'REACTIVATE_ENTITLEMENTS', {
+      days, botDays, users: changed.length,
+    })
+  }
+
+  return successResponse({
+    dryRun,
+    signalsDays: days,
+    botDays,
+    scanned: lapsed.length,
+    reactivated: changed.length,
+    users: changed,
+    skippedMentorship: missedMentorship,
+  })
 }
 
 async function handleBulkAction(adminId: string, body: any) {

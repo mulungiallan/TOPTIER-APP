@@ -12,11 +12,12 @@ export async function GET(request: NextRequest) {
           lossRate: 0, breakevenRate: 0, avgConfidence: 0, avgRiskReward: 0,
           monthlySignals: 0, consecutiveWins: 0, longestWinStreak: 0,
           consecutiveLosses: 0, longestLossStreak: 0, avgOutcome: 0,
-          acceptedCount: 0, ignoredCount: 0,
+          acceptedCount: 0, ignoredCount: 0, dailyPnl: 0,
         },
         marketBreakdown: {}, strategyBreakdown: {}, assetBreakdown: {},
         timeframeBreakdown: {}, sessionBreakdown: {},
         monthlyPerformance: [], winRateTrend: [], marketPerformance: [],
+        dailyPerformance: [],
         trackedSignals: [],
         period: 'all',
       })
@@ -59,11 +60,12 @@ export async function GET(request: NextRequest) {
           monthlySignals: allVisible,
           consecutiveWins: 0, longestWinStreak: 0,
           consecutiveLosses: 0, longestLossStreak: 0,
-          avgOutcome: 0, acceptedCount: 0, ignoredCount: 0,
+          avgOutcome: 0,           acceptedCount: 0, ignoredCount: 0, dailyPnl: 0,
         },
         marketBreakdown: {}, strategyBreakdown: {}, assetBreakdown: {},
         timeframeBreakdown: {}, sessionBreakdown: {},
         monthlyPerformance: [], winRateTrend: [], marketPerformance: [],
+        dailyPerformance: [],
         trackedSignals: [],
         period,
       })
@@ -335,12 +337,19 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // The dashboard's "Daily Performance (30D)" chart and its "Daily P&L"
+    // stat read `dailyPerformance` / `overview.dailyPnl`. Neither existed, so
+    // both rendered empty/zero. They are derived from the SAME `tracked` list
+    // that backs the performance table, so the chart cannot disagree with it.
+    const { series: dailyPerformance, todayPnl } = buildDailyPerformance(tracked)
+
     return successResponse({
       overview: {
         totalSignals, wins, losses, expired, winRate, lossRate, breakevenRate,
         avgConfidence, avgRiskReward, monthlySignals, consecutiveWins,
         longestWinStreak, consecutiveLosses, longestLossStreak, avgOutcome,
         acceptedCount, ignoredCount,
+        dailyPnl: todayPnl,
       },
       marketBreakdown,
       strategyBreakdown,
@@ -350,6 +359,7 @@ export async function GET(request: NextRequest) {
       monthlyPerformance,
       winRateTrend,
       marketPerformance,
+      dailyPerformance,
       trackedSignals: tracked,
       period,
     })
@@ -362,11 +372,56 @@ export async function GET(request: NextRequest) {
         monthlySignals: 0, consecutiveWins: 0, longestWinStreak: 0,
         consecutiveLosses: 0, longestLossStreak: 0, avgOutcome: 0,
         acceptedCount: 0, ignoredCount: 0,
+        dailyPnl: 0,
       },
       marketBreakdown: {}, strategyBreakdown: {}, assetBreakdown: {},
       timeframeBreakdown: {}, sessionBreakdown: {},
       monthlyPerformance: [], winRateTrend: [], marketPerformance: [],
+      dailyPerformance: [], trackedSignals: [],
       period: 'all',
     })
   }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// Local-calendar day key. Deliberately NOT toISOString(): for any timezone
+// ahead of UTC, local midnight is the previous day in UTC, which would shift
+// every bucket (and "today") by one day.
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * Dense zero-filled daily net-R series for the trailing `days` window.
+ *
+ * Days with no resolved signal are present with pnl 0 rather than omitted, so
+ * the chart's x-axis is a continuous date range instead of collapsing to only
+ * the days that happened to have activity.
+ */
+function buildDailyPerformance(
+  tracked: { pnlR: number | null; resolvedAt: Date | null; status: string }[],
+  days = 30,
+) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const buckets = new Map<string, { date: string; pnl: number; wins: number; losses: number; signals: number }>()
+  for (let i = days - 1; i >= 0; i--) {
+    const key = dayKey(new Date(today.getTime() - i * DAY_MS))
+    buckets.set(key, { date: key, pnl: 0, wins: 0, losses: 0, signals: 0 })
+  }
+
+  for (const s of tracked) {
+    if (!s.resolvedAt || s.pnlR == null) continue
+    const bucket = buckets.get(dayKey(new Date(s.resolvedAt)))
+    if (!bucket) continue
+    bucket.pnl += s.pnlR
+    bucket.signals += 1
+    if (s.status === 'hit_tp') bucket.wins += 1
+    else if (s.status === 'hit_sl') bucket.losses += 1
+  }
+
+  const series = [...buckets.values()].map(b => ({ ...b, pnl: Number(b.pnl.toFixed(2)) }))
+  return { series, todayPnl: series.find(b => b.date === dayKey(today))?.pnl ?? 0 }
 }

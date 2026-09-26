@@ -13,12 +13,16 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
 
-    if (startDate || endDate) {
-      const eventDate: Record<string, Date> = {}
-      if (startDate) eventDate.gte = new Date(startDate)
-      if (endDate) eventDate.lte = new Date(endDate)
-      where.eventDate = eventDate
-    }
+    // Default to UPCOMING events. Previously, with no explicit range, this
+    // ordered by `eventDate: 'asc'` and took the first N — i.e. the OLDEST rows
+    // in the table, which for a seeded/aged table are events that already
+    // happened. The dashboard asks for "upcoming" events, so it was being
+    // served history.
+    const eventDate: Record<string, Date> = {}
+    if (startDate) eventDate.gte = new Date(startDate)
+    else eventDate.gte = new Date()
+    if (endDate) eventDate.lte = new Date(endDate)
+    where.eventDate = eventDate
 
     if (impact) where.impactLevel = impact
     if (currency) where.currency = currency.toUpperCase()

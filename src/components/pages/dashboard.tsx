@@ -1225,11 +1225,17 @@ export function DashboardPage() {
         )
       }
 
-      // Process performance — API returns { data: { overview: { winRate, totalSignals, ... }, marketBreakdown, ... } }
+      // Process performance — API returns { data: { overview, dailyPerformance, ... } }
       if (perfRes.status === 'fulfilled' && perfRes.value) {
         const res = perfRes.value as any
         const d = res?.data?.overview || res?.data || res?.overview || {}
-        const perfData = res?.data?.performanceData || res?.performanceData || []
+        // The API ships a dense `dailyPerformance` series. It used to send
+        // `performanceData`, which nothing ever produced, so this was always
+        // [] and the "Daily Performance (30D)" chart never drew.
+        const daily = res?.data?.dailyPerformance || res?.dailyPerformance || []
+        const perfData: { date: string; pnl: number }[] = (Array.isArray(daily) ? daily : [])
+          .map((p: any) => ({ date: p?.date, pnl: Number(p?.pnl ?? 0) }))
+          .filter((p: { date: string }) => Boolean(p.date))
 
         setStats({
           winRate: d.winRate ?? 0,
@@ -1259,14 +1265,19 @@ export function DashboardPage() {
         setEvents(
           rawEvents.map((e: any) => ({
             id: e.id || '',
-            name: e.name || e.event || e.title || '',
+            // EconomicEvent stores `eventName`, and the value columns are
+            // `actualValue` / `forecastValue` / `previousValue`. The old
+            // mapping only looked at name/event/title and actual/forecast/
+            // previous, so every event rendered with a blank title and no
+            // figures even when the API returned rows.
+            name: e.eventName || e.name || e.event || e.title || '',
             currency: e.currency || '',
-            impact: e.impact || e.impactLevel || 'medium',
+            impact: e.impactLevel || e.impact || 'medium',
             countdown: e.countdown || e.timeUntil || '',
-            date: e.date || e.eventDate || undefined,
-            actual: e.actual ?? null,
-            forecast: e.forecast ?? null,
-            previous: e.previous ?? null,
+            date: e.eventDate || e.date || undefined,
+            actual: e.actualValue ?? e.actual ?? null,
+            forecast: e.forecastValue ?? e.forecast ?? null,
+            previous: e.previousValue ?? e.previous ?? null,
           }))
         )
       }

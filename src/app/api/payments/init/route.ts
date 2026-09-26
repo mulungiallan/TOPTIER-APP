@@ -10,7 +10,7 @@ import { getExchangeRate } from '@/lib/payments/exchange-rates'
 import { countryNameToCode } from '@/lib/countries'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
 import { validateBody, paymentInitSchema } from '@/lib/validation'
-import { getBalance, withdrawCash } from '@/lib/services/wallet'
+import { getAllBalances, withdrawCash, CASH_ASSETS } from '@/lib/services/wallet'
 import { fulfillPendingPayment } from '@/lib/payments/fulfillment'
 
 const PLANS: Record<string, { price: number; currency: string }> = {
@@ -46,6 +46,17 @@ const productLabels: Record<string, string> = {
   function productLabel(planType: string): string {
     return productLabels[planType] || planType.replace('_', ' ')
   }
+
+// Approximate "1 <asset> = N USD" rates, used only when the live rates API is
+// unreachable. Mirrors the KES 153 / USD basis used by the wallet top-up route
+// so funding and spending convert at the same fallback rate.
+const USD_FALLBACK_RATES: Record<string, number> = {
+  USD: 1,
+  KES: 1 / 153,
+  UGX: 1 / 4371,
+  EUR: 1.1,
+  GBP: 1.27,
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -234,20 +245,79 @@ export async function POST(request: NextRequest) {
     // Pay from wallet balance — synchronous, no gateway. Charge USD and
     // fulfill the subscription immediately.
     if (provider === 'wallet') {
-      const usdBalance = await getBalance(userId, 'USD')
-      if (usdBalance < finalAmount) {
+      // The wallet is multi-currency: a top-up credits the asset the user picked
+      // (`WALLET_FUND|${asset}|${amount}`), and PesaPal always bills in KES, so
+      // most users end up holding KES. This branch used to read ONLY the USD leg
+      // via getBalance(userId, 'USD'), so a user holding KES 150,000 was told
+      // "your wallet holds $0.00" and could never spend their own money on a
+      // plan. Value the entire cash wallet in USD and debit what is actually held.
+      const balances = await getAllBalances(userId)
+
+      const holdings: { asset: string; amount: number; usd: number }[] = []
+      for (const asset of CASH_ASSETS) {
+        const amount = balances[asset] ?? 0
+        if (!(amount > 0)) continue
+        const rate = asset === 'USD' ? 1 : await getExchangeRate(asset, 'USD', USD_FALLBACK_RATES[asset] ?? 0)
+        if (!(rate > 0)) continue
+        holdings.push({ asset, amount, usd: amount * rate })
+      }
+      // Spend the largest USD holding first so we usually make a single posting.
+      holdings.sort((a, b) => b.usd - a.usd)
+
+      const totalUsd = holdings.reduce((sum, h) => sum + h.usd, 0)
+
+      if (totalUsd + 1e-9 < finalAmount) {
+        const breakdown = holdings.length
+          ? ` (${holdings
+              .map(h => `${h.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${h.asset}`)
+              .join(' + ')})`
+          : ''
         return errorResponse(
-          `Insufficient wallet balance. You need $${finalAmount.toFixed(2)} but your wallet holds $${usdBalance.toFixed(2)}. Please top up your wallet or choose another payment method.`,
+          `Insufficient wallet balance. You need $${finalAmount.toFixed(2)} but your wallet holds $${totalUsd.toFixed(2)}${breakdown}. Please top up your wallet or choose another payment method.`,
           400
         )
       }
 
-      await withdrawCash({
-        userId,
-        asset: 'USD',
-        amount: finalAmount,
-        reference: transaction.id,
-        memo: `${productLabel(planType)} payment from wallet`,
+      // Debit asset by asset until the price is met. Each posting gets its own
+      // reference (transaction id + asset) so a retry cannot double-charge, and
+      // a plan cheaper than the balance never sweeps up the remainder.
+      let remaining = finalAmount
+      const debits: { asset: string; amount: number }[] = []
+      for (const h of holdings) {
+        if (remaining <= 1e-9) break
+        const perUnitUsd = h.usd / h.amount
+        const usdToSpend = Math.min(h.usd, remaining)
+        let assetAmount = usdToSpend / perUnitUsd
+        // UGX has no practical minor units; keep whole units there so we never
+        // post a fraction the ledger cannot represent.
+        assetAmount = h.asset === 'UGX' ? Math.floor(assetAmount) : Math.round(assetAmount * 100) / 100
+        if (!(assetAmount > 0)) continue
+        assetAmount = Math.min(assetAmount, h.amount)
+
+        await withdrawCash({
+          userId,
+          asset: h.asset as Parameters<typeof withdrawCash>[0]['asset'],
+          amount: assetAmount,
+          reference: `${transaction.id}:${h.asset}`,
+          memo: `${productLabel(planType)} payment from wallet`,
+        })
+        debits.push({ asset: h.asset, amount: assetAmount })
+        remaining -= assetAmount * perUnitUsd
+      }
+
+      const chargedUsd = finalAmount - Math.max(remaining, 0)
+      if (debits.length === 0 || chargedUsd + 0.01 < finalAmount) {
+        return errorResponse(
+          'Could not settle this purchase from your wallet balance. No funds were taken - please try again.',
+          400
+        )
+      }
+
+      await db.paymentTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          description: `${transaction.description || ''}|wallet:${debits.map(d => `${d.amount}${d.asset}`).join('+')}`,
+        },
       })
 
       await fulfillPendingPayment({ id: transaction.id }, { provider: 'wallet', paymentMethod: 'wallet' })
@@ -268,7 +338,11 @@ export async function POST(request: NextRequest) {
           providerTransactionId: transaction.id,
           reference: transaction.id,
           status: 'completed',
-          metadata: { method: 'wallet', asset: 'USD' },
+          metadata: {
+            method: 'wallet',
+            debits,
+            chargedUsd: Number(chargedUsd.toFixed(2)),
+          },
         },
       })
     }
