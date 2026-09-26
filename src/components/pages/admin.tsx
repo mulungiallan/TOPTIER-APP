@@ -255,16 +255,16 @@ const fmtDuration = (sec: number | null | undefined) => {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ title, value, icon: Icon, sub, change, changeType }: {
-  title: string; value: string; icon: React.ElementType; sub?: string; change?: string; changeType?: 'up' | 'down'
+function StatCard({ title, value, icon: Icon, sub, change, changeType, className, valueClassName }: {
+  title: string; value: string; icon: React.ElementType; sub?: string; change?: string; changeType?: 'up' | 'down'; className?: string; valueClassName?: string
 }) {
   return (
-    <Card>
+    <Card className={className}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground font-medium">{title}</p>
-            <p className="text-2xl font-bold">{value}</p>
+            <p className={`text-2xl font-bold ${valueClassName || ''}`}>{value}</p>
             {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
           </div>
           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -434,6 +434,48 @@ function CreateCouponDialog({ onCreated }: { onCreated: () => void }) {
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// Outcome badge for the Signal Management table. The outcome monitor resolves
+// real signals to TP/SL hits, so admins can watch engine performance live.
+function SignalOutcomeBadge({ sig }: { sig: Record<string, any> }) {
+  const status = sig.status
+  if (status === 'hit_tp') {
+    return (
+      <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-xs">
+        <CheckCircle2 className="mr-1 size-3" />
+        TP {String(sig.resultType || 'hit').toUpperCase()}
+      </Badge>
+    )
+  }
+  if (status === 'hit_sl') {
+    return (
+      <Badge className="bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30 text-xs">
+        <XCircle className="mr-1 size-3" />
+        SL
+      </Badge>
+    )
+  }
+  if (status === 'expired') {
+    return (
+      <Badge variant="secondary" className="text-xs">
+        <Clock className="mr-1 size-3" />
+        Expired
+      </Badge>
+    )
+  }
+  if (status === 'active') {
+    return (
+      <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
+        Active
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="text-xs">
+      {String(status || '—')}
+    </Badge>
   )
 }
 
@@ -1468,6 +1510,23 @@ export default function AdminPage() {
     }
   }
 
+  // Outcomes derived from the real signal rows loaded for the Signals tab —
+  // gives the admin an instant read on how the signal engine is performing.
+  const outcomeStats = useMemo(() => {
+    const tp = adminSignals.filter((s) => s.status === 'hit_tp').length
+    const sl = adminSignals.filter((s) => s.status === 'hit_sl').length
+    const exp = adminSignals.filter((s) => s.status === 'expired').length
+    const act = adminSignals.filter((s) => s.status === 'active').length
+    const resolved = tp + sl
+    return {
+      tp,
+      sl,
+      exp,
+      act,
+      winRate: resolved > 0 ? Math.round((tp / resolved) * 100) : null,
+    }
+  }, [adminSignals])
+
   // Admin Check
   if (!isAdmin) {
     return (
@@ -2164,6 +2223,12 @@ export default function AdminPage() {
             </div>
             <CreateSignalDialog onCreated={fetchAll} />
           </div>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <StatCard title="Hit TP" value={outcomeStats.tp.toLocaleString()} icon={CheckCircle2} sub="target hit" className="border-emerald-500/20" valueClassName="text-emerald-600 dark:text-emerald-400" />
+            <StatCard title="Hit SL" value={outcomeStats.sl.toLocaleString()} icon={XCircle} sub="stop loss hit" className="border-red-500/20" valueClassName="text-red-600 dark:text-red-400" />
+            <StatCard title="Win Rate" value={outcomeStats.winRate === null ? '—' : `${outcomeStats.winRate}%`} icon={Activity} sub={`${outcomeStats.exp} expired · ${outcomeStats.act} active`} />
+            <StatCard title="Resolved" value={(outcomeStats.tp + outcomeStats.sl + outcomeStats.exp).toLocaleString()} icon={BarChart3} sub="TP + SL + expired" />
+          </div>
           <Card>
             <CardHeader><CardTitle className="text-lg">Signal Management</CardTitle><CardDescription>Real signal rows</CardDescription></CardHeader>
             <CardContent>
@@ -2194,7 +2259,7 @@ export default function AdminPage() {
                           <TableCell className="text-sm">{sig.entryPrice}</TableCell>
                           <TableCell className="text-xs">{sig.takeProfit1} / {sig.stopLoss}</TableCell>
                           <TableCell className="text-sm">{sig.confidence ?? '—'}%</TableCell>
-                          <TableCell><Badge variant={sig.status === 'active' ? 'default' : 'outline'} className="text-xs">{sig.status}</Badge></TableCell>
+                          <TableCell><SignalOutcomeBadge sig={sig} /></TableCell>
                           <TableCell className="text-xs text-muted-foreground">{fmtDate(sig.createdAt)}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => closeSignal(sig)}>

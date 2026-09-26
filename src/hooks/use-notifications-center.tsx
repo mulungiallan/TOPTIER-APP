@@ -12,8 +12,20 @@
 // started trigger a popup. The bell badge/count in app-shell reads the same
 // store state this hook writes.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { Capacitor } from '@capacitor/core'
+import { Haptics, ImpactStyle } from '@capacitor/haptics'
+import {
+  Bell,
+  Clock,
+  Newspaper,
+  Shield,
+  ShieldAlert,
+  Target,
+  TrendingUp,
+  Wallet,
+} from 'lucide-react'
 import { useStore, type AppNotification, type Page } from '@/lib/store'
 import { api } from '@/lib/api'
 
@@ -40,6 +52,36 @@ function pageFromUrl(url: string | null): Page | null {
 }
 
 export const notificationPageFromUrl = pageFromUrl
+
+// Per-type icon shown on the right of the popup toast — lets users parse
+// signal hits vs news vs system events at a glance.
+function popupIcon(n: AppNotification): ReactNode {
+  const t = n.type
+  const title = (n.title || '').toLowerCase()
+  if (title.startsWith('tp ') || title.includes('take-profit')) {
+    return <Target className="size-4 text-emerald-500" />
+  }
+  if (title.startsWith('sl ')) {
+    return <ShieldAlert className="size-4 text-red-500" />
+  }
+  if (title.includes('expired')) {
+    return <Clock className="size-4 text-muted-foreground" />
+  }
+  if (t === 'signal' || title.includes('signal')) {
+    return <TrendingUp className="size-4 text-emerald-500" />
+  }
+  if (t === 'news') return <Newspaper className="size-4 text-sky-500" />
+  if (t === 'wallet') return <Wallet className="size-4 text-emerald-500" />
+  if (t === 'system') return <Shield className="size-4 text-amber-500" />
+  return <Bell className="size-4 text-primary" />
+}
+
+// Native apps vibrate on a fresh notification; web (and any helper without
+// haptics support) no-ops via Capacitor's platform guard + catch.
+function fireHaptics(): void {
+  if (!Capacitor.isNativePlatform()) return
+  void Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {})
+}
 
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -82,8 +124,10 @@ export function useNotificationsCenter(enabled = true): void {
         const fresh = list.filter((n) => !knownIds.current.has(n.id) && !n.isRead)
         fresh.slice(0, MAX_POPUPS_PER_POLL).forEach((n) => {
           const page = pageFromUrl(n.actionUrl)
+          fireHaptics()
           toast(n.title || 'New notification', {
             description: n.message,
+            icon: popupIcon(n),
             action: page
               ? {
                   label: 'View',

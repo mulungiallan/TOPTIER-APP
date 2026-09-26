@@ -272,11 +272,21 @@ export class MarketDataService {
       return price
     } catch (error) {
       // Yahoo is frequently IP-blocked from datacenter egress (it redirects to a
-      // bot-check page). When Yahoo fails, fall back to Finnhub so live prices
-      // still resolve for the symbols Finnhub can serve.
+      // bot-check page). The v8 chart endpoint is far more tolerant (it is the
+      // same one that powers our candle data), so try that for a live quote
+      // before falling back to Finnhub.
+      const yahooSymbol = resolveYahooSymbol(symbol)
+      const chartQuote = await this.fetchYahooChartQuote(yahooSymbol, symbol)
+      if (chartQuote) {
+        this.cache.set(yahooSymbol, { data: chartQuote, timestamp: Date.now() })
+        this.evictexpired()
+        return chartQuote
+      }
+
+      // Last resort: Finnhub (serves stocks/crypto; forex via OANDA is limited).
       const fb = await this.fetchFinnhubPrice(symbol)
       if (fb) {
-        this.cache.set(symbol.toUpperCase(), { data: fb, timestamp: Date.now() })
+        this.cache.set(yahooSymbol, { data: fb, timestamp: Date.now() })
         this.evictexpired()
         return fb
       }
@@ -307,6 +317,55 @@ export class MarketDataService {
         low: data.l && data.l !== 0 ? data.l : undefined,
         open: data.o && data.o !== 0 ? data.o : undefined,
         previousClose: data.pc ?? undefined,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Live quote via Yahoo's v8 chart API — used as a fallback when the v7 quote
+   * endpoint bot-check redirects from datacenter egress. Chart data has been
+   * reliably reachable from Railway (it powers our candles). Daily change is
+   * measured against the day's first bar so change percentages stay meaningful.
+   */
+  private async fetchYahooChartQuote(
+    yahooSymbol: string,
+    symbol: string
+  ): Promise<MarketPrice | null> {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+        yahooSymbol
+      )}?range=1d&interval=1m`
+      const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+      if (!res.ok) return null
+      const json = await res.json()
+      const chart = json?.chart?.result?.[0]
+      if (!chart) return null
+      const ts: number[] = chart.timestamp ?? []
+      const q = chart.indicators?.quote?.[0] ?? {}
+      let firstOpen: number | null = null
+      let lastClose: number | null = null
+      let lastTs = 0
+      for (let i = 0; i < ts.length; i++) {
+        const o = q.open?.[i]
+        const c = q.close?.[i]
+        if (c == null || c === 0 || Number.isNaN(c)) continue
+        if (o != null && o !== 0 && Number.isFinite(o) && firstOpen == null) firstOpen = o
+        lastClose = c
+        lastTs = ts[i]
+      }
+      if (lastClose == null) return null
+      const change = firstOpen != null && firstOpen !== 0 ? lastClose - firstOpen : 0
+      const changePercent =
+        firstOpen != null && firstOpen !== 0 ? (change / firstOpen) * 100 : 0
+      return {
+        symbol,
+        price: lastClose,
+        change,
+        changePercent,
+        volume: 0,
+        timestamp: new Date(lastTs * 1000),
       }
     } catch {
       return null
