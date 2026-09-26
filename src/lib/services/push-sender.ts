@@ -17,6 +17,27 @@ export interface PushMessage {
 }
 
 export class PushSender {
+  private static warnedUnconfigured = false
+
+  /**
+   * Log the "VAPID missing" condition at most once per process.
+   *
+   * This used to be logged (and thrown) on every single sendToUser call. The
+   * signal generator notifies up to 1000 users per generated signal, so an
+   * unconfigured deployment emitted thousands of error lines a minute, hit
+   * Railway's 500 logs/sec ceiling, and the replica was killed — which failed
+   * the deploy outright. The condition is a deployment misconfiguration, not a
+   * per-user event, so it is reported once.
+   */
+  static warnUnconfiguredOnce(): void {
+    if (this.warnedUnconfigured) return
+    this.warnedUnconfigured = true
+    console.warn(
+      '[PushSender] VAPID keys not configured — web push is disabled. ' +
+        'Set NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable it.'
+    )
+  }
+
   static isConfigured(): boolean {
     return !!VAPID_PUBLIC_KEY && !!VAPID_PRIVATE_KEY
   }

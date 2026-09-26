@@ -134,7 +134,20 @@ async function deliver(
   }
 
   // Web push (best-effort; logged loudly on failure).
-  if (pushEnabled) {
+  //
+  // When VAPID keys are absent, push is not "failing" — it is impossible, and
+  // trying anyway cost two log lines per recipient. With up to 1000 users
+  // notified per generated signal that reached Railway's log rate ceiling and
+  // killed the replica (failing the deploy), so the unconfigured case now
+  // short-circuits: warn once, attempt nothing, and report push as not
+  // delivered rather than implying it went out.
+  const pushConfigured = PushSender.isConfigured()
+  if (pushEnabled && !pushConfigured) {
+    PushSender.warnUnconfiguredOnce()
+  }
+
+  let pushDelivered = false
+  if (pushEnabled && pushConfigured) {
     try {
       const result = await PushSender.sendToUser(userId, {
         title: data.title,
@@ -144,6 +157,7 @@ async function deliver(
       if (result.skipped) {
         console.log(`[notifyUser] No active push subscription for user ${userId} — web push skipped.`)
       } else if (result.delivered > 0) {
+        pushDelivered = true
         console.log(`[notifyUser] Web push delivered to ${result.delivered} device(s) for user ${userId}.`)
       }
     } catch (err) {
@@ -168,6 +182,6 @@ async function deliver(
 
   return {
     notification,
-    delivered: { inApp: !!notification, push: pushEnabled, email: emailSent },
+    delivered: { inApp: !!notification, push: pushDelivered, email: emailSent },
   }
 }
