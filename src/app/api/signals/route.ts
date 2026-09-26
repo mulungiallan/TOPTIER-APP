@@ -3,7 +3,8 @@ import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { notifyUsers } from '@/lib/services/notifications'
 import { signalGenerator } from '@/lib/services/signal-generator'
-import { hasSignalsAccess, SIGNALS_PAYWALL_MESSAGE } from '@/lib/entitlements'
+import { hasSignalsAccess, isAdminUser, SIGNALS_PAYWALL_MESSAGE, type EntitlementRow } from '@/lib/entitlements'
+import type { Signal } from '@/generated/prisma'
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,32 +45,50 @@ export async function GET(request: NextRequest) {
     // instead of showing the same stale entries forever.
     await signalGenerator.ensureSignals()
 
-    // ─── Top-2 daily rule ────────────────────────────────────────────────
-    // The Signals product delivers exactly the 2 BEST signals per day, ranked
-    // by confidence (the win-rate proxy; signals carry no winRate field yet).
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-    const includeCount = { _count: { select: { comments: true, reactions: true } } }
-
-    let signals = await db.signal.findMany({
-      where: { ...where, createdAt: { gte: since } },
-      orderBy: [{ confidence: 'desc' }, { createdAt: 'desc' }],
-      take: 2,
-      include: includeCount,
+    // Signal quotas apply to paying users only: the Signals product delivers
+    // exactly the 2 BEST signals per day (ranked by confidence). Admins and the
+    // owner get the FULL feed so they can review everything generated.
+    const adminUser = await db.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
     })
+    const isAdmin = isAdminUser(adminUser as EntitlementRow)
 
-    // Quiet day / quiet market: top up with the most recent signals so the
-    // subscriber always has at least 2 picks to see.
-    if (signals.length < 2) {
-      const newest = await db.signal.findMany({
+    const includeCount = { _count: { select: { comments: true, reactions: true } } }
+    const FALLBACK_QUOTA = 2
+    const ADMIN_FEED_CAP = 500
+
+    let signals: Signal[] = []
+    if (isAdmin) {
+      signals = await db.signal.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
-        take: 2 - signals.length,
+        orderBy: [{ confidence: 'desc' }, { createdAt: 'desc' }],
+        take: ADMIN_FEED_CAP,
         include: includeCount,
       })
-      signals = [...signals, ...newest]
+    } else {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      signals = await db.signal.findMany({
+        where: { ...where, createdAt: { gte: since } },
+        orderBy: [{ confidence: 'desc' }, { createdAt: 'desc' }],
+        take: FALLBACK_QUOTA,
+        include: includeCount,
+      })
+
+      // Quiet day / quiet market: top up with the most recent signals so the
+      // subscriber always has at least 2 picks to see.
+      if (signals.length < FALLBACK_QUOTA) {
+        const newest = await db.signal.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take: FALLBACK_QUOTA - signals.length,
+          include: includeCount,
+        })
+        signals = [...signals, ...newest]
+      }
     }
 
-    return successResponse({ signals, total: signals.length, limit: 2, offset: 0 })
+    return successResponse({ signals, total: signals.length, limit: isAdmin ? null : FALLBACK_QUOTA, offset: 0 })
   } catch (error) {
     console.error('Signals GET error:', error)
     return errorResponse('Failed to fetch signals', 500)
