@@ -59,6 +59,46 @@ export interface HistoricalData {
 
 export type HistoricalPeriod = '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '5y'
 
+// Broker / metaquote style bare symbols (copy-trading, MT5, paper) arrive
+// without a slash (e.g. "SOLUSD"). Normalize the common crypto pairs back to
+// TOPTIER's canonical "BASE/USD" form so the Yahoo / Finnhub resolvers below
+// can map them. Anything unknown passes through untouched.
+const BARE_CRYPTO_TO_PAIR: Record<string, string> = {
+  BTCUSD: 'BTC/USD',
+  BTCUSDT: 'BTC/USD',
+  BTCEUR: 'BTC/EUR',
+  ETHUSD: 'ETH/USD',
+  ETHUSDT: 'ETH/USD',
+  ETHEUR: 'ETH/EUR',
+  SOLUSD: 'SOL/USD',
+  SOLUSDT: 'SOL/USD',
+  XRPUSD: 'XRP/USD',
+  XRPUSDT: 'XRP/USD',
+  ADAUSD: 'ADA/USD',
+  ADAUSDT: 'ADA/USD',
+  DOGEUSD: 'DOGE/USD',
+  DOGEUSDT: 'DOGE/USD',
+  LTCUSD: 'LTC/USD',
+  LTCUSDT: 'LTC/USD',
+  BCHUSD: 'BCH/USD',
+  BCHUSDT: 'BCH/USD',
+  DOTUSD: 'DOT/USD',
+  DOTUSDT: 'DOT/USD',
+  LINKUSD: 'LINK/USD',
+  LINKUSDT: 'LINK/USD',
+  AVAXUSD: 'AVAX/USD',
+  AVAXUSDT: 'AVAX/USD',
+  MATICUSD: 'MATIC/USD',
+  MATICUSDT: 'MATIC/USD',
+  UNIUSD: 'UNI/USD',
+  UNIUSDT: 'UNI/USD',
+  USDTUSD: 'USDT/USD',
+}
+
+export function normalizePriceSymbol(symbol: string): string {
+  return BARE_CRYPTO_TO_PAIR[symbol.toUpperCase()] ?? symbol
+}
+
 // Map common trading symbols to Yahoo Finance symbols
 const SYMBOL_MAP: Record<string, string> = {
   // Forex majors
@@ -102,6 +142,9 @@ const SYMBOL_MAP: Record<string, string> = {
   'USD/KRW': 'USDKRW=X',
   'USD/INR': 'USDINR=X',
   'USD/BRL': 'USDBRL=X',
+  // East African currencies (wallet cash assets).
+  'KES/USD': 'KESUSD=X',
+  'UGX/USD': 'UGXUSD=X',
   // Crypto
   'BTC/USD': 'BTC-USD',
   'ETH/USD': 'ETH-USD',
@@ -117,6 +160,7 @@ const SYMBOL_MAP: Record<string, string> = {
   'POL/USD': 'POL-USD',
   'UNI/USD': 'UNI-USD',
   'TON/USD': 'TON-USD',
+  'USDT/USD': 'USDT-USD',
   // Commodities (futures spot)
   'GOLD': 'GC=F',
   'XAU/USD': 'GC=F',
@@ -223,7 +267,8 @@ export class MarketDataService {
 
   async getPrice(symbol: string): Promise<MarketPrice | null> {
     try {
-      const yahooSymbol = resolveYahooSymbol(symbol)
+      const normalized = normalizePriceSymbol(symbol)
+      const yahooSymbol = resolveYahooSymbol(normalized)
 
       const cached = this.cache.get(yahooSymbol)
       if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
@@ -275,7 +320,7 @@ export class MarketDataService {
       // bot-check page). The v8 chart endpoint is far more tolerant (it is the
       // same one that powers our candle data), so try that for a live quote
       // before falling back to Finnhub.
-      const yahooSymbol = resolveYahooSymbol(symbol)
+      const yahooSymbol = resolveYahooSymbol(normalizePriceSymbol(symbol))
       const chartQuote = await this.fetchYahooChartQuote(yahooSymbol, symbol)
       if (chartQuote) {
         this.cache.set(yahooSymbol, { data: chartQuote, timestamp: Date.now() })
@@ -298,7 +343,7 @@ export class MarketDataService {
   private async fetchFinnhubPrice(symbol: string): Promise<MarketPrice | null> {
     if (!FINNHUB_API_KEY) return null
     try {
-      const mapped = resolveFinnhubSymbol(symbol)
+      const mapped = resolveFinnhubSymbol(normalizePriceSymbol(symbol))
       const res = await fetch(
         `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(mapped)}`,
         { headers: { 'X-Finnhub-Token': FINNHUB_API_KEY } }
@@ -554,3 +599,39 @@ export class MarketDataService {
 }
 
 export const marketDataService = new MarketDataService()
+
+// ─── USD conversion rates for wallet assets ───────────────────────────────────
+// Maps each wallet currency/asset to a quote symbol whose USD price equals the
+// value of one unit of the asset (forex base quote for KES/UGX/EUR/GBP, USD
+// pairs for crypto). USD itself is trivially 1.
+export const USD_QUOTE_SYMBOLS: Record<string, string> = {
+  USD: 'USD/USD',
+  EUR: 'EUR/USD',
+  GBP: 'GBP/USD',
+  KES: 'KES/USD',
+  UGX: 'UGX/USD',
+  BTC: 'BTC/USD',
+  ETH: 'ETH/USD',
+  SOL: 'SOL/USD',
+  USDT: 'USDT/USD',
+}
+
+/**
+ * Live USD conversion rates (USD per 1 unit of each asset) for wallet balances
+ * and payment history. Assets without a resolvable rate are omitted so the UI
+ * can fall back to showing the native amount only. Rates are cached for 60s by
+ * the shared MarketDataService quote cache.
+ */
+export async function getUsdRates(assets: string[]): Promise<Record<string, number>> {
+  const rates: Record<string, number> = { USD: 1 }
+  const uniqueAssets = [...new Set(assets)].filter((a) => a !== 'USD')
+  const quoteSymbols = uniqueAssets.map((a) => USD_QUOTE_SYMBOLS[a] ?? `${a}/USD`)
+  const prices = await marketDataService.getMultiplePrices(quoteSymbols)
+  for (let i = 0; i < uniqueAssets.length; i++) {
+    const price = prices.get(quoteSymbols[i])
+    if (price && Number.isFinite(price.price) && price.price > 0) {
+      rates[uniqueAssets[i]] = price.price
+    }
+  }
+  return rates
+}

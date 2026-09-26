@@ -4,15 +4,11 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Wallet } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
-import { useLiveMarket } from '@/hooks/use-live-market'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const CASH_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP']
-const CRYPTO_SYMBOLS = ['BTCUSD', 'ETHUSD', 'USDTUSD', 'SOLUSD']
-const CRYPTO_TO_ASSET: Record<string, string> = {
-  BTCUSD: 'BTC', ETHUSD: 'ETH', USDTUSD: 'USDT', SOLUSD: 'SOL',
-}
+const CRYPTO_ASSETS = ['BTC', 'ETH', 'USDT', 'SOL']
 
 function fmt(n: number): string {
   if (n === 0) return '$0'
@@ -25,20 +21,14 @@ export function WalletBalanceChip() {
   const setPage = useStore((s) => s.setPage)
   const token = useStore((s) => s.authToken)
   const [balances, setBalances] = useState<Record<string, number> | null>(null)
-  const { prices } = useLiveMarket({
-    symbols: CRYPTO_SYMBOLS,
-    refreshMs: 60_000,
-    enabled: true,
-  })
-
-  const priceMap: Record<string, number> = {}
-  for (const p of prices) priceMap[p.symbol] = p.price
+  const [usdRates, setUsdRates] = useState<Record<string, number> | null>(null)
 
   const fetchBalance = useCallback(async (signal?: AbortSignal) => {
     if (!token) return
     try {
-      const res = await api.get<{ success: boolean; data: { balances: Record<string, number> } }>('/wallet', { signal })
+      const res = await api.get<{ success: boolean; data: { balances: Record<string, number>; usdRates: Record<string, number> } }>('/wallet', { signal })
       setBalances(res?.data?.balances || null)
+      setUsdRates(res?.data?.usdRates || null)
     } catch {
       // silently keeps the last known balance (market data may be offline)
     }
@@ -55,10 +45,12 @@ export function WalletBalanceChip() {
 
   if (!token) return null
 
-  const cashTotal = CASH_ASSETS.reduce((s, a) => s + (balances?.[a] || 0), 0)
-  const cryptoUsd = Object.entries(CRYPTO_TO_ASSET).reduce((s, [sym, asset]) => {
-    return s + (balances?.[asset] || 0) * (priceMap[sym] || 0)
-  }, 0)
+  // Every asset is converted to its USD value at the current rate (USD per 1
+  // unit) so EUR/KES/UGX/GBP no longer get summed as if they were dollars.
+  const rates = usdRates || {}
+  const rate = (a: string) => (typeof rates[a] === 'number' && rates[a] > 0 ? rates[a] : 0)
+  const cashTotal = CASH_ASSETS.reduce((s, a) => s + (balances?.[a] || 0) * rate(a), 0)
+  const cryptoUsd = CRYPTO_ASSETS.reduce((s, a) => s + (balances?.[a] || 0) * rate(a), 0)
   const total = cashTotal + cryptoUsd
 
   const hasAny = total > 0

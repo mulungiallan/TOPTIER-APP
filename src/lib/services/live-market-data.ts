@@ -11,7 +11,7 @@
 // All symbols flow through one normalized `LivePrice` interface so callers
 // don't need to know which upstream source was used.
 
-import { marketDataService } from '@/lib/services/market-data'
+import { marketDataService, normalizePriceSymbol } from '@/lib/services/market-data'
 import { env } from '@/lib/env'
 
 const FINNHUB_API_KEY = env.finnhubApiKey
@@ -154,7 +154,7 @@ const FINNHUB_UNSUPPORTED = new Set([
 ])
 
 function resolveFinnhubSymbol(symbol: string): string {
-  const upper = symbol.toUpperCase()
+  const upper = normalizePriceSymbol(symbol).toUpperCase()
   return FINNHUB_SYMBOL_MAP[upper] || upper
 }
 

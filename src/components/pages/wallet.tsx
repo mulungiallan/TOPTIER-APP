@@ -47,6 +47,7 @@ interface WalletTx {
 
 interface WalletData {
   balances: Record<string, number>
+  usdRates: Record<string, number>
   ledger: { balanced: boolean; unbalancedTransactions: string[] }
   assets: { cash: string[]; crypto: string[] }
   cryptoDepositsEnabled: boolean
@@ -81,6 +82,9 @@ interface CryptoDeposit {
 const CASH_ASSETS = ['USD', 'EUR', 'KES', 'UGX', 'GBP']
 const CRYPTO_ASSETS = ['BTC', 'ETH', 'USDT', 'SOL']
 
+// Per-asset per-transaction top-up caps (mirrors /api/wallet/fund).
+const TOP_UP_MAX: Record<string, number> = { KES: 1_000_000, UGX: 12_000_000, USD: 30_000 }
+
 const DEPOSIT_TERMINAL = ['finished', 'expired', 'failed', 'refunded', 'cancelled']
 function isOpenDeposit(status?: string): boolean {
   return !!status && !DEPOSIT_TERMINAL.includes(status)
@@ -107,6 +111,29 @@ function assetSymbol(asset: string): string {
   if (asset === 'KES') return 'KSh '
   if (asset === 'UGX') return 'USh '
   return { BTC: '₿', ETH: 'Ξ', USDT: '₮', SOL: '◎' }[asset] || `${asset} `
+}
+
+// Live USD conversion: the wallet API ships usdRates (USD per 1 unit of each
+// asset) so every balance and payment can be shown in its own currency AND
+// exchanged at the current dollar rate.
+function usdRate(asset: string, rates?: Record<string, number>): number | undefined {
+  const r = rates?.[asset]
+  return typeof r === 'number' && Number.isFinite(r) && r > 0 ? r : undefined
+}
+
+function usdValue(
+  asset: string,
+  amount: number | undefined,
+  rates?: Record<string, number>
+): number | null {
+  const r = usdRate(asset, rates)
+  if (amount == null || r == null) return null
+  return amount * r
+}
+
+function usdHint(asset: string, amount: number | undefined, rates?: Record<string, number>): string {
+  const usd = usdValue(asset, amount, rates)
+  return usd != null ? `≈ $${fmt(usd, 'USD')} USD at current rate` : 'USD rate unavailable'
 }
 
 function txSummary(tx: WalletTx): { label: string; color: string; amount: number; asset: string } {
@@ -342,7 +369,10 @@ const handleTopup = async () => {
     }
   }
 
-  const totalCash = (data?.assets.cash || CASH_ASSETS).reduce((s, a) => s + (data?.balances[a] || 0), 0)
+  const totalCash = (data?.assets.cash || CASH_ASSETS).reduce(
+    (s, a) => s + ((data?.balances[a] || 0) * (usdRate(a, data?.usdRates) ?? 0) || 0),
+    0
+  )
   const hasLedgerIssue = data?.ledger && !data.ledger.balanced
 
   return (
@@ -378,10 +408,10 @@ const handleTopup = async () => {
       {/* ─── Summary cards ───────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total Cash', value: fmt(totalCash, 'USD'), icon: <Landmark className="size-5" />, hint: 'USD + EUR + KES + GBP' },
-          { label: 'Bitcoin', value: fmt(data?.balances.BTC, 'BTC'), icon: <Bitcoin className="size-5" />, hint: '₿ equivalent' },
-          { label: 'Ethereum', value: fmt(data?.balances.ETH, 'ETH'), icon: <Bitcoin className="size-5" />, hint: 'Ξ equivalent' },
-          { label: 'Stable + Sol', value: fmt((data?.balances.USDT || 0) + (data?.balances.SOL || 0), 'USDT'), icon: <WalletIcon className="size-5" />, hint: 'USDT + SOL' },
+          { label: 'Total Cash', value: `$${fmt(totalCash, 'USD')}`, icon: <Landmark className="size-5" />, hint: 'USD-equivalent at current FX rates' },
+          { label: 'Bitcoin', value: fmt(data?.balances.BTC, 'BTC'), icon: <Bitcoin className="size-5" />, hint: usdHint('BTC', data?.balances.BTC, data?.usdRates) },
+          { label: 'Ethereum', value: fmt(data?.balances.ETH, 'ETH'), icon: <Bitcoin className="size-5" />, hint: usdHint('ETH', data?.balances.ETH, data?.usdRates) },
+          { label: 'Stable + Sol', value: '₮ ' + fmt(data?.balances.USDT, 'USDT') + ' · ◎ ' + fmt(data?.balances.SOL, 'SOL'), icon: <WalletIcon className="size-5" />, hint: usdHint('USDT', data?.balances.USDT, data?.usdRates) + ' + ' + usdHint('SOL', data?.balances.SOL, data?.usdRates) },
         ].map((s, i) => (
           <Card key={s.label} className={cn('relative overflow-hidden', i === 0 && 'border-emerald-500/30')}>
             <CardContent className="p-5">
@@ -410,7 +440,9 @@ const handleTopup = async () => {
         {/* ─── Cash tab ─────────────────────────────────────────────── */}
         <TabsContent value="cash" className="space-y-4 pt-4">
           <div className="grid gap-4 lg:grid-cols-3">
-            {CASH_ASSETS.map((asset) => (
+{CASH_ASSETS.map((asset) => {
+            const usd = usdValue(asset, data?.balances[asset], data?.usdRates)
+            return (
               <Card key={asset}>
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -424,9 +456,13 @@ const handleTopup = async () => {
                     <p className="text-2xl font-bold">{assetSymbol(asset)}{fmt(data?.balances[asset], asset)}</p>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">spendable balance</p>
+                  {usd != null && (
+                    <p className="mt-0.5 text-xs font-medium text-emerald-500">≈ ${fmt(usd, 'USD')} USD</p>
+                  )}
                 </CardContent>
               </Card>
-            ))}
+            )
+          })}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -466,6 +502,9 @@ const handleTopup = async () => {
                 {deposit.asset !== 'KES' && (
                   <p className="text-xs text-muted-foreground">You will be charged the {deposit.asset} &rarr; KES equivalent via PesaPal.</p>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  Max {TOP_UP_MAX[deposit.asset]?.toLocaleString('en-US')} {deposit.asset} per transaction
+                </p>
                 <Button
                   className="w-full gap-1.5"
                   disabled={busy === 'topup' || !deposit.amount || Number(deposit.amount) <= 0}
@@ -509,7 +548,13 @@ const handleTopup = async () => {
                         <tr key={p.id} className="hover:bg-muted/30">
                           <td className="py-2.5 pr-4 font-medium">{paymentLabel(p)}</td>
                           <td className="py-2.5 pr-4 text-right">
-                            {assetSymbol(p.currency)}{fmt(p.amount, p.currency)}
+                            <div>{assetSymbol(p.currency)}{fmt(p.amount, p.currency)}</div>
+                            {p.currency !== 'USD' && (() => {
+                              const usd = usdValue(p.currency, p.amount, data?.usdRates)
+                              return usd != null ? (
+                                <div className="text-xs text-muted-foreground">≈ ${fmt(usd, 'USD')} USD</div>
+                              ) : null
+                            })()}
                           </td>
                           <td className="py-2.5 pr-4">{paymentBadge(p.status)}</td>
                           <td className="py-2.5 text-xs text-muted-foreground">
@@ -676,12 +721,18 @@ const handleTopup = async () => {
                     <tbody className="divide-y divide-border">
                       {data.transactions.map((tx) => {
                         const s = txSummary(tx)
+                        const usd = usdValue(s.asset, Math.abs(s.amount), data?.usdRates)
                         return (
                           <tr key={tx.id} className="hover:bg-muted/30">
                             <td className="py-2.5 pr-4">{s.label}</td>
                             <td className="py-2.5 pr-4">{s.asset}</td>
                             <td className={cn('py-2.5 pr-4 text-right font-semibold', s.color)}>
-                              {s.amount >= 0 ? '+' : ''}{assetSymbol(s.asset)}{fmt(Math.abs(s.amount), s.asset)}
+                              <div>{s.amount >= 0 ? '+' : ''}{assetSymbol(s.asset)}{fmt(Math.abs(s.amount), s.asset)}</div>
+                              {s.asset !== 'USD' && usd != null && (
+                                <div className={cn('text-xs font-normal', s.color === 'text-rose-500' ? 'text-rose-500/70' : 'text-muted-foreground')}>
+                                  ≈ ${fmt(usd, 'USD')} USD
+                                </div>
+                              )}
                             </td>
                             <td className="py-2.5 pr-4">
                               <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{tx.reference || '—'}</code>

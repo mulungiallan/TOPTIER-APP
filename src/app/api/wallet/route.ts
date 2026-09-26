@@ -10,6 +10,7 @@ import {
   getBalance,
 } from '@/lib/services/wallet'
 import { nowpaymentsConfigured } from '@/lib/payments/nowpayments'
+import { getUsdRates } from '@/lib/services/market-data'
 
 // GET /api/wallet
 // Full wallet overview: balances, ledger health and the user's recent posting
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
     if (!auth.user) return errorResponse(auth.error || 'Unauthorized', 401)
     const userId = auth.user.id
 
-    const [overview, transactions, payments] = await Promise.all([
+    const [overview, transactions, payments, usdRates] = await Promise.all([
       getWalletOverview(userId),
       getTransactionHistory(userId),
       // User-facing payment/top-up history (PesaPal, bank, manual methods).
@@ -40,10 +41,14 @@ export async function GET(request: NextRequest) {
           createdAt: true,
         },
       }),
+      // Live USD-equivalent rates for every wallet asset so the UI can show the
+      // correct currency symbol AND its current value in dollars.
+      getUsdRates([...CASH_ASSETS, ...CRYPTO_ASSETS]),
     ])
 
     return successResponse({
       balances: overview.balances,
+      usdRates,
       ledger: overview.ledger,
       assets: {
         cash: CASH_ASSETS,

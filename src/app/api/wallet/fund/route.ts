@@ -35,6 +35,17 @@ export async function POST(request: NextRequest) {
     const { asset, amount } = parsed.data
     const provider = parsed.data.provider || 'mpesa'
 
+    // Per-asset per-transaction caps — the local rails (M-Pesa / mobile money)
+    // reject larger orders, so enforce here with a clear error instead.
+    const TOP_UP_MAX: Record<string, number> = { KES: 1_000_000, UGX: 12_000_000, USD: 30_000 }
+    const maxAmount = TOP_UP_MAX[asset]
+    if (maxAmount != null && amount > maxAmount) {
+      return errorResponse(
+        `Top-up limit reached — maximum ${maxAmount.toLocaleString('en-US')} ${asset} per transaction`,
+        400
+      )
+    }
+
     // PesaPal bills in KES. USD and UGX are converted at the checkout rate;
     // KES passes through unchanged. No app-side limits are imposed — the
     // provider is the source of truth for any per-order caps.
