@@ -178,6 +178,42 @@ const plans: Plan[] = [
     buttonText: 'Remove Ads',
     buttonVariant: 'default',
   },
+  {
+    id: 'mentorship_physical',
+    name: '1-on-1 Mentorship (In Person)',
+    price: '$150',
+    period: '/2 months',
+    badge: 'In Person',
+    badgeColor: 'bg-indigo-500 text-white',
+    features: [
+      { text: 'Face-to-face 1-on-1 trading mentorship', included: true },
+      { text: 'Personalized strategy & trade plan', included: true },
+      { text: 'Live Q&A mentoring sessions', included: true },
+      { text: 'Valid for 2 months', included: true },
+      { text: 'The 2 best signals of the day', included: false },
+      { text: 'Trading bot (MT5/MT4)', included: false },
+    ],
+    buttonText: 'Get Mentorship',
+    buttonVariant: 'default',
+  },
+  {
+    id: 'mentorship_online',
+    name: '1-on-1 Mentorship (Online)',
+    price: '$100',
+    period: '/2 months',
+    badge: 'Online',
+    badgeColor: 'bg-cyan-500 text-white',
+    features: [
+      { text: 'Remote 1-on-1 trading mentorship', included: true },
+      { text: 'Personalized strategy & trade plan', included: true },
+      { text: 'Online mentoring calls & chat support', included: true },
+      { text: 'Valid for 2 months', included: true },
+      { text: 'The 2 best signals of the day', included: false },
+      { text: 'Trading bot (MT5/MT4)', included: false },
+    ],
+    buttonText: 'Get Mentorship',
+    buttonVariant: 'default',
+  },
 ]
 
 const referralTiers = [
@@ -258,6 +294,8 @@ export function SubscriptionsPage() {
   const hasSignals = isAdmin || legacyAccess || trialActive || (!!user?.signalsUnlocked && signalsExpiry > Date.now())
   const hasBot = isAdmin || legacyAccess || trialActive || botExpiry > Date.now()
   const hasAds = isAdmin || !!user?.adsRemoved
+  const mentorshipExpiry = user?.mentorshipExpiresAt ? new Date(user.mentorshipExpiresAt).getTime() : 0
+  const hasMentorship = isAdmin || mentorshipExpiry > Date.now()
 
   // Fetch subscription data on mount
   const fetchSubscriptions = useCallback(async () => {
@@ -361,6 +399,8 @@ export function SubscriptionsPage() {
     if (planId === 'signals_monthly' && hasSignals) return 'current'
     if (planId === 'bot_quarterly' && hasBot) return 'current'
     if (planId === 'remove_ads' && hasAds) return 'current'
+    if (planId === 'mentorship_physical' && hasMentorship && user?.mentorshipType === 'physical') return 'current'
+    if (planId === 'mentorship_online' && hasMentorship && user?.mentorshipType === 'online') return 'current'
     return 'available'
   }
 
@@ -825,10 +865,10 @@ export function SubscriptionsPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-semibold">
-                    {trialActive ? 'Free Trial' : legacyAccess ? 'Premium Plan' : hasSignals || hasBot || hasAds ? 'Your Features' : 'Free Plan'}
+                    {trialActive ? 'Free Trial' : legacyAccess ? 'Premium Plan' : hasSignals || hasBot || hasAds || hasMentorship ? 'Your Features' : 'Free Plan'}
                   </h3>
                   <Badge variant="default" className="text-xs">
-                    {trialActive ? `${daysRemaining} days remaining` : legacyAccess ? 'Active' : hasSignals || hasBot || hasAds ? 'Active' : 'Free'}
+                    {trialActive ? `${daysRemaining} days remaining` : legacyAccess ? 'Active' : hasSignals || hasBot || hasAds || hasMentorship ? 'Active' : 'Free'}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground mt-0.5">
@@ -836,7 +876,7 @@ export function SubscriptionsPage() {
                     ? 'Trial active — full access for the trial period'
                     : legacyAccess
                     ? 'Premium plan active — copy trading included'
-                    : `Signals ${hasSignals ? 'active' : 'locked'} · Bot ${hasBot ? 'active' : 'locked'} · Ads ${hasAds ? 'removed' : 'shown'}`}
+                    : `Signals ${hasSignals ? 'active' : 'locked'} · Bot ${hasBot ? 'active' : 'locked'} · Ads ${hasAds ? 'removed' : 'shown'}${hasMentorship ? ` · Mentorship active until ${new Date(mentorshipExpiry).toLocaleDateString()}` : ''}`}
                 </p>
               </div>
             </div>

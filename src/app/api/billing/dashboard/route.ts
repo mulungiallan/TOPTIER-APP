@@ -51,6 +51,24 @@ const PLAN_CATALOG = [
     color: 'rose',
     features: ['No ads anywhere in the app', 'Removes banners, popups & interstitials', 'One-time payment, permanent'],
   },
+  {
+    id: 'mentorship_physical',
+    name: '1-on-1 Mentorship (In Person)',
+    price: 150,
+    currency: 'USD',
+    interval: '2_months',
+    color: 'indigo',
+    features: ['Face-to-face 1-on-1 trading mentorship', 'Personalized strategy & trade plan', 'Live Q&A mentoring sessions', 'Valid for 2 months'],
+  },
+  {
+    id: 'mentorship_online',
+    name: '1-on-1 Mentorship (Online)',
+    price: 100,
+    currency: 'USD',
+    interval: '2_months',
+    color: 'cyan',
+    features: ['Remote 1-on-1 trading mentorship', 'Personalized strategy & trade plan', 'Online mentoring calls & chat support', 'Valid for 2 months'],
+  },
 ]
 
 const PLAN_DURATIONS_DAYS: Record<string, number> = {
@@ -69,6 +87,8 @@ const PLAN_DURATIONS_DAYS: Record<string, number> = {
   signals_monthly: 30,
   bot_quarterly: 90,
   remove_ads: 36500,
+  mentorship_physical: 60,
+  mentorship_online: 60,
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -122,6 +142,8 @@ export async function GET(request: NextRequest) {
         signalsExpiresAt: true,
         botExpiresAt: true,
         adsRemoved: true,
+        mentorshipExpiresAt: true,
+        mentorshipType: true,
         createdAt: true,
       },
     })
@@ -291,6 +313,9 @@ export async function GET(request: NextRequest) {
         botExpiresAt: entitlements.bot ? user.botExpiresAt : null,
         adFree: entitlements.adFree,
         adsRemoved: user.adsRemoved === true,
+        mentorship: entitlements.mentorship,
+        mentorshipExpiresAt: entitlements.mentorship ? user.mentorshipExpiresAt : null,
+        mentorshipType: user.mentorshipType,
       },
       usage: {
         analysesLimit,

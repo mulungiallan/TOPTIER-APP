@@ -23,6 +23,8 @@ const PLANS: Record<string, { price: number; currency: string }> = {
   signals_monthly: { price: 20, currency: 'USD' },
   bot_quarterly: { price: 100, currency: 'USD' },
   remove_ads: { price: 5, currency: 'USD' },
+  mentorship_physical: { price: 150, currency: 'USD' },
+  mentorship_online: { price: 100, currency: 'USD' },
 }
 
 const productLabels: Record<string, string> = {
@@ -35,6 +37,8 @@ const productLabels: Record<string, string> = {
     signals_monthly: 'Signals (30 days)',
     bot_quarterly: 'Trading Bot (3 months)',
     remove_ads: 'Remove Ads (lifetime)',
+    mentorship_physical: '1-on-1 Mentorship (in person, 2 months)',
+    mentorship_online: '1-on-1 Mentorship (online, 2 months)',
   }
 
   function productLabel(planType: string): string {

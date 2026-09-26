@@ -5,7 +5,7 @@ export type PaymentProvider = 'stripe' | 'flutterwave' | 'mpesa' | 'airtel' | 'm
 
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded' | 'cancelled'
 
-export type PlanType = 'free' | 'trial' | 'premium_daily' | 'premium_weekly' | 'premium_quarterly' | 'premium_annual' | 'premium_monthly' | 'lifetime' | 'signals_monthly' | 'bot_quarterly' | 'remove_ads'
+export type PlanType = 'free' | 'trial' | 'premium_daily' | 'premium_weekly' | 'premium_quarterly' | 'premium_annual' | 'premium_monthly' | 'lifetime' | 'signals_monthly' | 'bot_quarterly' | 'remove_ads' | 'mentorship_physical' | 'mentorship_online'
 
 export interface PaymentPlan {
   id: PlanType

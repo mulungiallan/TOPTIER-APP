@@ -26,6 +26,8 @@ export interface EntitlementRow {
   signalsExpiresAt?: Date | null
   botExpiresAt?: Date | null
   adsRemoved?: boolean
+  mentorshipExpiresAt?: Date | null
+  mentorshipType?: string | null
 }
 
 export function isAdminUser(u: EntitlementRow): boolean {
@@ -60,6 +62,7 @@ export interface Entitlements {
   signals: boolean
   bot: boolean
   adFree: boolean
+  mentorship: boolean
   legacyPremium: boolean
 }
 
@@ -73,6 +76,7 @@ export function deriveEntitlements(u: EntitlementRow): Entitlements {
       (u.signalsUnlocked === true && u.signalsExpiresAt != null && isActiveEndDate(u.signalsExpiresAt)),
     bot: admin || legacy || trial || (u.botExpiresAt != null && isActiveEndDate(u.botExpiresAt)),
     adFree: admin || legacy || trial || u.adsRemoved === true,
+    mentorship: admin || (u.mentorshipExpiresAt != null && isActiveEndDate(u.mentorshipExpiresAt)),
     legacyPremium: legacy,
   }
 }
@@ -88,6 +92,8 @@ const ENTITLEMENT_SELECT = {
   signalsExpiresAt: true,
   botExpiresAt: true,
   adsRemoved: true,
+  mentorshipExpiresAt: true,
+  mentorshipType: true,
 } as const
 
 export async function getEntitlements(userId: string): Promise<Entitlements> {
@@ -95,7 +101,7 @@ export async function getEntitlements(userId: string): Promise<Entitlements> {
     where: { id: userId },
     select: ENTITLEMENT_SELECT,
   })
-  if (!user) return { signals: false, bot: false, adFree: false, legacyPremium: false }
+  if (!user) return { signals: false, bot: false, adFree: false, mentorship: false, legacyPremium: false }
   return deriveEntitlements(user)
 }
 
@@ -110,3 +116,10 @@ export async function hasBotAccess(userId: string): Promise<boolean> {
 export async function hasAdFree(userId: string): Promise<boolean> {
   return (await getEntitlements(userId)).adFree
 }
+
+export async function hasMentorshipAccess(userId: string): Promise<boolean> {
+  return (await getEntitlements(userId)).mentorship
+}
+
+export const MENTORSHIP_PAYWALL_MESSAGE =
+  '1-on-1 mentorship is a paid program — online $100 or in person $150 for 2 months.'

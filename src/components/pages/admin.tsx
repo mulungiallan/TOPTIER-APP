@@ -1278,7 +1278,7 @@ function CmdKShortcut({ onOpen }: { onOpen: () => void }) {
 // ─── Finances / P&L ───────────────────────────────────────────────────────────
 // Expense bookkeeping + net-profit readout. Expense writes go through
 // admin-actions (create/update/delete_expense, permission payments.write);
-// income comes from the PlatformEarning ledger via /api/admin/finances.
+// Income comes from confirmed PesaPal payments via /api/admin/finances.
 
 const EXPENSE_CATEGORY_OPTIONS: Array<[string, string]> = [
   ['hosting', 'Hosting & Infra'],
@@ -1308,6 +1308,16 @@ const INCOME_SOURCE_LABELS: Record<string, string> = {
   bot_profit_share: 'Bot profit share',
   referral_revenue: 'Referral revenue',
   ads_revenue: 'Ad revenue',
+  premium_daily: 'Premium Daily',
+  premium_weekly: 'Premium Weekly',
+  premium_quarterly: 'Premium Quarterly',
+  premium_annual: 'Premium Annual',
+  signals_monthly: 'Signals (30 days)',
+  bot_quarterly: 'Trading Bot (3 months)',
+  remove_ads: 'Remove Ads (lifetime)',
+  wallet_fund: 'Wallet top-ups',
+  mentorship_physical: '1-on-1 Mentorship (in person)',
+  mentorship_online: '1-on-1 Mentorship (online)',
 }
 
 function ExpenseDialog({ open, onOpenChange, expense, onSaved }: {
@@ -1472,7 +1482,7 @@ function FinancesView({ summary, expenses, onExpensesChanged }: {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Income by source</CardTitle>
-            <CardDescription>PlatformEarning ledger (accrues automatically from payments)</CardDescription>
+            <CardDescription>Confirmed PesaPal payments only</CardDescription>
           </CardHeader>
           <CardContent>
             {!summary || summary.incomeBySource.length === 0 ? (
@@ -2080,7 +2090,17 @@ export default function AdminPage() {
               {/* ─── Revenue by Source (pie chart + table) ────────────── */}
               {s.revenue.summaryBySource && s.revenue.summaryBySource.length > 0 && (() => {
                 const REVENUE_SOURCE_MAP: Record<string, { label: string; color: string }> = {
-                  premium_payment: { label: 'Premium Subscriptions', color: '#10b981' },
+                  premium_payment: { label: 'Subscriptions & Purchases', color: '#10b981' },
+                  premium_daily: { label: 'Premium Daily', color: '#34d399' },
+                  premium_weekly: { label: 'Premium Weekly', color: '#a7f3d0' },
+                  premium_quarterly: { label: 'Premium Quarterly', color: '#059669' },
+                  premium_annual: { label: 'Premium Annual', color: '#047857' },
+                  signals_monthly: { label: 'Signals (30 days)', color: '#8b5cf6' },
+                  bot_quarterly: { label: 'Trading Bot (3 months)', color: '#f59e0b' },
+                  remove_ads: { label: 'Remove Ads (lifetime)', color: '#f43f5e' },
+                  wallet_fund: { label: 'Wallet Top-ups', color: '#06b6d4' },
+                  mentorship_physical: { label: 'Mentorship (in person)', color: '#6366f1' },
+                  mentorship_online: { label: 'Mentorship (online)', color: '#0ea5e9' },
                   copy_fee: { label: 'Copy Trading Fees', color: '#8b5cf6' },
                   bot_profit_share: { label: 'Bot Profit Share', color: '#f59e0b' },
                   referral_revenue: { label: 'Referral Revenue', color: '#06b6d4' },
@@ -2096,7 +2116,7 @@ export default function AdminPage() {
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-base">Revenue by Source</CardTitle>
-                        <CardDescription>Platform earnings grouped by revenue stream</CardDescription>
+                        <CardDescription>Confirmed PesaPal payments grouped by product</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <div className="h-64">
@@ -2114,7 +2134,7 @@ export default function AdminPage() {
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-base">Revenue Breakdown</CardTitle>
-                        <CardDescription>Total / available / paid per source</CardDescription>
+                        <CardDescription>Confirmed PesaPal payments per product</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <Table>
@@ -2122,8 +2142,6 @@ export default function AdminPage() {
                             <TableRow>
                               <TableHead>Source</TableHead>
                               <TableHead className="text-right">Total</TableHead>
-                              <TableHead className="text-right">Available</TableHead>
-                              <TableHead className="text-right">Paid</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -2136,15 +2154,11 @@ export default function AdminPage() {
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-sm">{fmtMoney(src.total)}</TableCell>
-                                <TableCell className="text-right font-mono text-sm">{fmtMoney(src.available)}</TableCell>
-                                <TableCell className="text-right font-mono text-sm">{fmtMoney(src.paid)}</TableCell>
                               </TableRow>
                             ))}
                             <TableRow className="border-t-2">
                               <TableCell className="font-bold">Total</TableCell>
                               <TableCell className="text-right font-mono text-sm font-bold">{fmtMoney(sources.reduce((a, r) => a + r.total, 0))}</TableCell>
-                              <TableCell className="text-right font-mono text-sm font-bold">{fmtMoney(sources.reduce((a, r) => a + r.available, 0))}</TableCell>
-                              <TableCell className="text-right font-mono text-sm font-bold">{fmtMoney(sources.reduce((a, r) => a + r.paid, 0))}</TableCell>
                             </TableRow>
                           </TableBody>
                         </Table>

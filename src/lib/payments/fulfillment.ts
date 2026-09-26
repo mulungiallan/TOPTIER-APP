@@ -68,7 +68,7 @@ export async function fulfillPendingPayment(
   // re-purchases before expiry keep the user uninterrupted.
   const currentUser = await db.user.findUnique({
     where: { id: transaction.userId },
-    select: { signalsExpiresAt: true, botExpiresAt: true },
+    select: { signalsExpiresAt: true, botExpiresAt: true, mentorshipExpiresAt: true },
   })
 
   let endDate: Date | null = null
@@ -84,6 +84,12 @@ export async function fulfillPendingPayment(
         ? currentUser.botExpiresAt
         : now
     endDate = new Date(base.getTime() + 90 * 24 * 60 * 60 * 1000)
+  } else if (planType === 'mentorship_physical' || planType === 'mentorship_online') {
+    const base =
+      currentUser?.mentorshipExpiresAt && new Date(currentUser.mentorshipExpiresAt).getTime() > now.getTime()
+        ? currentUser.mentorshipExpiresAt
+        : now
+    endDate = new Date(base.getTime() + 60 * 24 * 60 * 60 * 1000)
   } else if (planType === 'premium_daily') {
     endDate = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
   } else if (planType === 'premium_weekly') {
@@ -110,6 +116,9 @@ export async function fulfillPendingPayment(
   } else if (planType === 'remove_ads') {
     data.adsRemoved = true
     data.adsRemovedAt = now
+  } else if (planType === 'mentorship_physical' || planType === 'mentorship_online') {
+    data.mentorshipType = planType === 'mentorship_physical' ? 'physical' : 'online'
+    data.mentorshipExpiresAt = endDate
   }
   if (tier) {
     data.subscriptionTier = tier
@@ -170,10 +179,14 @@ export async function fulfillPendingPayment(
       ? 'Signals Subscription Active'
       : planType === 'bot_quarterly'
       ? 'Trading Bot Access Active'
+      : planType === 'mentorship_physical' || planType === 'mentorship_online'
+      ? 'Mentorship Program Active'
       : 'Payment Confirmed'
   const message =
     planType === 'remove_ads'
       ? 'Ads have been removed app-wide. Enjoy an ad-free experience!'
+      : planType === 'mentorship_physical' || planType === 'mentorship_online'
+      ? `Your 1-on-1 mentorship is active until ${endDate?.toLocaleDateString()}. We will reach out to schedule your first session!`
       : `Your purchase is now active${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}!`
 
   await notifyUser(transaction.userId, {

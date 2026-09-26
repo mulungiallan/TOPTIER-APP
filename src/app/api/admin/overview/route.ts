@@ -3,10 +3,12 @@ import { db } from '@/lib/db'
 import { successResponse, errorResponse } from '@/lib/auth'
 import { requireAdmin } from '@/lib/admin-guard'
 import { referralLockEnabled, getReferralLockCode, getReferralUrl } from '@/lib/referral-gate'
-import { getEarningsBySource } from '@/lib/payouts'
 
 // GET /api/admin/overview — comprehensive, real, read-only monitoring data.
 // Every number here comes straight from the database. No mock values.
+// Revenue figures count CONFIRMED PesaPal transactions ONLY (status
+// 'completed'); the PesaPal wallet is the real money intake. Manual ad-hoc
+// earnings, mocked entries and non-PesaPal providers are excluded.
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,11 +74,11 @@ export async function GET(request: NextRequest) {
       db.signal.count(),
       db.signal.count({ where: { status: 'active' } }),
       db.paymentTransaction.aggregate({
-        where: { status: 'completed' },
+        where: { status: 'completed', paymentProvider: 'pesapal' },
         _sum: { amount: true },
       }),
-      db.paymentTransaction.count({ where: { status: 'completed' } }),
-      db.paymentTransaction.count({ where: { status: 'pending' } }),
+      db.paymentTransaction.count({ where: { status: 'completed', paymentProvider: 'pesapal' } }),
+      db.paymentTransaction.count({ where: { status: 'pending', paymentProvider: 'pesapal' } }),
       db.supportTicket.count({ where: { status: { in: ['open', 'in_progress'] } } }),
       db.screenshotAnalysis.count(),
       db.screenshotAnalysis.count({ where: { createdAt: { gte: new Date(now.setHours(0, 0, 0, 0)) } } }),
@@ -108,8 +110,8 @@ export async function GET(request: NextRequest) {
       db.activityLog.count({ where: { action: 'login', createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } } }),
     ])
 
-    // Revenue breakdown by source (premium, copy, bot, referral, ads)
-    const revenueBySource = await getEarningsBySource()
+    // Revenue by source (confirmed PesaPal transactions grouped by product)
+    // — computed below after completedInWindow is loaded.
 
     const [recentUsers, recentPayments, recentSignals, recentNews, upcomingEvents, recentAnalyses, recentTickets, coupons, auditLog, activityFeed, botConnectionsList, recentBotTrades, copySettlements] =
       await Promise.all([
@@ -123,7 +125,7 @@ export async function GET(request: NextRequest) {
           },
         }),
         db.paymentTransaction.findMany({
-          where: { status: 'completed' },
+          where: { status: 'completed', paymentProvider: 'pesapal' },
           orderBy: { createdAt: 'desc' },
           take: 25,
           include: { user: { select: { name: true, email: true } } },
@@ -175,9 +177,9 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
-    // Revenue by month (completed transactions, last 12 months)
+    // Revenue by month (confirmed PesaPal transactions, last 12 months)
     const completedInWindow = await db.paymentTransaction.findMany({
-      where: { status: 'completed', createdAt: { gte: twelveMonthsAgo } },
+      where: { status: 'completed', paymentProvider: 'pesapal', createdAt: { gte: twelveMonthsAgo } },
       select: { amount: true, currency: true, createdAt: true, planType: true },
     })
     const revenueByMonth: Record<string, { revenue: number; count: number }> = {}
@@ -188,6 +190,17 @@ export async function GET(request: NextRequest) {
       cur.count += 1
       revenueByMonth[key] = cur
     }
+
+    // Revenue by source (confirmed PesaPal transactions grouped by product)
+    const revenueBySource = Object.entries(
+      completedInWindow.reduce((acc, tx) => {
+        const source = tx.planType || 'premium_payment'
+        acc[source] = (acc[source] || 0) + (tx.amount || 0)
+        return acc
+      }, {} as Record<string, number>),
+    )
+      .map(([source, total]) => ({ source, total: Math.round(total * 100) / 100, available: 0, paid: 0 }))
+      .sort((a, b) => b.total - a.total)
 
     // User growth by day (last 30 days)
     const recentUsersForGrowth = await db.user.findMany({
@@ -228,7 +241,7 @@ export async function GET(request: NextRequest) {
       db.review.count({ where: { status: 'pending' } }),
       db.dataDeletionRequest.count({ where: { status: 'pending' } }),
       db.usageSession.count({ where: { endedAt: null } }),
-      db.platformEarning.aggregate({ _sum: { amount: true } }),
+      db.paymentTransaction.aggregate({ where: { status: 'completed', paymentProvider: 'pesapal' }, _sum: { amount: true } }),
       db.copySettlement.aggregate({ where: { status: 'due' }, _sum: { providerAmount: true } }),
     ])
 

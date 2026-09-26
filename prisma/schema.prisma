@@ -53,6 +53,9 @@ model User {
   botExpiresAt      DateTime?
   adsRemoved        Boolean   @default(false)
   adsRemovedAt      DateTime?
+  // 1-on-1 mentoring access (mentorship_physical $150 / mentorship_online $100, 2 months)
+  mentorshipExpiresAt DateTime?
+  mentorshipType     String? // physical | online
   stripeCustomerId String?
   orders           Order[]
   analyses         Analysis[]

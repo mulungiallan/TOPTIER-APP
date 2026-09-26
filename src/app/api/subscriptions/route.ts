@@ -88,6 +88,38 @@ const PLANS = [
       'One-time purchase',
     ],
   },
+  {
+    id: 'mentorship_physical',
+    name: '1-on-1 Mentorship (In Person)',
+    price: 150,
+    currency: 'USD',
+    interval: '2_months',
+    features: [
+      'Face-to-face 1-on-1 trading mentorship',
+      'Personalized strategy & trade plan',
+      'Live Q&A mentoring sessions',
+      'Valid for 2 months',
+    ],
+    limitations: [
+      'One-time 2-month program',
+    ],
+  },
+  {
+    id: 'mentorship_online',
+    name: '1-on-1 Mentorship (Online)',
+    price: 100,
+    currency: 'USD',
+    interval: '2_months',
+    features: [
+      'Remote 1-on-1 trading mentorship',
+      'Personalized strategy & trade plan',
+      'Online mentoring calls & chat support',
+      'Valid for 2 months',
+    ],
+    limitations: [
+      'One-time 2-month program',
+    ],
+  },
 ]
 
 export async function GET(request: NextRequest) {

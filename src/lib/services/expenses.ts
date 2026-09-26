@@ -1,11 +1,11 @@
 // ─── App expenses & profit-and-loss ─────────────────────────────────────────
-// Income ledger = PlatformEarning rows (premium payments, copy fees, bot
-// profit share, referral revenue, ads revenue — all write there, including
-// manual `log_ad_revenue` / `record_earning`). Expenses are AppExpense rows
-// entered by admins. Net profit = sum(income) - sum(expenses).
+// Income ledger = confirmed PesaPal payment transactions ONLY (status
+// 'completed'). Manual `log_ad_revenue` / `record_earning`, mocked wallet
+// movements and non-PesaPal providers are excluded so the P&L reflects real
+// PesaPal revenue. Expenses are AppExpense rows entered by admins.
+// Net profit = sum(income) - sum(expenses).
 
 import { db } from '@/lib/db'
-import { getEarningsBySource } from '@/lib/payouts'
 
 export const EXPENSE_CATEGORIES = [
   'hosting',
@@ -33,7 +33,7 @@ export interface FinanceSummary {
   netProfit: number
   earningCount: number
   expenseCount: number
-  // Income sources (mirrors PlatformEarning.source values)
+  // Income sources (mirrors PaymentTransaction.planType for confirmed PesaPal)
   incomeBySource: Array<{ source: string; total: number; available: number; paid: number }>
   // Expenses grouped by category
   byCategory: Array<{ category: string; total: number; count: number }>
@@ -51,24 +51,36 @@ function sumOf(items: Array<{ amount: number }>): number {
 }
 
 /**
- * Full P&L summary for the admin Finances tab. Income comes from the
- * PlatformEarning ledger (never double-counted — premium payments are accrued
- * into it from completed transactions), expenses from AppExpense.
+ * Full P&L summary for the admin Finances tab. Income comes from confirmed
+ * PesaPal PaymentTransactions only (never double-counted — transactions are
+ * claimed exactly once by fulfillment), expenses from AppExpense.
  */
 export async function getFinanceSummary(): Promise<FinanceSummary> {
   const now = new Date()
-  const recentStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
 
-  // Income: accrue anything not yet recorded, then sum the whole ledger.
-  const incomeBySource = await getEarningsBySource()
-
+  // Income: confirmed PesaPal payments only (excludes manual record_earning,
+  // log_ad_revenue, mocked movements and every non-PesaPal provider).
   const [incomeAll, expenseAll] = await Promise.all([
-    db.platformEarning.findMany({ select: { amount: true, createdAt: true } }),
+    db.paymentTransaction.findMany({
+      where: { status: 'completed', paymentProvider: 'pesapal' },
+      select: { amount: true, planType: true, createdAt: true },
+    }),
     db.appExpense.findMany({ select: { amount: true, spentAt: true, category: true } }),
   ])
 
   const totalIncome = round(sumOf(incomeAll))
   const totalExpenses = round(sumOf(expenseAll))
+
+  // Income by product (planType), keeping the same shape the Finances UI
+  // expects (available/paid are not tracked per-transaction in this view).
+  const incomeSourceMap = new Map<string, number>()
+  for (const e of incomeAll) {
+    const source = e.planType || 'premium_payment'
+    incomeSourceMap.set(source, (incomeSourceMap.get(source) || 0) + e.amount)
+  }
+  const incomeBySource = [...incomeSourceMap.entries()]
+    .map(([source, total]) => ({ source, total: round(total), available: 0, paid: 0 }))
+    .sort((a, b) => b.total - a.total)
 
   // Monthly buckets for the trailing 12 months; older entries roll into the
   // first bucket so nothing is silently dropped from the total.

@@ -80,6 +80,8 @@ export interface User {
   signalsExpiresAt?: string | null
   botExpiresAt?: string | null
   adsRemoved?: boolean
+  mentorshipExpiresAt?: string | null
+  mentorshipType?: string | null
 }
 
 export interface UserPrivacySettings {
