@@ -1163,6 +1163,8 @@ function buildFallbackData(): BillingDashboardData {
       { id: 'premium_quarterly', name: 'Premium Quarterly', price: 75, currency: 'USD', interval: 'quarter', color: 'violet', features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features', 'Early access'] },
       { id: 'premium_annual', name: 'Premium Yearly', price: 120, currency: 'USD', interval: 'year', color: 'amber', features: ['No ads', 'Trading bot access', 'TOPTIER signals', 'Copy trading', 'All premium features', 'Early access', 'Exclusive webinars'] },
       { id: 'lifetime', name: 'Lifetime Access', price: 499.99, currency: 'USD', interval: 'lifetime', color: 'rose', features: ['Everything in Premium', 'Lifetime access', 'One-time payment', 'VIP support'] },
+      { id: 'mentorship_physical', name: '1-on-1 Mentorship (In Person)', price: 150, currency: 'USD', interval: '2_months', color: 'indigo', features: ['Face-to-face 1-on-1 trading mentorship', 'Personalized strategy & trade plan', 'Live Q&A mentoring sessions', 'Valid for 2 months'] },
+      { id: 'mentorship_online', name: '1-on-1 Mentorship (Online)', price: 100, currency: 'USD', interval: '2_months', color: 'cyan', features: ['Remote 1-on-1 trading mentorship', 'Personalized strategy & trade plan', 'Online mentoring calls & chat support', 'Valid for 2 months'] },
     ],
   }
 }

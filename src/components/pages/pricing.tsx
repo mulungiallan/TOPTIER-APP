@@ -386,6 +386,62 @@ export function PricingPage() {
         </AnimatePresence>
       </div>
 
+      {/* 1-on-1 Mentorship */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="space-y-4"
+      >
+        <div className="text-center space-y-1">
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">1-on-1 Mentorship</h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto">
+            Learn to trade with a personal mentor — personalized strategy, live sessions and real guidance. Valid for 2 months.
+          </p>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 max-w-3xl mx-auto">
+          {[
+            {
+              id: 'mentorship_online',
+              name: 'Online Mentorship',
+              price: '$100',
+              features: ['Remote 1-on-1 trading mentorship', 'Personalized strategy & trade plan', 'Online mentoring calls & chat support'],
+            },
+            {
+              id: 'mentorship_physical',
+              name: 'In-Person Mentorship',
+              price: '$150',
+              features: ['Face-to-face 1-on-1 trading mentorship', 'Personalized strategy & trade plan', 'Live Q&A mentoring sessions'],
+            },
+          ].map((m) => (
+            <Card key={m.id} className="relative h-full overflow-hidden">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg">{m.name}</CardTitle>
+                <CardDescription>
+                  <span className="text-2xl font-bold text-foreground">{m.price}</span>
+                  <span className="text-sm text-muted-foreground ml-1">/ 2 months</span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 pb-4">
+                <ul className="space-y-2 text-sm">
+                  {m.features.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Check className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-muted-foreground">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+              <CardFooter className="pt-0 pb-6">
+                <Button className="w-full" onClick={() => setPage('subscriptions')}>
+                  Get Mentorship
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </motion.div>
+
       {/* Trust signals */}
       <motion.div
         initial={{ opacity: 0 }}
