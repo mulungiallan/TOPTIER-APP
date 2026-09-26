@@ -8,9 +8,17 @@ import type { EBook } from '@/generated/prisma'
 // Non-owners get a `locked: true` payload with no content (used by the reader
 // to poll for unlock after a payment completes).
 // DELETE /api/ebooks/:id — admin removes a book (and its purchases).
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+//
+// `params` is a Promise: Next 16 typed routes reject the old synchronous
+// signature with TS2344 (`does not satisfy ParamCheck<RouteContext>`) during
+// `next build`. That error only exists in .next/types, so `tsc --noEmit` on
+// src/ alone does not catch it and the production build fails.
+type Params = { params: Promise<{ id: string }> }
+
+export async function GET(request: NextRequest, { params }: Params) {
   try {
-    const book = await db.eBook.findUnique({ where: { id: params.id } })
+    const { id } = await params
+    const book = await db.eBook.findUnique({ where: { id } })
     if (!book) return errorResponse('E-book not found.', 404)
 
     const admin = await requireAdmin(request)
@@ -38,13 +46,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: Params) {
   try {
+    const { id } = await params
     const { error, user } = await requireAdmin(request)
     if (error) return error
     if (!user) return errorResponse('Admin access required', 403)
 
-    const book = await db.eBook.findUnique({ where: { id: params.id }, select: { id: true } })
+    const book = await db.eBook.findUnique({ where: { id }, select: { id: true } })
     if (!book) return errorResponse('E-book not found.', 404)
 
     await db.userEBook.deleteMany({ where: { bookId: book.id } })
