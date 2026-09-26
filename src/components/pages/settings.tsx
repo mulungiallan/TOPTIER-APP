@@ -51,6 +51,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
@@ -687,33 +688,33 @@ export function SettingsPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="current-password">Current Password</Label>
-                <Input
+                <PasswordInput
                   id="current-password"
-                  type="password"
                   value={passwords.current}
                   onChange={(e) => setPasswords((p) => ({ ...p, current: e.target.value }))}
                   placeholder="Enter current password"
+                  autoComplete="current-password"
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="new-password">New Password</Label>
-                  <Input
+                  <PasswordInput
                     id="new-password"
-                    type="password"
                     value={passwords.new}
                     onChange={(e) => setPasswords((p) => ({ ...p, new: e.target.value }))}
                     placeholder="Enter new password"
+                    autoComplete="new-password"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="confirm-password">Confirm New Password</Label>
-                  <Input
+                  <PasswordInput
                     id="confirm-password"
-                    type="password"
                     value={passwords.confirm}
                     onChange={(e) => setPasswords((p) => ({ ...p, confirm: e.target.value }))}
                     placeholder="Confirm new password"
+                    autoComplete="new-password"
                   />
                 </div>
               </div>

@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
         marketBreakdown: {}, strategyBreakdown: {}, assetBreakdown: {},
         timeframeBreakdown: {}, sessionBreakdown: {},
         monthlyPerformance: [], winRateTrend: [], marketPerformance: [],
+        trackedSignals: [],
         period: 'all',
       })
     }
@@ -32,26 +33,30 @@ export async function GET(request: NextRequest) {
     if (period === 'month') startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     if (period === 'quarter') startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
 
-    // Fetch all signals for this user (accepted or not) + resolved signals
-    const [acceptedSignals, allUserSignals] = await Promise.all([
-      db.signal.findMany({
-        where: { userId, status: { in: ['hit_tp', 'hit_sl', 'expired'] } },
-        select: { id: true },
+    // The signals this user accepted, and every signal they can see.
+    //
+    // Acceptance lives in UserSignal (many-to-many). It previously read
+    // `Signal.userId`, which is a single-owner FK — so this only ever returned
+    // signals one user had claimed, and a user's history silently changed
+    // depending on who accepted first.
+    const [acceptedRows, allVisible] = await Promise.all([
+      db.userSignal.findMany({
+        where: { userId, closedAt: null, acceptedAt: { gte: startDate || new Date(0) } },
+        select: { signalId: true },
       }),
-      db.signal.findMany({
-        where: { userId, createdAt: { gte: startDate || new Date(0) } },
-        select: { id: true },
+      db.signal.count({
+        where: { createdAt: { gte: startDate || new Date(0) } },
       }),
     ])
 
-    const acceptedIds = acceptedSignals.map(s => s.id)
+    const acceptedIds = acceptedRows.map(r => r.signalId)
 
     if (acceptedIds.length === 0) {
       return successResponse({
         overview: {
           totalSignals: 0, wins: 0, losses: 0, expired: 0, winRate: 0,
           lossRate: 0, breakevenRate: 0, avgConfidence: 0, avgRiskReward: 0,
-          monthlySignals: allUserSignals.length,
+          monthlySignals: allVisible,
           consecutiveWins: 0, longestWinStreak: 0,
           consecutiveLosses: 0, longestLossStreak: 0,
           avgOutcome: 0, acceptedCount: 0, ignoredCount: 0,
@@ -59,6 +64,7 @@ export async function GET(request: NextRequest) {
         marketBreakdown: {}, strategyBreakdown: {}, assetBreakdown: {},
         timeframeBreakdown: {}, sessionBreakdown: {},
         monthlyPerformance: [], winRateTrend: [], marketPerformance: [],
+        trackedSignals: [],
         period,
       })
     }
@@ -138,7 +144,7 @@ export async function GET(request: NextRequest) {
     }
 
     const avgOutcome = winRate
-    const acceptedCount = allUserSignals.length
+    const acceptedCount = acceptedIds.length
     const ignoredCount = Math.max(0, acceptedCount - totalSignals)
 
     // ─── Monthly Performance (last 6 months) ────────────────────────────────
@@ -277,6 +283,58 @@ export async function GET(request: NextRequest) {
       ss.peakHours = peakMap[sess.toLowerCase()] || ''
     }
 
+    // ─── Tracked signals ──────────────────────────────────────────────────
+    // The actual list behind the numbers above, with the outcome DERIVED from
+    // the parent signal rather than copied onto the accept row. A resolving
+    // signal therefore updates every acceptor's history at once, with no sync
+    // job that can drift out of step with the signal feed.
+    //
+    // `pnlR` is the result in R multiples (risk units): the distance from entry
+    // to the resolved price divided by the entry-to-stop distance. That makes
+    // results comparable across assets and timeframes, which a raw price move
+    // is not.
+    const trackedSignals = await db.signal.findMany({
+      where: { id: { in: acceptedIds } },
+      select: {
+        id: true, type: true, asset: true, marketType: true, strategy: true,
+        status: true, resultType: true, resultPrice: true,
+        entryPrice: true, stopLoss: true, takeProfit1: true,
+        confidence: true, riskRewardRatio: true, timeframe: true,
+        tradingSession: true, expiryDate: true, resolvedAt: true, createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+
+    const tracked = trackedSignals.map((s) => {
+      const risk = Math.abs(s.entryPrice - s.stopLoss)
+      const moved = s.resultPrice != null
+        ? (s.type === 'SELL' ? s.entryPrice - s.resultPrice : s.resultPrice - s.entryPrice)
+        : null
+      const pnlR = moved != null && risk > 0 ? Number((moved / risk).toFixed(2)) : null
+      return {
+        id: s.id,
+        direction: s.type,
+        asset: s.asset,
+        marketType: s.marketType,
+        strategy: s.strategy,
+        timeframe: s.timeframe,
+        session: s.tradingSession,
+        confidence: s.confidence,
+        riskRewardRatio: s.riskRewardRatio,
+        entryPrice: s.entryPrice,
+        stopLoss: s.stopLoss,
+        takeProfit1: s.takeProfit1,
+        status: s.status,
+        resultType: s.resultType,
+        resultPrice: s.resultPrice,
+        pnlR,
+        expiryDate: s.expiryDate,
+        resolvedAt: s.resolvedAt,
+        createdAt: s.createdAt,
+      }
+    })
+
     return successResponse({
       overview: {
         totalSignals, wins, losses, expired, winRate, lossRate, breakevenRate,
@@ -292,6 +350,7 @@ export async function GET(request: NextRequest) {
       monthlyPerformance,
       winRateTrend,
       marketPerformance,
+      trackedSignals: tracked,
       period,
     })
   } catch (error) {

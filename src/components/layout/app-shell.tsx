@@ -41,6 +41,7 @@ import {
   Cpu,
   LineChart,
   MessageSquareText,
+  BookOpen,
 } from 'lucide-react'
 import { useStore, type Page } from '@/lib/store'
 import { Button } from '@/components/ui/button'
@@ -119,6 +120,7 @@ const navItems: NavItem[] = [
   { id: 'subscriptions', labelKey: 'nav.subscriptions', icon: CreditCard },
   { id: 'profile', labelKey: 'nav.profile', icon: UserCircle },
   { id: 'wallet', labelKey: 'nav.wallet', icon: Wallet },
+  { id: 'ebooks', labelKey: 'nav.ebooks', icon: BookOpen },
   { id: 'settings', labelKey: 'nav.settings', icon: Settings },
 ]
 
@@ -626,6 +628,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       wallet: 'wallet',
                       balance: 'wallet',
                       funds: 'wallet',
+                      ebook: 'ebooks',
+                      book: 'ebooks',
+                      library: 'ebooks',
                     }
                     for (const [keyword, page] of Object.entries(searchPages)) {
                       if (q.includes(keyword)) {

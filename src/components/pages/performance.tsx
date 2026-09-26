@@ -60,7 +60,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ChartContainer, type ChartConfig } from '@/components/ui/chart'
+import {
+  ChartContainer, type ChartConfig } from '@/components/ui/chart'
+import { cn } from '@/lib/utils'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -87,6 +89,30 @@ interface PerformanceData {
   assetBreakdown: { asset: string; winRate: number; totalSignals: number; avgRR: string }[]
   timeframeBreakdown: { timeframe: string; winRate: number; totalSignals: number; avgRR: string }[]
   sessionBreakdown: { session: string; winRate: number; totalSignals: number; avgRR: string; peakHours: string }[]
+  trackedSignals: TrackedSignal[]
+}
+
+interface TrackedSignal {
+  id: string
+  direction: string
+  asset: string
+  marketType: string
+  strategy: string
+  timeframe: string | null
+  session: string | null
+  confidence: number
+  riskRewardRatio: number
+  entryPrice: number
+  stopLoss: number
+  takeProfit1: number
+  status: string
+  resultType: string | null
+  resultPrice: number | null
+  /** Result in R multiples (risk units); null while still running. */
+  pnlR: number | null
+  expiryDate: string
+  resolvedAt: string | null
+  createdAt: string
 }
 
 // ─── Chart configs ──────────────────────────────────────────────────────────────
@@ -422,6 +448,7 @@ function mapPerformanceData(raw: any): PerformanceData {
       avgRR: s?.avgRR || '1:0',
       peakHours: s?.peakHours || '',
     })),
+    trackedSignals: Array.isArray(root?.trackedSignals) ? root.trackedSignals : [],
   }
 }
 
@@ -1063,6 +1090,124 @@ export function PerformancePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Tracked Signals */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Tracked Signals</CardTitle>
+          <CardDescription>
+            Every signal you accepted, with its result. Outcomes come from the signal
+            itself, so they update automatically when a signal resolves.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.trackedSignals.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border py-12 text-center">
+              <Target className="mx-auto size-8 text-muted-foreground/50" />
+              <p className="mt-3 text-sm font-medium">No signals accepted yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Accept a signal and it will show up here with its outcome and R multiple.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Signal</TableHead>
+                    <TableHead>Entry</TableHead>
+                    <TableHead>Stop / TP1</TableHead>
+                    <TableHead>Result</TableHead>
+                    <TableHead className="text-right">R</TableHead>
+                    <TableHead className="text-right">Conf.</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.trackedSignals.map((s) => {
+                    const isBuy = s.direction === 'BUY'
+                    const isWin = s.resultType === 'hit_tp'
+                    const isLoss = s.resultType === 'hit_sl'
+                    const isLive = !s.resultType
+                    return (
+                      <TableRow key={s.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                'rounded px-1.5 py-0.5 text-[10px] font-bold',
+                                isBuy
+                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  : 'bg-red-500/15 text-red-600 dark:text-red-400',
+                              )}
+                            >
+                              {s.direction}
+                            </span>
+                            <div>
+                              <p className="text-sm font-medium">
+                                {s.asset} <span className="text-muted-foreground">· {s.strategy}</span>
+                              </p>
+                              {s.timeframe && (
+                                <p className="text-[11px] text-muted-foreground">{s.timeframe}</p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{s.entryPrice}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {s.stopLoss} / {s.takeProfit1}
+                        </TableCell>
+                        <TableCell>
+                          {isLive ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              Running
+                            </Badge>
+                          ) : isWin ? (
+                            <Badge className="border-emerald-500/20 bg-emerald-500/15 text-[10px] text-emerald-600 dark:text-emerald-400">
+                              Win
+                            </Badge>
+                          ) : isLoss ? (
+                            <Badge className="border-red-500/20 bg-red-500/15 text-[10px] text-red-600 dark:text-red-400">
+                              Loss
+                            </Badge>
+                          ) : s.resultType === 'expired' ? (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                              Expired
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                              {s.resultType}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            'text-right font-mono text-xs',
+                            s.pnlR == null && 'text-muted-foreground',
+                            s.pnlR != null && s.pnlR > 0 && 'text-emerald-500',
+                            s.pnlR != null && s.pnlR < 0 && 'text-red-500',
+                          )}
+                        >
+                          {s.pnlR == null ? '—' : `${s.pnlR > 0 ? '+' : ''}${s.pnlR}R`}
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {s.confidence}%
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(s.createdAt).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Export Section */}
       <Card>

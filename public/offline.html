@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>You're offline — TOPTIER</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0e14" />
+<meta name="robots" content="noindex" />
+<link rel="icon" href="/icons/favicon-32x32.png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #111827;
+    --surface-2: #161f2e;
+    --line: rgba(16, 185, 129, 0.18);
+    --text: #e5e7eb;
+    --muted: #94a3b8;
+    --brand: #10b981;
+    --brand-dim: rgba(16, 185, 129, 0.12);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface-2: #f8fafc;
+      --line: rgba(5, 150, 105, 0.22);
+      --text: #0f172a;
+      --muted: #64748b;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom));
+    /* soft brand glow so the page feels designed, not broken */
+    background-image:
+      radial-gradient(60% 50% at 50% 0%, var(--brand-dim), transparent 70%);
+    background-repeat: no-repeat;
+  }
+  .wrap { width: 100%; max-width: 420px; text-align: center; }
+
+  .logo {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 1px;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-bottom: 28px;
+  }
+  .logo .top { color: var(--brand); }
+  .logo .tier { color: var(--text); }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px 7px 11px;
+    border: 1px solid var(--line);
+    background: var(--brand-dim);
+    color: var(--brand);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--brand);
+    box-shadow: 0 0 0 0 var(--brand);
+    animation: pulse 1.8s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+    70%  { box-shadow: 0 0 0 9px rgba(16,185,129,0); }
+    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+  }
+
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 10px; letter-spacing: -0.01em; }
+  p.sub { font-size: 14px; line-height: 1.65; color: var(--muted); margin: 0 auto 26px; max-width: 34ch; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    text-align: left;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 12px;
+  }
+  .row { display: flex; align-items: flex-start; gap: 11px; padding: 7px 0; font-size: 13.5px; line-height: 1.5; }
+  .row .ico { flex: 0 0 auto; margin-top: 1px; opacity: .95; }
+  .row.muted { color: var(--muted); }
+  .tick { color: var(--brand); }
+  .cross { color: #ef4444; }
+
+  .btn {
+    display: block; width: 100%;
+    background: var(--brand); color: #04120c;
+    border: 0; border-radius: 12px;
+    padding: 15px 20px;
+    font-size: 15px; font-weight: 700; font-family: inherit;
+    cursor: pointer;
+    transition: transform .12s ease, opacity .12s ease;
+  }
+  .btn:active { transform: scale(.985); opacity: .9; }
+  .btn[disabled] { opacity: .6; cursor: default; }
+
+  .status {
+    margin-top: 14px; font-size: 12px; color: var(--muted);
+    min-height: 18px; display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .spinner {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid var(--line); border-top-color: var(--brand);
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer { margin-top: 30px; font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo"><span class="top">TOP</span><span class="tier">TIER</span></div>
+
+    <div class="badge"><span class="dot"></span> No connection</div>
+
+    <h1>You're offline</h1>
+    <p class="sub">
+      TOPTIER needs an internet connection to load your dashboard, signals and wallet.
+      Nothing is lost — reconnect and you'll pick up exactly where you left off.
+    </p>
+
+    <div class="card">
+      <h2>While you're disconnected</h2>
+      <div class="row muted">
+        <span class="ico tick">&#10003;</span>
+        <span>Your account and wallet balance are safe — nothing is charged offline.</span>
+      </div>
+      <div class="row muted">
+        <span class="ico tick">&#10003;</span>
+        <span>Open trades keep running on our servers, untouched.</span>
+      </div>
+      <div class="row muted">
+        <span class="ico cross">&#10007;</span>
+        <span>Live signals, prices and AI analysis need a connection.</span>
+      </div>
+    </div>
+
+    <button class="btn" id="retry">Try reconnecting</button>
+    <div class="status" id="status"></div>
+
+    <footer>
+      TOPTIER &middot; AI trading signals &amp; market intelligence<br />
+      Trading involves substantial risk. Past performance is not indicative of future results.
+    </footer>
+  </div>
+
+<script>
+(function () {
+  var btn = document.getElementById('retry');
+  var status = document.getElementById('status');
+  var busy = false;
+
+  function spinner(label) {
+    status.innerHTML = '<span class="spinner"></span>' + label;
+  }
+
+  function reload() {
+    window.location.replace('/');
+  }
+
+  function attempt(auto) {
+    if (busy) return;
+    if (navigator.onLine) { reload(); return; }
+    busy = true;
+    btn.disabled = true;
+    spinner(auto ? 'Still offline — we will retry automatically' : 'Retrying…');
+    // fetch() fails fast when there is genuinely no route, rather than
+    // hanging on a captive-portal "connected" network.
+    fetch('/api/health', { cache: 'no-store' })
+      .then(function (r) { if (r.ok) reload(); else throw new Error('bad status'); })
+      .catch(function () { setTimeout(attempt, 2500); })
+      .then(function () {
+        if (busy) {
+          busy = false;
+          btn.disabled = false;
+          status.textContent = navigator.onLine ? 'Reconnected — reloading…' : 'Still no connection.';
+          if (!navigator.onLine) setTimeout(function () { spinner('Waiting for connection…'); }, 1800);
+        }
+      });
+  }
+
+  btn.addEventListener('click', function () { attempt(false); });
+  window.addEventListener('online', function () { reload(); });
+  window.addEventListener('offline', function () { busy = false; btn.disabled = false; });
+  attempt(true);
+})();
+</script>
+</body>
+</html>

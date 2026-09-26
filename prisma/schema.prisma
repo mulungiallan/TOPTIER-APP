@@ -76,6 +76,7 @@ model User {
   updatedAt         DateTime  @updatedAt
 
   signals             Signal[]
+  acceptedSignals     UserSignal[]
   screenshotAnalyses  ScreenshotAnalysis[]
   watchlists          Watchlist[]
   priceAlerts         PriceAlert[]
@@ -137,6 +138,9 @@ model User {
   walletAccounts           WalletAccount[]
   cryptoDepositAddresses   CryptoDepositAddress[]
   cryptoDeposits           CryptoDeposit[]
+
+  // ─── E-Books (paid digital library, $1.50/book) ───────────────────────────
+  ebooks UserEBook[]
 }
 
 model Signal {
@@ -175,6 +179,7 @@ model Signal {
   user      User?            @relation(fields: [userId], references: [id])
   comments  SignalComment[]
   reactions SignalReaction[]
+  acceptedBy UserSignal[]
 
   @@index([userId])
   @@index([status])
@@ -1561,4 +1566,113 @@ model CryptoDeposit {
   updatedAt       DateTime  @updatedAt
 
   @@index([userId, createdAt])
+}
+
+// ─── E-Books: paid digital library ─────────────────────────────────────────
+// Each title costs $1.50 (one-time). Content is served ONLY to owners via the
+// authenticated /api/ebooks/:id endpoint; the in-app reader enforces DRM
+// (watermarks, blocked copy/selection/context-menu, FLAG_SECURE on Android).
+model EBook {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  author      String    @default("TOPTIER")
+  coverColor  String    @default("indigo") // cover theme key: indigo | cyan | emerald | amber | rose ...
+  emoji       String? // cover art (emoji as a lightweight cover; no image upload)
+  description String
+  category    String    @default("trading") // trading | strategy | psychology | guides
+  level       String    @default("beginner") // beginner | intermediate | advanced
+  price       Float     @default(1.5)
+  isActive    Boolean   @default(true)
+  content     String // markdown; chapters begin at lines starting with "## "
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  purchases UserEBook[]
+
+  @@index([isActive, category])
+}
+
+model UserEBook {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      EBook    @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, bookId])
+  @@index([userId])
+}
+
+// ─── Admin email broadcasts ────────────────────────────────────────────────────
+// A campaign is created up-front with a frozen snapshot of its recipients
+// (BroadcastRecipient), then drained in chunks by a resumable sender. This
+// exists because a single blocking request cannot reliably email a large list:
+// it would hit the platform's request timeout mid-send with no record of what
+// went out. Recipients are materialized up-front so the audience never shifts
+// under a running campaign, and each recipient row carries its own status so a
+// resumed send never double-sends.
+
+model BroadcastCampaign {
+  id          String    @id @default(cuid())
+  adminId     String
+  subject     String
+  body        String // plain text; blank lines become paragraphs
+  actionUrl   String?
+  actionLabel String?
+  audience    String    @default("all") // audience filter key (see broadcast service)
+  status      String    @default("queued") // queued | sending | paused | completed | cancelled
+  totalCount  Int       @default(0)
+  sentCount   Int       @default(0)
+  failedCount Int       @default(0)
+  lastError   String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  recipients BroadcastRecipient[]
+
+  @@index([status, createdAt])
+  @@index([adminId, createdAt])
+}
+
+model BroadcastRecipient {
+  id         String    @id @default(cuid())
+  campaignId String
+  campaign   BroadcastCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  email      String
+  status     String    @default("pending") // pending | sent | failed
+  error      String?
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([campaignId, email])
+  @@index([campaignId, status])
+  @@index([status])
+}
+
+// ─── Per-user accepted signals ────────────────────────────────────────────────
+// `Signal.userId` is a SINGLE nullable FK: it means "this signal belongs to
+// one user" and is what user-generated signals use. It cannot express "many
+// users accepted this platform signal" — the accept endpoint used to write
+// there, which let the first accepter lock the signal out of everyone else.
+//
+// This table is the real accept record. Outcome is deliberately NOT copied:
+// it is derived from the parent Signal at read time, so a resolving signal
+// updates every acceptor's history at once with no sync job to drift.
+
+model UserSignal {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signalId   String
+  signal     Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  acceptedAt DateTime @default(now())
+  closedAt   DateTime? // when the user stopped tracking it early (optional)
+
+  @@unique([userId, signalId])
+  @@index([signalId])
+  @@index([userId, acceptedAt])
 }

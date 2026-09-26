@@ -7,6 +7,7 @@ export { SignalEmail } from './SignalEmail'
 export { WelcomeEmail } from './WelcomeEmail'
 export { PasswordResetEmail } from './PasswordResetEmail'
 export { WeeklyReportEmail } from './WeeklyReportEmail'
+export { BroadcastEmail, parseBroadcastBody, toPlainText } from './BroadcastEmail'
 
 export { default as AlertEmailDefault } from './AlertEmail'
 export { default as NotificationEmailDefault } from './NotificationEmail'

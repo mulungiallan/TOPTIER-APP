@@ -43,6 +43,7 @@ export type Page =
   | 'profile'
   | 'monetization'
   | 'wallet'
+  | 'ebooks'
 
 export interface User {
   id: string

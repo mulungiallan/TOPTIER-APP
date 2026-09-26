@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Loader2, Eye, EyeOff, Fingerprint } from 'lucide-react'
+import { Loader2, Fingerprint } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { PoweredBy } from '@/components/branding/powered-by'
@@ -20,7 +21,6 @@ interface LoginFormProps {
 export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [forgotOpen, setForgotOpen] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
@@ -78,8 +78,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     }
   }
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleForgotPassword = async () => {
     const target = forgotEmail.trim()
     if (!target) {
       toast.error('Please enter your account email')
@@ -188,7 +187,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
                 </button>
               </div>
               {forgotOpen && (
-                <form onSubmit={handleForgotPassword} className="space-y-2 rounded-lg border p-3">
+                <div className="space-y-2 rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">
                     Enter your account email and we&apos;ll send a password reset link.
                   </p>
@@ -199,31 +198,32 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
                     onChange={(e) => setForgotEmail(e.target.value)}
                     disabled={sendingReset}
                     autoComplete="email"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleForgotPassword()
+                      }
+                    }}
                   />
-                  <Button type="submit" size="sm" className="w-full" disabled={sendingReset}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full"
+                    disabled={sendingReset}
+                    onClick={() => void handleForgotPassword()}
+                  >
                     {sendingReset ? <Loader2 className="size-3.5 animate-spin" /> : 'Send Reset Link'}
                   </Button>
-                </form>
+                </div>
               )}
-              <div className="relative">
-                <Input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
-                  autoComplete="current-password"
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
+              <PasswordInput
+                id="login-password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+                autoComplete="current-password"
+              />
             </div>
             <SocialButtons onSuccess={handleSocialSuccess} disabled={isLoading} />
           </CardContent>

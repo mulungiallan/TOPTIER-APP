@@ -16,9 +16,9 @@ export async function POST(request: NextRequest) {
 
     const { token, newPassword } = parsed.data
 
-    let payload: { purpose?: string; email?: string }
+    let payload: { purpose?: string; email?: string; tokenVersion?: number }
     try {
-      payload = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as { purpose?: string; email?: string }
+      payload = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as { purpose?: string; email?: string; tokenVersion?: number }
     } catch {
       return errorResponse('Invalid or expired reset token', 400)
     }
@@ -29,6 +29,13 @@ export async function POST(request: NextRequest) {
 
     const user = await db.user.findUnique({ where: { email: payload.email } })
     if (!user) return errorResponse('Account not found', 404)
+
+    // Single-use enforcement: the token captured the user's tokenVersion at
+    // issue time, and a successful reset increments it. So a second use of the
+    // same link (forwarded mailbox, shared inbox, proxy log) fails here.
+    if (typeof payload.tokenVersion === 'number' && payload.tokenVersion !== user.tokenVersion) {
+      return errorResponse('This reset link has already been used. Please request a new one.', 400)
+    }
 
     await db.user.update({
       where: { id: user.id },

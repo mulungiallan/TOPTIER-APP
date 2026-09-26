@@ -10,14 +10,29 @@ declare global {
 
 declare const self: WorkerGlobalScope;
 
+const OFFLINE_URL = "/offline.html";
+
 const serwist = new Serwist({
-  precacheEntries: self.__SW_MANIFEST,
+  // The branded offline page is precached alongside the build assets so it is
+  // guaranteed to be available even on a first-visit-then-lose-signal install.
+  precacheEntries: [...(self.__SW_MANIFEST ?? []), OFFLINE_URL],
   skipWaiting: true,
   clientsClaim: true,
-  // When offline, opening the app falls back to the cached app shell so the
-  // PWA still launches (data simply isn't refreshed until back online).
   precacheOptions: {
     navigateFallback: "/",
+  },
+  // Serves the offline page when a strategy fails to produce a response (no
+  // network, DNS failure, airplane mode). Serwist wires this into every
+  // runtime strategy via handlerDidError, so it ONLY fires after a genuine
+  // offline failure — the NetworkOnly navigation rule below still guarantees
+  // that an online app load always gets a fresh build, never a cached shell.
+  fallbacks: {
+    entries: [
+      {
+        url: OFFLINE_URL,
+        matcher: ({ request }) => request.mode === "navigate" || request.destination === "document",
+      },
+    ],
   },
   runtimeCaching: [
     // HTML document navigations MUST always hit the network. The app is loaded

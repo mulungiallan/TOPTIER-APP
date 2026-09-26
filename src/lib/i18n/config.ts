@@ -79,6 +79,7 @@ const page: Dict = {
   'page.stats': 'My Activity',
   'page.monetization': 'Monetization',
   'page.wallet': 'Wallet',
+  'page.ebooks': 'E-Books',
 }
 
 const en: Dict = {
@@ -116,6 +117,7 @@ const en: Dict = {
   'nav.admin': 'Admin Panel',
   'nav.monetization': 'Monetization',
   'nav.wallet': 'Wallet',
+  'nav.ebooks': 'E-Books',
   'section.trading': 'Trading',
   'section.social': 'Social',
   'section.ai': 'AI & Advanced',

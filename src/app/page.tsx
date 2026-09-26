@@ -71,6 +71,7 @@ const ProfilePage = dynamic(() => import('@/components/pages/profile').then(m =>
 const StatsPage = dynamic(() => import('@/components/pages/stats').then(m => m.StatsPage), { ssr: false })
 const MonetizationPage = dynamic(() => import('@/components/pages/monetization').then(m => m.MonetizationPage), { ssr: false })
 const WalletPage = dynamic(() => import('@/components/pages/wallet').then(m => m.WalletPage), { ssr: false })
+const EBooksPage = dynamic(() => import('@/components/pages/ebooks').then(m => m.EBooksPage), { ssr: false })
 
 const pageComponents: Record<Page, React.ReactNode> = {
   dashboard: <DashboardPage />,
@@ -113,49 +114,49 @@ const pageComponents: Record<Page, React.ReactNode> = {
   ugc: <UgcPolicyPage />,
   profile: <ProfilePage />,
   wallet: <WalletPage />,
+  ebooks: <EBooksPage />,
 }
 
 // ─── Landing Page ──────────────────────────────────────────────────────────────
 
-const TICKER = [
-  { sym: 'EURUSD', price: '1.0842', change: '+0.12%', up: true },
-  { sym: 'GBPUSD', price: '1.2671', change: '-0.08%', up: false },
-  { sym: 'BTCUSD', price: '104,232', change: '+2.41%', up: true },
-  { sym: 'ETHUSD', price: '3,892', change: '+1.73%', up: true },
-  { sym: 'XAUUSD', price: '2,418.50', change: '+0.34%', up: true },
-  { sym: 'USOIL', price: '78.42', change: '-1.12%', up: false },
-  { sym: 'SPX500', price: '5,481.2', change: '+0.29%', up: true },
-  { sym: 'NAS100', price: '19,778', change: '+0.55%', up: true },
-  { sym: 'USDJPY', price: '157.84', change: '+0.09%', up: true },
-  { sym: 'AUDUSD', price: '0.6619', change: '-0.04%', up: false },
+// Symbols shown as the skeleton while the first live quote loads. Only the
+// symbol is rendered — never a price or % change. This strip previously showed
+// hard-coded prices during load, which meant a visitor could read a fabricated
+// quote (e.g. "BTCUSD 104,232 +2.41%") that looked identical to real data.
+const TICKER_SYMBOLS = [
+  'EURUSD', 'GBPUSD', 'BTCUSD', 'ETHUSD', 'XAUUSD',
+  'USOIL', 'SPX500', 'NAS100', 'USDJPY', 'AUDUSD',
 ]
 
 function LiveTicker() {
   const { prices, loading } = useLiveMarket({ overview: true, refreshMs: 30_000 })
-  const items = prices.length > 0
-    ? prices.map(p => ({
-        sym: p.symbol.replace('/USD', 'USD').replace('BINANCE:', ''),
-        price: p.price > 1000 ? p.price.toLocaleString('en-US', { maximumFractionDigits: 0 }) : p.price.toFixed(p.price < 1 ? 4 : 2),
-        change: `${p.changePercent >= 0 ? '+' : ''}${p.changePercent.toFixed(2)}%`,
-        up: p.changePercent >= 0,
-      }))
-    : TICKER
 
-  if (loading && prices.length === 0) {
+  if (prices.length === 0) {
     return (
       <div className="border-b border-border bg-white/70 dark:bg-[#0f2a4a]/60 backdrop-blur-sm overflow-hidden">
-        <div className="flex whitespace-nowrap animate-[ticker_40s_linear_infinite] py-2">
-          {TICKER.map((t, i) => (
-            <span key={`${t.sym}-${i}`} className="inline-flex items-center gap-2 px-5 text-xs font-mono">
-              <span className="font-semibold text-foreground">{t.sym}</span>
-              <span className="text-muted-foreground">{t.price}</span>
-              <span className={t.up ? 'text-profit' : 'text-loss'}>{t.change}</span>
+        <div className="flex whitespace-nowrap py-2" aria-busy="true" aria-label="Loading live market prices">
+          {[...TICKER_SYMBOLS, ...TICKER_SYMBOLS].map((sym, i) => (
+            <span key={`${sym}-${i}`} className="inline-flex items-center gap-2 px-5 text-xs font-mono">
+              <span className="font-semibold text-foreground/70">{sym}</span>
+              <span className="h-3 w-12 rounded bg-muted/40 animate-pulse" />
             </span>
           ))}
         </div>
+        {loading ? null : (
+          <p className="px-5 pb-1.5 text-[10px] text-muted-foreground">
+            Live prices unavailable right now.
+          </p>
+        )}
       </div>
     )
   }
+
+  const items = prices.map(p => ({
+    sym: p.symbol.replace('/USD', 'USD').replace('BINANCE:', ''),
+    price: p.price > 1000 ? p.price.toLocaleString('en-US', { maximumFractionDigits: 0 }) : p.price.toFixed(p.price < 1 ? 4 : 2),
+    change: `${p.changePercent >= 0 ? '+' : ''}${p.changePercent.toFixed(2)}%`,
+    up: p.changePercent >= 0,
+  }))
 
   return (
     <div className="border-b border-border bg-white/70 dark:bg-[#0f2a4a]/60 backdrop-blur-sm overflow-hidden">
@@ -650,7 +651,7 @@ export default function Home() {
     const pageParam = params.get('page')
     if (pageParam && isAuthenticated) {
       // Validate the page param against known Page IDs (light validation)
-      const valid: string[] = ['dashboard', 'signals', 'screenshot', 'chat-analyser', 'watchlist', 'alerts', 'calendar', 'news', 'performance', 'subscriptions', 'pricing', 'pricing-dashboard', 'social', 'leaderboards', 'competitions', 'messages', 'groups', 'copy-trading', 'paper-trading', 'trading-bot', 'backtesting', 'ai-predictions', 'patterns', 'strategy-builder', 'tradingview', 'settings', 'community', 'education', 'support', 'profile', 'stats', 'monetization', 'wallet']
+      const valid: string[] = ['dashboard', 'signals', 'screenshot', 'chat-analyser', 'watchlist', 'alerts', 'calendar', 'news', 'performance', 'subscriptions', 'pricing', 'pricing-dashboard', 'social', 'leaderboards', 'competitions', 'messages', 'groups', 'copy-trading', 'paper-trading', 'trading-bot', 'backtesting', 'ai-predictions', 'patterns', 'strategy-builder', 'tradingview', 'settings', 'community', 'education', 'support', 'profile', 'stats', 'monetization', 'wallet', 'ebooks']
       if (valid.includes(pageParam) && pageParam !== currentPage) {
         setPage(pageParam as any)
       }

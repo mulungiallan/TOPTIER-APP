@@ -9,6 +9,8 @@ import { hasSignalsAccess, isAdminUser, SIGNALS_PAYWALL_MESSAGE, type Entitlemen
 import type { Signal } from '@/generated/prisma'
 
 interface SignalWithLive extends Signal {
+  /** Whether THIS user has accepted the signal (from UserSignal, not Signal.userId). */
+  accepted: boolean
   live: {
     price: number
     change: number
@@ -106,6 +108,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ─── Per-user accepted flag ─────────────────────────────────────────
+    // The UI's Accept button reads this, so it has to be real. One batched
+    // query for the whole feed (never N+1) — the accept record lives in
+    // UserSignal, NOT in Signal.userId, which is a single-owner FK.
+    const feedIds = signals.map(s => s.id)
+    const acceptedRows = feedIds.length
+      ? await db.userSignal.findMany({
+          where: { userId, signalId: { in: feedIds } },
+          select: { signalId: true },
+        })
+      : []
+    const acceptedIds = new Set(acceptedRows.map(r => r.signalId))
+
     // ─── Live price overlay ──────────────────────────────────────────────
     // Attach the current market price (15s-cached) to every returned signal so
     // the UI can show live entry-vs-now moves, distance to TP/SL, and honest
@@ -116,6 +131,7 @@ export async function GET(request: NextRequest) {
       const lp = priceMap.get(s.asset)
       return {
         ...s,
+        accepted: acceptedIds.has(s.id),
         live: lp
           ? {
               price: lp.price,

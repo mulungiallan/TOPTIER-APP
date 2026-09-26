@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
+import { EBooksAdmin } from '@/components/admin/ebooks-admin'
+import { BroadcastEmailAdmin } from '@/components/admin/broadcast-email'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -1318,6 +1320,7 @@ const INCOME_SOURCE_LABELS: Record<string, string> = {
   wallet_fund: 'Wallet top-ups',
   mentorship_physical: '1-on-1 Mentorship (in person)',
   mentorship_online: '1-on-1 Mentorship (online)',
+  ebook: 'E-Books',
 }
 
 function ExpenseDialog({ open, onOpenChange, expense, onSaved }: {
@@ -2053,6 +2056,8 @@ export default function AdminPage() {
           <TabsTrigger value="revenue" className="gap-1.5 text-xs">Ad Revenue</TabsTrigger>
           <TabsTrigger value="analyses" className="gap-1.5 text-xs">Analyses</TabsTrigger>
           <TabsTrigger value="content" className="gap-1.5 text-xs">Coupons &amp; Tickets</TabsTrigger>
+          <TabsTrigger value="ebooks" className="gap-1.5 text-xs">E-Books</TabsTrigger>
+          <TabsTrigger value="email" className="gap-1.5 text-xs">Email</TabsTrigger>
           <TabsTrigger value="audit" className="gap-1.5 text-xs">Activity</TabsTrigger>
           <TabsTrigger value="system" className="gap-1.5 text-xs">System</TabsTrigger>
           <TabsTrigger value="ai" className="gap-1.5 text-xs">AI</TabsTrigger>
@@ -2101,6 +2106,7 @@ export default function AdminPage() {
                   wallet_fund: { label: 'Wallet Top-ups', color: '#06b6d4' },
                   mentorship_physical: { label: 'Mentorship (in person)', color: '#6366f1' },
                   mentorship_online: { label: 'Mentorship (online)', color: '#0ea5e9' },
+                  ebook: { label: 'E-Books', color: '#a855f7' },
                   copy_fee: { label: 'Copy Trading Fees', color: '#8b5cf6' },
                   bot_profit_share: { label: 'Bot Profit Share', color: '#f59e0b' },
                   referral_revenue: { label: 'Referral Revenue', color: '#06b6d4' },
@@ -3413,6 +3419,14 @@ export default function AdminPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+      <TabsContent value="ebooks" className="space-y-4 mt-4">
+          <EBooksAdmin />
+        </TabsContent>
+
+        <TabsContent value="email" className="space-y-4 mt-4">
+          <BroadcastEmailAdmin />
         </TabsContent>
 
       </Tabs>

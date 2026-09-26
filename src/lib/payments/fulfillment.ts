@@ -90,6 +90,28 @@ export async function fulfillPendingPayment(
         ? currentUser.mentorshipExpiresAt
         : now
     endDate = new Date(base.getTime() + 60 * 24 * 60 * 60 * 1000)
+  } else if (planType === 'ebook') {
+    // One-time e-book purchase → unlock the title for this user (idempotent by
+    // the unique [userId, bookId] pair). The book id travels in the purchase
+    // description as |book:<id> (set by /api/payments/init).
+    const bookMatch = transaction.description?.match(/\|book:([A-Za-z0-9-]+)/)
+    if (bookMatch) {
+      const book = await db.eBook
+        .findFirst({ where: { id: bookMatch[1], isActive: true }, select: { id: true, title: true } })
+        .catch((err: unknown) => {
+          console.warn('[Fulfillment] E-book lookup failed:', err instanceof Error ? err.message : err)
+          return null
+        })
+      if (book) {
+        await db.userEBook.upsert({
+          where: { userId_bookId: { userId: transaction.userId, bookId: book.id } },
+          create: { userId: transaction.userId, bookId: book.id },
+          update: {},
+        }).catch((err: unknown) => {
+          console.warn('[Fulfillment] Failed to unlock e-book:', err instanceof Error ? err.message : err)
+        })
+      }
+    }
   } else if (planType === 'premium_daily') {
     endDate = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
   } else if (planType === 'premium_weekly') {
@@ -181,12 +203,16 @@ export async function fulfillPendingPayment(
       ? 'Trading Bot Access Active'
       : planType === 'mentorship_physical' || planType === 'mentorship_online'
       ? 'Mentorship Program Active'
+      : planType === 'ebook'
+      ? 'E-Book Unlocked'
       : 'Payment Confirmed'
   const message =
     planType === 'remove_ads'
       ? 'Ads have been removed app-wide. Enjoy an ad-free experience!'
       : planType === 'mentorship_physical' || planType === 'mentorship_online'
       ? `Your 1-on-1 mentorship is active until ${endDate?.toLocaleDateString()}. We will reach out to schedule your first session!`
+      : planType === 'ebook'
+      ? `Your e-book is unlocked — read it from the E-Books section. Thank you for your purchase!`
       : `Your purchase is now active${endDate ? ` until ${endDate.toLocaleDateString()}` : ''}!`
 
   await notifyUser(transaction.userId, {

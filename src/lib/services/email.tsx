@@ -12,6 +12,8 @@ import {
   PasswordResetEmail,
   WeeklyReportEmail,
   NotificationEmail,
+  BroadcastEmail,
+  toPlainText,
 } from '@/components/emails'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
@@ -24,11 +26,23 @@ export interface EmailOptions {
   to: string
   subject: string
   html: string
+  /** Plain-text alternative. Strongly recommended — improves deliverability. */
+  text?: string
   from?: string
 }
 
 export class EmailService {
   private from = EMAIL_FROM
+
+  /**
+   * Broadcast action links are admin-entered, so they may be absolute or a
+   * site-relative path. Normalize both to an absolute URL — a relative href
+   * in an email resolves against the mail client, not our domain.
+   */
+  private absoluteUrl(url: string): string {
+    if (/^https?:\/\//i.test(url)) return url
+    return `${APP_URL}${url.startsWith('/') ? '' : '/'}${url}`
+  }
 
   /**
    * Internal: send an email via Resend.
@@ -50,6 +64,7 @@ export class EmailService {
         to: options.to,
         subject: options.subject,
         html: options.html,
+        ...(options.text ? { text: options.text } : {}),
       })
 
       if (error) {
@@ -91,14 +106,14 @@ export class EmailService {
    */
   async sendNotificationEmail(
     to: string,
-    notification: { title: string; message: string; actionUrl?: string }
+    notification: { title: string; message: string; actionUrl?: string; actionLabel?: string }
   ) {
     const html = await render(
       <NotificationEmail
         title={notification.title}
         message={notification.message}
         actionUrl={notification.actionUrl}
-        actionLabel={notification.actionUrl ? 'View Now' : undefined}
+        actionLabel={notification.actionUrl ? notification.actionLabel || 'View Now' : undefined}
         unsubscribeUrl={`${APP_URL}/settings`}
       />
     )
@@ -107,6 +122,38 @@ export class EmailService {
       to,
       subject: notification.title,
       html,
+    })
+  }
+
+  /**
+   * Admin broadcast announcement. The body is plain text with blank-line
+   * paragraph breaks; the template renders real paragraphs and a text/plain
+   * alternative leg is included (bulletproof formatting + deliverability).
+   */
+  async sendBroadcastEmail(
+    to: string,
+    broadcast: { subject: string; body: string; actionUrl?: string; actionLabel?: string }
+  ) {
+    const actionUrl = broadcast.actionUrl
+      ? this.absoluteUrl(broadcast.actionUrl)
+      : undefined
+    const actionLabel = actionUrl ? broadcast.actionLabel || 'View Now' : undefined
+
+    const html = await render(
+      <BroadcastEmail
+        subject={broadcast.subject}
+        body={broadcast.body}
+        actionUrl={actionUrl}
+        actionLabel={actionLabel}
+        unsubscribeUrl={`${APP_URL}/settings`}
+      />
+    )
+
+    return this.sendEmail({
+      to,
+      subject: broadcast.subject,
+      html,
+      text: toPlainText(broadcast.subject, broadcast.body, actionUrl, actionLabel),
     })
   }
 

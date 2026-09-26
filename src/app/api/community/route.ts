@@ -58,31 +58,54 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { action } = body
 
-    // Accept a signal — attributes it to the user for their performance tracking
-    if (action === 'accept') {
+    if (action === 'accept' || action === 'unaccept') {
       const { signalId } = body
       if (!signalId) {
         return errorResponse('signalId is required', 400)
       }
 
-      // Verify signal exists and is unassigned
-      const signal = await db.signal.findUnique({ where: { id: signalId } })
+      // Accept / un-accept a signal.
+      //
+      // This records a row in UserSignal, a many-to-many join, so ANY number of
+      // users can accept the same platform signal. It deliberately does NOT
+      // write `Signal.userId`: that column is a single nullable FK meaning
+      // "this signal belongs to one user" (used by user-generated signals), and
+      // writing it here let the first accepter lock the signal out of every
+      // other user with a 403.
+      //
+      // The outcome is not copied here. /api/performance and /api/signals
+      // derive it from the parent Signal, so a resolving signal updates every
+      // acceptor's history at once.
+      const signal = await db.signal.findUnique({
+        where: { id: signalId },
+        select: { id: true, status: true },
+      })
       if (!signal) {
         return errorResponse('Signal not found', 404)
       }
-      if (signal.userId && signal.userId !== userId) {
-        return errorResponse('Signal is already assigned to another user', 403)
-      }
-      if (signal.userId === userId) {
-        return successResponse(signal) // already claimed by this user
+
+      if (action === 'unaccept') {
+        await db.userSignal.deleteMany({ where: { userId, signalId } })
+        return successResponse({ signalId, accepted: false })
       }
 
-      const updatedSignal = await db.signal.update({
-        where: { id: signalId },
-        data: { userId },
+      // Only still-open signals can be accepted. Accepting an already-resolved
+      // signal would silently add a guaranteed historical result to a user's
+      // record, inflating their stats with something they never traded.
+      if (['hit_tp', 'hit_sl', 'expired'].includes(signal.status)) {
+        return errorResponse('This signal has already resolved and can no longer be accepted.', 409)
+      }
+
+      // upsert keyed on the unique (userId, signalId) index makes a double-tap
+      // or a retried request idempotent instead of throwing.
+      const row = await db.userSignal.upsert({
+        where: { userId_signalId: { userId, signalId } },
+        create: { userId, signalId },
+        update: {},
+        select: { id: true, acceptedAt: true },
       })
 
-      return successResponse(updatedSignal)
+      return successResponse({ signalId, accepted: true, acceptedAt: row.acceptedAt })
     }
 
     // Add a comment

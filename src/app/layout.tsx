@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
+import { SplashScreen } from "@/components/brand/splash-screen";
 import { ClientProviders } from "./client-providers";
 import "./globals.css";
 
@@ -187,6 +188,7 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <ClientProviders>{children}</ClientProviders>
+          <SplashScreen />
           <Toaster richColors position="top-right" />
           <ServiceWorkerRegistrar />
         </ThemeProvider>

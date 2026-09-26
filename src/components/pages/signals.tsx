@@ -51,6 +51,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import { NativeAd } from '@/components/ads'
 
 // ─── Types ────────────────────────────────────────────────────────────────────────
@@ -445,6 +446,7 @@ function CustomizeSignalDialog({
 function SignalCard({
   signal,
   onAccept,
+  onUnaccept,
   onIgnore,
   onThumbsUp,
   onThumbsDown,
@@ -454,6 +456,7 @@ function SignalCard({
 }: {
   signal: MockSignal
   onAccept: (id: string) => void
+  onUnaccept: (id: string) => void
   onIgnore: (id: string) => void
   onThumbsUp: (id: string) => void
   onThumbsDown: (id: string) => void
@@ -710,6 +713,14 @@ function SignalCard({
                   <Check className="mr-0.5 size-2.5" />
                   Accepted
                 </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[11px] text-muted-foreground"
+                  onClick={() => onUnaccept(signal.id)}
+                >
+                  Undo
+                </Button>
               </>
             )}
             <div className="ml-auto flex items-center gap-1">
@@ -1010,11 +1021,30 @@ export function SignalsPage() {
     setSignals((prev) =>
       prev.map((s) => (s.id === id ? { ...s, accepted: true } : s))
     )
-    // Call API in background
     try {
       await api.post('/community', { signalId: id, action: 'accept' })
-    } catch {
-      // Silently fail - local state already updated
+    } catch (err) {
+      // Roll the optimistic update back. The old code swallowed this silently,
+      // so a rejected accept still rendered as "Accepted" and the user had no
+      // way to know their performance record was never updated.
+      setSignals((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, accepted: false } : s))
+      )
+      toast.error(err instanceof Error ? err.message : 'Could not accept this signal')
+    }
+  }
+
+  const handleUnaccept = async (id: string) => {
+    setSignals((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, accepted: false } : s))
+    )
+    try {
+      await api.post('/community', { signalId: id, action: 'unaccept' })
+    } catch (err) {
+      setSignals((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, accepted: true } : s))
+      )
+      toast.error(err instanceof Error ? err.message : 'Could not remove this signal')
     }
   }
 
@@ -1309,6 +1339,7 @@ export function SignalsPage() {
               <SignalCard
                 signal={signal}
                 onAccept={handleAccept}
+                onUnaccept={handleUnaccept}
                 onIgnore={handleIgnore}
                 onThumbsUp={handleThumbsUp}
                 onThumbsDown={handleThumbsDown}

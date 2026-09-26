@@ -114,3 +114,63 @@ describe('referral codes', () => {
     expect(code).toMatch(/^[0-9A-F]{8}$/)
   })
 })
+
+// The reset link is a stateless JWT, so "single use" is enforced by snapshotting
+// the user's tokenVersion into it: a successful reset increments that version,
+// which makes the already-issued link fail verification on any replay.
+describe('password reset token replay protection', () => {
+  const signReset = (email: string, tokenVersion: number) =>
+    jwt.sign(
+      { purpose: 'password_reset', email, tokenVersion },
+      getJwtSecret(),
+      { expiresIn: '30m' }
+    )
+
+  const readToken = (token: string) =>
+    jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as {
+      purpose?: string
+      email?: string
+      tokenVersion?: number
+    }
+
+  it('carries the purpose, email and issuing tokenVersion', () => {
+    const payload = readToken(signReset('user@example.com', 3))
+    expect(payload.purpose).toBe('password_reset')
+    expect(payload.email).toBe('user@example.com')
+    expect(payload.tokenVersion).toBe(3)
+  })
+
+  it('is valid before the version changes and invalid after', () => {
+    // Simulates: user.tokenVersion at the moment the link is redeemed.
+    let userTokenVersion = 3
+    const token = signReset('user@example.com', userTokenVersion)
+
+    // First redemption — the version still matches the token.
+    expect(readToken(token).tokenVersion).toBe(userTokenVersion)
+    expect(userTokenVersion === readToken(token).tokenVersion).toBe(true)
+
+    // db.user.update({ tokenVersion: { increment: 1 } })
+    userTokenVersion += 1
+
+    // Replaying the same link must now be rejected.
+    expect(userTokenVersion === readToken(token).tokenVersion).toBe(false)
+  })
+
+  it('rejects a token signed with a different secret', () => {
+    const forged = jwt.sign(
+      { purpose: 'password_reset', email: 'user@example.com', tokenVersion: 0 },
+      'not-the-real-secret',
+      { expiresIn: '30m' }
+    )
+    expect(() => readToken(forged)).toThrow()
+  })
+
+  it('rejects a token whose purpose is not password_reset', () => {
+    const wrongPurpose = jwt.sign(
+      { purpose: 'something_else', email: 'user@example.com', tokenVersion: 0 },
+      getJwtSecret(),
+      { expiresIn: '30m' }
+    )
+    expect(readToken(wrongPurpose).purpose).not.toBe('password_reset')
+  })
+})

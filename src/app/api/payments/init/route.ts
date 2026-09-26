@@ -25,6 +25,7 @@ const PLANS: Record<string, { price: number; currency: string }> = {
   remove_ads: { price: 5, currency: 'USD' },
   mentorship_physical: { price: 150, currency: 'USD' },
   mentorship_online: { price: 100, currency: 'USD' },
+  ebook: { price: 1.5, currency: 'USD' },
 }
 
 const productLabels: Record<string, string> = {
@@ -39,6 +40,7 @@ const productLabels: Record<string, string> = {
     remove_ads: 'Remove Ads (lifetime)',
     mentorship_physical: '1-on-1 Mentorship (in person, 2 months)',
     mentorship_online: '1-on-1 Mentorship (online, 2 months)',
+    ebook: 'E-Book',
   }
 
   function productLabel(planType: string): string {
@@ -139,6 +141,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // E-books: the specific title comes from metadata.book (its slug). It must
+    // exist and be active; the book id is folded into the transaction
+    // description so fulfillment can unlock exactly that title.
+    let ebookId: string | null = null
+    if (planType === 'ebook') {
+      const slug = metadata?.book
+      if (!slug) {
+        return errorResponse('Please select the e-book you want to buy.', 400)
+      }
+      const book = await db.eBook.findUnique({
+        where: { slug },
+        select: { id: true, isActive: true },
+      })
+      if (!book || !book.isActive) {
+        return errorResponse('E-book not found or no longer available.', 404)
+      }
+      ebookId = book.id
+    }
+    const bookTag = ebookId ? `|book:${ebookId}` : ''
+
     // Determine currency based on user country.
     // Fetch live exchange rates from a free API; fall back to approximate
     // rates if the API is unavailable (never silently overcharge).
@@ -167,7 +189,7 @@ export async function POST(request: NextRequest) {
         planType,
         paymentProvider: provider,
         status: 'pending',
-        description: `TOPTIER ${productLabel(planType)}${discount > 0 ? ` (discount: $${discount.toFixed(2)})` : ''}${couponUsed ? `|coupon:${couponUsed}` : ''}`,
+        description: `TOPTIER ${productLabel(planType)}${discount > 0 ? ` (discount: $${discount.toFixed(2)})` : ''}${couponUsed ? `|coupon:${couponUsed}` : ''}${bookTag}`,
       },
     })
 
