@@ -104,6 +104,7 @@ export function applyAdSettings(s: AdSettings): void {
 // "premium_with_ads" users still see ads unless they buy the ad-removal flag.
 export function shouldShowAds(user: User | null): boolean {
   if (!user) return false
+  if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'owner') return false
   if (user.adsRemoved) return false
   const tier = (user.subscriptionTier || '').toLowerCase()
   const plan = (user.plan || '').toLowerCase()

@@ -32,7 +32,7 @@ export async function isReferralUnlocked(userId: string): Promise<boolean> {
     select: { role: true, referredBy: true },
   })
   if (!user) return false
-  if (user.role === 'admin' || user.role === 'super_admin') return true
+  if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'owner') return true
   if (!user.referredBy) return false
 
   const lockCode = getReferralLockCode()

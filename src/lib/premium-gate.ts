@@ -19,7 +19,7 @@ export async function isPremiumActive(userId: string): Promise<boolean> {
     },
   })
   if (!user) return false
-  if (user.role === 'admin' || user.role === 'super_admin') return true
+  if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'owner') return true
 
   const tier = user.subscriptionTier
   if (tier === 'lifetime') return true

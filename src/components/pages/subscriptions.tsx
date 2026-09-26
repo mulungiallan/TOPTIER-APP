@@ -36,6 +36,7 @@ import {
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { PAYMENTS_ENABLED } from '@/lib/flags'
+import { isAdminRole } from '@/lib/admin-permissions'
 import { Capacitor } from '@capacitor/core'
 import { purchasePlaySubscription, restorePlayPurchases, isNativeBillingAvailable } from '@/lib/play-billing'
 
@@ -246,15 +247,17 @@ export function SubscriptionsPage() {
   const daysRemaining = 18
 
   // Which feature purchases the user already holds (mirrors entitlement logic).
+  // Admins/owner get every feature for free — the paid rules only apply to users.
+  const isAdmin = isAdminRole(user?.role || '')
   const legacyAccess =
     currentPlan === 'premium' || currentPlan === 'lifetime' || currentPlan === 'pro' ||
     currentPlan === 'enterprise' || currentPlan === 'unlimited'
   const trialActive = currentPlan === 'trial'
   const signalsExpiry = user?.signalsExpiresAt ? new Date(user.signalsExpiresAt).getTime() : 0
   const botExpiry = user?.botExpiresAt ? new Date(user.botExpiresAt).getTime() : 0
-  const hasSignals = legacyAccess || trialActive || (!!user?.signalsUnlocked && signalsExpiry > Date.now())
-  const hasBot = legacyAccess || trialActive || botExpiry > Date.now()
-  const hasAds = !!user?.adsRemoved
+  const hasSignals = isAdmin || legacyAccess || trialActive || (!!user?.signalsUnlocked && signalsExpiry > Date.now())
+  const hasBot = isAdmin || legacyAccess || trialActive || botExpiry > Date.now()
+  const hasAds = isAdmin || !!user?.adsRemoved
 
   // Fetch subscription data on mount
   const fetchSubscriptions = useCallback(async () => {

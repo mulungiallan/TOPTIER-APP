@@ -29,7 +29,7 @@ export interface EntitlementRow {
 }
 
 export function isAdminUser(u: EntitlementRow): boolean {
-  return u.role === 'admin' || u.role === 'super_admin'
+  return u.role === 'admin' || u.role === 'super_admin' || u.role === 'owner'
 }
 
 function isActiveEndDate(d?: Date | null): boolean {
