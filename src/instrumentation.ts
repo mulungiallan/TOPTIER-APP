@@ -67,9 +67,9 @@ export async function register() {
     // Prisma client), and any failure is logged and swallowed so seeding can
     // never take the server down.
     const seeds: Array<[string, () => Promise<unknown>]> = [
-      ["ensure-packages", () => import("../../scripts/ensure-packages")],
-      ["ensure-tickers", () => import("../../scripts/ensure-tickers")],
-      ["ensure-ebooks", () => import("../../scripts/ensure-ebooks")],
+      ["ensure-packages", () => import("@scripts/ensure-packages")],
+      ["ensure-tickers", () => import("@scripts/ensure-tickers")],
+      ["ensure-ebooks", () => import("@scripts/ensure-ebooks")],
     ];
     for (const [name, load] of seeds) {
       try {
