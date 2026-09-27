@@ -10,21 +10,49 @@ export async function register() {
     // only then exit. A hard timeout prevents hung shutdowns.
     const { db } = await import("./lib/db");
     const { closeSocketServer } = await import("./lib/socket-server");
+    const { rehashPassword, verifyPassword } = await import("./lib/auth");
 
     // Self-heal: keep the app admin account elevated. Railway's start command
     // can drift from repo config, so this runs inside the server process at
     // every boot to guarantee admin@toptier.app holds the super_admin role.
+    //
+    // It also syncs the PASSWORD from ADMIN_PASSWORD. Previously this block
+    // only fixed the role, so the admin account kept whatever password it was
+    // last given locally while the env var sat unused - which meant
+    // scripts/ensure-admin.js (the only thing that read ADMIN_PASSWORD) never
+    // had any effect in production, because Railway's deployed start command
+    // omits the ensure-*.js chain entirely. Result: admin logins returned 403.
     try {
       const adminUser = await db.user.findUnique({ where: { email: "admin@toptier.app" } });
-      if (adminUser && adminUser.role !== "super_admin") {
-        const updated = await db.user.update({
-          where: { id: adminUser.id },
-          data: { role: "super_admin", isEmailVerified: true },
-        });
-        console.log(`[self-heal] elevated admin role to ${updated.role}`);
+      if (adminUser) {
+        const data: { role?: string; isEmailVerified?: boolean; password?: string; tokenVersion?: number } = {};
+        if (adminUser.role !== "super_admin") {
+          data.role = "super_admin";
+          data.isEmailVerified = true;
+        }
+        if (process.env.ADMIN_PASSWORD) {
+          // Only rewrite the hash when it genuinely differs, so a healthy boot
+          // does not mutate the row (and re-salting) on every restart.
+          const matches = await verifyPassword(process.env.ADMIN_PASSWORD, adminUser.password);
+          if (!matches) {
+            data.password = rehashPassword(process.env.ADMIN_PASSWORD);
+            // Existing sessions were minted against the old credential; force
+            // re-issue so a rotated password cannot leave stale tokens valid.
+            data.tokenVersion = (adminUser.tokenVersion ?? 0) + 1;
+          }
+        }
+
+        if (Object.keys(data).length > 0) {
+          const updated = await db.user.update({ where: { id: adminUser.id }, data });
+          console.log(
+            `[self-heal] admin@toptier.app updated (role=${updated.role}, passwordSync=${Boolean(data.password)})`
+          );
+        }
+      } else {
+        console.warn("[self-heal] admin@toptier.app not found - run scripts/ensure-admin.js");
       }
     } catch (err) {
-      console.warn("[self-heal] admin elevation check skipped:", (err as Error).message);
+      console.warn("[self-heal] admin reconciliation skipped:", (err as Error).message);
     }
 
     let shuttingDown = false;
