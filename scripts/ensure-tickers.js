@@ -36,8 +36,9 @@ const TICKERS = [
   { symbol: 'MSFT', name: 'Microsoft Corp.', category: 'stocks', priority: 82 },
 ]
 
-async function main() {
-  const prisma = new PrismaClient()
+async function main(client) {
+  const prisma = client ?? new PrismaClient()
+  const ownsClient = !client
   try {
     for (const t of TICKERS) {
       await prisma.tickerSymbol.upsert({
@@ -49,11 +50,17 @@ async function main() {
     const count = await prisma.tickerSymbol.count()
     console.log(`[ensure-tickers] ${TICKERS.length} tickers synced (${count} total in DB).`)
   } finally {
-    await prisma.$disconnect()
+    if (ownsClient) await prisma.$disconnect()
   }
 }
 
-main().catch((e) => {
-  console.error('[ensure-tickers] failed:', e)
-  process.exit(1)
-})
+module.exports = { main }
+
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((e) => {
+      console.error('[ensure-tickers] failed:', e)
+      process.exit(1)
+    })
+}

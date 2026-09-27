@@ -103,8 +103,12 @@ const LEGACY_NAMES = [
   'Enterprise Annual',
 ]
 
-async function main() {
-  const prisma = new PrismaClient()
+// `client` lets the Next.js boot hook (src/instrumentation.ts) run this against
+// the app's existing Prisma instance instead of opening a second connection
+// pool. Falls back to a standalone client for direct `node scripts/...` use.
+async function main(client) {
+  const prisma = client ?? new PrismaClient()
+  const ownsClient = !client
 
   try {
     const legacy = await prisma.package.updateMany({
@@ -145,11 +149,15 @@ async function main() {
 
     console.log('[ensure-packages] Package catalog synced.')
   } finally {
-    await prisma.$disconnect()
+    if (ownsClient) await prisma.$disconnect()
   }
 }
 
-main().then(() => process.exit(0)).catch((err) => {
-  console.error('[ensure-packages] FAILED:', err)
-  process.exit(1)
-})
+module.exports = { main }
+
+if (require.main === module) {
+  main().then(() => process.exit(0)).catch((err) => {
+    console.error('[ensure-packages] FAILED:', err)
+    process.exit(1)
+  })
+}

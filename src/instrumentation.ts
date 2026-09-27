@@ -55,6 +55,37 @@ export async function register() {
       console.warn("[self-heal] admin reconciliation skipped:", (err as Error).message);
     }
 
+    // Seed the content catalogs at boot.
+    //
+    // Railway's deployed start command omits the whole ensure-*.js chain (the
+    // service dashboard overrides railway.toml), so Package, TickerSymbol and
+    // EBook stayed empty in production - the subscriptions catalog and the
+    // e-books section both rendered nothing.
+    //
+    // The scripts are loaded with a runtime `createRequire` rather than a
+    // static import on purpose: `scripts/` is copied into the image and the
+    // start command invokes these files directly, but statically importing
+    // them would make webpack pull a second copy of the generated Prisma
+    // client into the server bundle. Each script is idempotent, receives the
+    // app's existing `db` (no second connection pool), and any failure is
+    // logged and swallowed so seeding can never take the server down.
+    try {
+      const { createRequire } = await import("node:module");
+      const nodeRequire = createRequire(`${process.cwd()}/package.json`);
+      for (const name of ["ensure-packages", "ensure-tickers", "ensure-ebooks"]) {
+        try {
+          const mod = nodeRequire(`./scripts/${name}.js`) as {
+            main: (client: unknown) => Promise<void>;
+          };
+          await mod.main(db);
+        } catch (err) {
+          console.warn(`[boot] ${name} failed:`, (err as Error).message);
+        }
+      }
+    } catch (err) {
+      console.warn("[boot] catalog seed step skipped:", (err as Error).message);
+    }
+
     let shuttingDown = false;
     const shutdown = async (signal: string) => {
       if (shuttingDown) return;
