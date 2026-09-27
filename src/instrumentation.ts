@@ -62,28 +62,27 @@ export async function register() {
     // EBook stayed empty in production - the subscriptions catalog and the
     // e-books section both rendered nothing.
     //
-    // The scripts are loaded with a runtime `createRequire` rather than a
-    // static import on purpose: `scripts/` is copied into the image and the
-    // start command invokes these files directly, but statically importing
-    // them would make webpack pull a second copy of the generated Prisma
-    // client into the server bundle. Each script is idempotent, receives the
-    // app's existing `db` (no second connection pool), and any failure is
-    // logged and swallowed so seeding can never take the server down.
-    try {
-      const { createRequire } = await import("node:module");
-      const nodeRequire = createRequire(`${process.cwd()}/package.json`);
-      for (const name of ["ensure-packages", "ensure-tickers", "ensure-ebooks"]) {
-        try {
-          const mod = nodeRequire(`./scripts/${name}.js`) as {
-            main: (client: unknown) => Promise<void>;
-          };
-          await mod.main(db);
-        } catch (err) {
-          console.warn(`[boot] ${name} failed:`, (err as Error).message);
-        }
+    // Each script is idempotent, receives the app's existing `db` (so no
+    // second connection pool and no bundled duplicate of the generated
+    // Prisma client), and any failure is logged and swallowed so seeding can
+    // never take the server down.
+    const seeds: Array<[string, () => Promise<unknown>]> = [
+      ["ensure-packages", () => import("../../scripts/ensure-packages")],
+      ["ensure-tickers", () => import("../../scripts/ensure-tickers")],
+      ["ensure-ebooks", () => import("../../scripts/ensure-ebooks")],
+    ];
+    for (const [name, load] of seeds) {
+      try {
+        const mod = (await load()) as {
+          main?: (client: unknown) => Promise<void>;
+          default?: { main: (client: unknown) => Promise<void> };
+        };
+        const run = mod.main ?? mod.default?.main;
+        if (!run) throw new Error("module did not export main()");
+        await run(db);
+      } catch (err) {
+        console.warn(`[boot] ${name} failed:`, (err as Error).message);
       }
-    } catch (err) {
-      console.warn("[boot] catalog seed step skipped:", (err as Error).message);
     }
 
     let shuttingDown = false;
