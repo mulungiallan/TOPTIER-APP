@@ -2,6 +2,21 @@
 // server-side + client-side crash reporting. @sentry/nextjs is a dependency.
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // FIRST THING, before anything opens the database. A full volume breaks
+    // every write in the app (login, signup, screenshot analysis, signals) and
+    // the row-level retention job cannot fix it, because deleting rows frees
+    // pages inside the file but no filesystem space. Only replacing the file
+    // with a compacted copy gives bytes back.
+    //
+    // It has to run before the first Prisma query in this process: that is what
+    // makes deleting the original file safe. No-op unless the volume is full.
+    try {
+      const { reclaimDatabaseFile } = await import("./lib/services/db-reclaim");
+      await reclaimDatabaseFile();
+    } catch (err) {
+      console.warn("[reclaim] skipped:", (err as Error).message);
+    }
+
     const { initServerSentry } = await import("./sentry.server.config");
     initServerSentry();
 
