@@ -155,7 +155,7 @@ FOREX_BASE_LOT_PER_100 = 0.08      # currency pairs: EURUSD, GBPJPY, ... (0.08 p
 CRYPTO_BASE_LOT_PER_100 = 0.04     # crypto: BTCUSD, ETHUSD, ... (0.04 per $100 equity)
 HIGH_VOL_BASE_LOT_PER_100 = 0.02   # metals/oil/indices: XAU, XAG, USOIL, US30, NAS100, ... (0.02 per $100 equity)
 BASE_LOT_EQUITY_REFERENCE = 100.0  # the three lots above are "per 100 units of equity"
-MAX_OPEN_POSITIONS = 2             # MAXIMUM entries per trade -- hard cap on open position COUNT
+MAX_OPEN_POSITIONS = 3             # MAXIMUM entries per trade -- hard cap on open position COUNT
 
 # ----------------------------------------------------------------------
 # ACCOUNT-SIZE TIERS (bot risk rules by account size)
@@ -431,10 +431,21 @@ STRATEGY_VOLATILITY_MAP = {
 # Set USE_TRADE_FREQUENCY_TARGET = False to disable this and just let
 # MIN_VOTES_TO_TRADE stay fixed all day.
 # ----------------------------------------------------------------------
-USE_TRADE_FREQUENCY_TARGET = False
+USE_TRADE_FREQUENCY_TARGET = True
 DAILY_TRADE_TARGET = 20
-TRADE_TARGET_WINDOW_HOURS = 12
-RELAXATION_FLOOR_MIN_VOTES = 3     # the absolute minimum MIN_VOTES_TO_TRADE can ever be relaxed to
+# The target is a DAILY figure, so the pace window is the full 24h day.
+# A shorter window made the bot aim for the whole day's quota inside a few
+# hours and then stop adjusting: update_relaxation_level() returns early once
+# the window has elapsed, so with a 12h window it could never relax after
+# 12:00 UTC -- i.e. never during the London/NY session, which is most of the
+# day's trading opportunity.
+TRADE_TARGET_WINDOW_HOURS = 24
+RELAXATION_FLOOR_MIN_VOTES = 2     # the absolute minimum MIN_VOTES_TO_TRADE can ever be relaxed to.
+                                  # NOTE: this must stay BELOW MIN_VOTES_TO_TRADE or the
+                                  # relaxation is dead code -- trade_frequency computes
+                                  # max_relaxation = MIN_VOTES_TO_TRADE - RELAXATION_FLOOR_MIN_VOTES,
+                                  # so a floor equal to the base (3/3) allowed zero relaxation
+                                  # and the bot could never widen its net when behind pace.
 RELAXATION_CHECK_EVERY_N_SCANS = 30  # how often to check pace and possibly relax further
 
 # ----------------------------------------------------------------------
