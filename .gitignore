@@ -122,3 +122,8 @@ __pycache__/
 payment api.txt
 Integration - Overview - Pesapal Developer Community.html
 Integration - Overview - Pesapal Developer Community_files/
+
+# Scratch dir created by scripts/ensure-space.smoke.js
+.tmp-ensure-space/
+.tmp-ensure-space-compact*
+

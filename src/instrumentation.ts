@@ -133,6 +133,13 @@ export async function register() {
     }, 10 * 60 * 1000);
     if (typeof cleanupTimer.unref === "function") cleanupTimer.unref();
 
+    // The app runs on one fixed-size SQLite file, and deleting rows does not
+    // shrink the file. Without an age-based cut the Signal/Notification tables
+    // grow until every write fails with SQLITE_FULL, which breaks login and the
+    // screenshot analyser at the same time. Prune + checkpoint every 6 hours.
+    const { startRetentionMonitor } = await import("./lib/services/db-retention");
+    startRetentionMonitor();
+
     // Keep the Competitions & Events hub populated with a rolling schedule of
     // tournaments and trading events (also seeded on first API visit).
     const { ensureHubContent } = await import("./lib/services/event-hub");

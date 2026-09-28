@@ -3,7 +3,10 @@ builder = "NIXPACKS"
 buildCommand = "npm install --include=dev --no-audit --no-fund && npx prisma generate && npm run build"
 
 [deploy]
-startCommand = "mkdir -p /data/db && npx prisma db push --skip-generate --accept-data-loss && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node scripts/ensure-tickers.js && node scripts/ensure-ebooks.js && node .next/standalone/server.js"
+# ensure-space runs FIRST: the SQLite volume fills up silently over time and a
+# full disk fails every write (login, screenshot analysis, signal generation).
+# Reclaiming before the other boot steps keeps them from tripping over it.
+startCommand = "mkdir -p /data/db && node scripts/ensure-space.js && npx prisma db push --skip-generate --accept-data-loss && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node scripts/ensure-tickers.js && node scripts/ensure-ebooks.js && node .next/standalone/server.js"
 healthcheckPath = "/api/health"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
