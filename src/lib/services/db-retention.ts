@@ -109,8 +109,28 @@ export async function checkpointWal(): Promise<void> {
   }
 }
 
-/** Filesystem headroom for the database file, in bytes (null if not a file URL). */
-export function volumeFreeBytes(): number | null {
+/** Target: leave this much headroom so this cannot recur tomorrow. */
+export const TARGET_FREE_BYTES = 100 * 1024 * 1024
+
+/**
+ * Emergency windows, used when the volume is (nearly) full. Deliberately brutal:
+ * reaching a write-capable database matters more than keeping a month of signal
+ * history, and the normal pass keeps the last 30 days of everything.
+ */
+const EMERGENCY_DAYS = {
+  signal: 3,
+  notification: 2,
+  activityLog: 1,
+  usageEvent: 7,
+  usageSession: 7,
+  screenshotAnalysis: 1,
+  newsArticle: 3,
+  economicEvent: 30,
+  botSnapshot: 3,
+  adminAuditLog: 30,
+};
+
+export function freeBytes(): number | null {
   const url = process.env.DATABASE_URL ?? "";
   if (!url.startsWith("file:")) return null;
   try {
@@ -121,28 +141,95 @@ export function volumeFreeBytes(): number | null {
   }
 }
 
+/** Filesystem headroom for the database file, in bytes (null if not a file URL). */
+export function volumeFreeBytes(): number | null {
+  return freeBytes();
+}
+
 /**
- * Run {@link pruneExpiredRows} and {@link checkpointWal} now, then on a timer.
+ * Reclaim space right now, as hard as needed, without touching the database
+ * FILE itself.
  *
- * The interval is unref'd so it never holds the process open, and the work is
- * serialised with a re-entrancy guard because a slow prune must not stack up.
+ * This is the emergency path, and it deliberately avoids VACUUM: swapping the
+ * database file is only safe from a boot script, never from inside a running
+ * server that already has the file open. Deleting rows is enough to unbreak
+ * writes, because SQLite reuses the freed pages in place - the file keeps its
+ * size but stops needing to grow, which is the only thing failing on a full
+ * volume.
+ */
+export async function reclaimNow(): Promise<{ deleted: number; free: number | null }> {
+  let deleted = 0;
+
+  const free = freeBytes();
+  if (free !== null && free < TARGET_FREE_BYTES) {
+    console.warn(
+      `[retention] volume is short of target (${Math.round(free / 1024 / 1024)}MB free), ` +
+        "running emergency prune"
+    );
+    for (const [model, days] of Object.entries(EMERGENCY_DAYS) as [RetainedModel, number][]) {
+      deleted += await deleteOlderThan(model, days);
+    }
+  } else {
+    deleted = await pruneExpiredRows().then((r) => r.reduce((s, x) => s + x.deleted, 0));
+  }
+
+  await checkpointWal();
+  const after = freeBytes();
+  console.info(
+    `[retention] reclaimed ${deleted} rows, ` +
+      `${after === null ? "?" : Math.round(after / 1024 / 1024)}MB free`
+  );
+  return { deleted, free: after };
+}
+
+async function deleteOlderThan(model: RetainedModel, days: number): Promise<number> {
+  try {
+    const delegate = db[model] as unknown as Deletable;
+    const { count } = await delegate.deleteMany({
+      where: { createdAt: { lt: daysAgo(days) } },
+    });
+    if (count > 0) console.info(`[retention] emergency: deleted ${count} ${model} older than ${days}d`);
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Reclaim space at boot, then keep it bounded.
+ *
+ * Runs {@link reclaimNow} immediately - the volume is often already full when
+ * the process starts, and every background writer that starts before the reclaim
+ * will fail. After that it re-checks on a timer, retrying sooner than the normal
+ * interval while the volume is still short, since that is the state where the
+ * app is broken.
  */
 export function startRetentionMonitor(intervalMs = 6 * 60 * 60 * 1000): void {
   let running = false;
+  let retryMs = intervalMs;
+
   const run = async (): Promise<void> => {
     if (running) return;
     running = true;
     try {
-      await pruneExpiredRows();
-      await checkpointWal();
+      await reclaimNow();
+      const free = freeBytes();
+      retryMs = free !== null && free < TARGET_FREE_BYTES ? 15 * 60 * 1000 : intervalMs;
     } catch {
-      // Never let a maintenance failure surface as an unhandled rejection.
+      retryMs = 15 * 60 * 1000;
     } finally {
       running = false;
+      schedule();
     }
   };
 
+  // Declared as a function so the first run can reschedule itself immediately.
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const schedule = (): void => {
+    if (timer) clearInterval(timer);
+    timer = setTimeout(() => void run(), retryMs);
+    if (typeof timer.unref === "function") timer.unref();
+  };
+
   void run();
-  const timer = setInterval(() => void run(), intervalMs);
-  if (typeof timer.unref === "function") timer.unref();
 }

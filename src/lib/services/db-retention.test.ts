@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // vi.mock is hoisted above the imports, so the spies have to be created with
 // vi.hoisted for the factory below to be able to close over them.
@@ -37,7 +37,13 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 
-import { RETENTION_DAYS, pruneExpiredRows, checkpointWal } from '@/lib/services/db-retention'
+import {
+  RETENTION_DAYS,
+  pruneExpiredRows,
+  checkpointWal,
+  reclaimNow,
+  TARGET_FREE_BYTES,
+} from '@/lib/services/db-retention'
 
 describe('pruneExpiredRows', () => {
   beforeEach(() => {
@@ -98,5 +104,44 @@ describe('checkpointWal', () => {
   it('swallows checkpoint errors', async () => {
     $queryRawUnsafe.mockRejectedValueOnce(new Error('busy'))
     await expect(checkpointWal()).resolves.toBeUndefined()
+  })
+})
+
+describe('reclaimNow', () => {
+  const originalUrl = process.env.DATABASE_URL
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    if (originalUrl === undefined) delete process.env.DATABASE_URL
+    else process.env.DATABASE_URL = originalUrl
+  })
+
+  it('uses the normal retention windows when the volume has room', async () => {
+    // Not a file: URL, so freeBytes() is null and the normal pass runs.
+    process.env.DATABASE_URL = 'postgres://example/db'
+    deleteMany.mockResolvedValue({ count: 0 })
+    await reclaimNow()
+    const cutoff = deleteMany.mock.calls[0][0] as { where: { createdAt: { lt: Date } } }
+    const expected = Date.now() - (RETENTION_DAYS.signal as number) * 86_400_000
+    expect(Math.abs(cutoff.where.createdAt.lt.getTime() - expected)).toBeLessThan(5_000)
+  })
+
+  it('still checkpoints the WAL, so writes can resume', async () => {
+    process.env.DATABASE_URL = 'postgres://example/db'
+    await reclaimNow()
+    expect($queryRawUnsafe).toHaveBeenCalledWith('PRAGMA wal_checkpoint(PASSIVE)')
+  })
+
+  it('reports the rows it removed', async () => {
+    process.env.DATABASE_URL = 'postgres://example/db'
+    deleteMany.mockResolvedValue({ count: 3 })
+    const { deleted } = await reclaimNow()
+    expect(deleted).toBe(3 * Object.keys(RETENTION_DAYS).length)
+  })
+})
+
+describe('retention policy', () => {
+  it('targets enough headroom to survive between deploys', () => {
+    expect(TARGET_FREE_BYTES).toBeGreaterThan(50 * 1024 * 1024)
   })
 })

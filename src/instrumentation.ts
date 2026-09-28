@@ -111,6 +111,17 @@ export async function register() {
     process.on("SIGTERM", () => void shutdown("SIGTERM"));
     process.on("SIGINT", () => void shutdown("SIGINT"));
 
+    // The app runs on one fixed-size SQLite file, and deleting rows does not
+    // shrink the file. Without an age-based cut the Signal/Notification tables
+    // grow until every write fails with SQLITE_FULL, which breaks login and the
+    // screenshot analyser at the same time. This runs FIRST, before any
+    // background writer starts, and it is the safety net for the case where the
+    // boot script (scripts/ensure-space.js) is not part of the deployed start
+    // command: deleting rows frees pages SQLite can reuse in place, which is
+    // enough to make writes work again on a full volume.
+    const { startRetentionMonitor } = await import("./lib/services/db-retention");
+    startRetentionMonitor();
+
     // Start the background signal generator so the Signals feed stays populated
     // without blocking API requests. It refreshes every few minutes and is
     // internally throttled + guarded against overlapping runs.
@@ -132,13 +143,6 @@ export async function register() {
       purgeExpiredAnalyses().catch(() => {});
     }, 10 * 60 * 1000);
     if (typeof cleanupTimer.unref === "function") cleanupTimer.unref();
-
-    // The app runs on one fixed-size SQLite file, and deleting rows does not
-    // shrink the file. Without an age-based cut the Signal/Notification tables
-    // grow until every write fails with SQLITE_FULL, which breaks login and the
-    // screenshot analyser at the same time. Prune + checkpoint every 6 hours.
-    const { startRetentionMonitor } = await import("./lib/services/db-retention");
-    startRetentionMonitor();
 
     // Keep the Competitions & Events hub populated with a rolling schedule of
     // tournaments and trading events (also seeded on first API visit).
