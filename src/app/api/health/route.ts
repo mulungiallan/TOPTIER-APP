@@ -50,9 +50,13 @@ export async function GET() {
   }
 
   const freeBytes = volumeFreeBytes()
-  const outOfSpace = freeBytes !== null && freeBytes < MIN_FREE_BYTES
-  const healthy = dbStatus === 'ok' && writeStatus === 'ok' && !outOfSpace
+  const healthy = dbStatus === 'ok' && writeStatus === 'ok' && freeBytes !== null && freeBytes >= MIN_FREE_BYTES
 
+  // Always HTTP 200 while the process is alive. Railway uses this endpoint as
+  // the deploy gate, and returning 503 on a full disk makes it tear the
+  // container down - which turns a recoverable storage problem into a total
+  // outage (502) and stops the very reclaim that fixes it. The conditions are
+  // still reported in the body for monitoring, just not as a routing verdict.
   return Response.json(
     {
       status: healthy ? 'ok' : 'degraded',
@@ -66,6 +70,6 @@ export async function GET() {
       },
       timestamp: started.toISOString(),
     },
-    { status: healthy ? 200 : 503 }
+    { status: 200 }
   )
 }

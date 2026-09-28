@@ -1,10 +1,16 @@
 import { defineRailway, preserve, project, service, volume } from "railway/iac";
 
 export default defineRailway(() => {
-  const toptierVolume = volume("toptier-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "ams", sizeMB: 500 });
+  // 500MB was not enough: the app grew to a ~379MB database plus a ~65MB WAL,
+  // which filled the volume and took down every write path. Resizable online.
+  const toptierVolume = volume("toptier-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {}, "70": {} } }, allowOnlineResize: true, region: "ams", sizeMB: 2000 });
   const toptier = service("toptier", {
     build: "npm install --include=dev --no-audit --no-fund && npx prisma generate && npm run build",
-    start: "mkdir -p /data/db && npx prisma db push --skip-generate --accept-data-loss && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node scripts/ensure-tickers.js && node scripts/ensure-ebooks.js && node .next/standalone/server.js",
+    // ensure-space MUST be first: this IaC file overrides railway.toml, so the
+    // reclaim only runs if it is listed here. The SQLite volume fills up over
+    // time and a full disk fails every write (login, screenshot analysis,
+    // signal generation) while a read-only health check still looks healthy.
+    start: "mkdir -p /data/db && node scripts/ensure-space.js && npx prisma db push --skip-generate --accept-data-loss && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node scripts/ensure-tickers.js && node scripts/ensure-ebooks.js && node .next/standalone/server.js",
     healthcheck: "/api/health",
     replicas: { "ams": 1 },
     deploy: { restartPolicyMaxRetries: 5 },
