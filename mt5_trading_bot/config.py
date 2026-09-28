@@ -117,6 +117,15 @@ MIN_TRADES_FOR_VALIDITY = 10     # need at least this many backtested trades to 
 RE_VALIDATE_EVERY_N_SCANS = 500  # periodically re-run the backtest filter so a combo that
                                   # stops working gets disabled automatically (0 = never)
 
+# Warm-up speed. The full sweep is every SYMBOL x TIMEFRAME x STRATEGY combo
+# (tens of thousands of bar-by-bar simulations) and takes ~1 hour on a slow
+# connection. A 24/7 bot restarts -- crash, reboot, redeploy -- and re-paying
+# that cost every time means the bot spends most of its life warming up instead
+# of trading. Results are cached to backtest_results.json and reused on startup
+# while fresh, keyed on the strategy set, the risk parameters and BACKTEST_BARS
+# so a config or strategy change invalidates them automatically.
+BACKTEST_CACHE_MAX_AGE_HOURS = 12  # 0 disables reuse (always re-run the sweep)
+
 # ----------------------------------------------------------------------
 # RISK MANAGEMENT (the most important section in this file)
 #

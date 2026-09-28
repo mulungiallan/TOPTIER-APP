@@ -16,6 +16,8 @@ and a combo that worked over the backtest window can still lose money live.
 """
 
 import logging
+import time
+
 import pandas as pd
 
 import config
@@ -62,7 +64,13 @@ from strategies import (
     triangle_wedge_breakout,
 )
 
+import json
+import os
+from pathlib import Path
+
 logger = logging.getLogger("backtest_filter")
+
+_BACKTEST_CACHE_PATH = Path(__file__).resolve().parent / "backtest_results.json"
 
 STRATEGY_FUNCS = {
     "trend_following": trend_following.signal,
@@ -251,6 +259,82 @@ def _simulate_strategy(df: pd.DataFrame, strategy_fn, atr_sl_multiplier: float, 
         "win_rate_pct": round(win_rate, 1),
         "profit_factor": round(profit_factor, 2) if profit_factor != float("inf") else profit_factor,
     }
+
+
+def _cache_fingerprint() -> str:
+    """Cache key: backtest results are only reusable if nothing that produced
+    them has changed. Covers the strategy set, the risk parameters those
+    strategies are simulated with, and the backtest data depth."""
+    payload = {
+        "strategies": sorted(STRATEGY_FUNCS.keys()),
+        "risk_params": {k: list(v) for k, v in sorted(STRATEGY_RISK_PARAMS.items())},
+        "bars": getattr(config, "BACKTEST_BARS", None),
+        "atr_period": getattr(config, "ATR_PERIOD", None),
+        "tp_ladder": getattr(config, "TAKE_PROFIT_LEVELS", None),
+    }
+    return json.dumps(payload, sort_keys=True, default=str)
+
+
+def _cache_is_fresh(stamp: dict) -> bool:
+    if stamp.get("fingerprint") != _cache_fingerprint():
+        return False
+    max_age_hours = float(getattr(config, "BACKTEST_CACHE_MAX_AGE_HOURS", 0) or 0)
+    if max_age_hours <= 0:
+        return False
+    try:
+        age_h = (time.time() - float(stamp.get("saved_at", 0))) / 3600.0
+    except (TypeError, ValueError):
+        return False
+    return age_h <= max_age_hours
+
+
+def load_cached_combo_results():
+    """Return cached (symbol, timeframe) -> stats, or None if unusable."""
+    if not os.environ.get("BOT_SKIP_BACKTEST_CACHE"):
+        try:
+            raw = json.loads(_BACKTEST_CACHE_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.info(f"No usable backtest cache ({exc.__class__.__name__}); running backtests fresh.")
+            return None
+        if isinstance(raw, dict) and _cache_is_fresh(raw.get("stamp", {})):
+            combos = raw.get("combos")
+            if isinstance(combos, dict) and combos:
+                restored = {}
+                for combo_key, strat_stats in combos.items():
+                    try:
+                        symbol, timeframe = combo_key.split("|", 1)
+                    except ValueError:
+                        continue
+                    restored[(symbol, timeframe)] = strat_stats
+                if restored:
+                    logger.info(
+                        f"Reusing cached backtest results for {len(restored)} (symbol, timeframe) "
+                        f"combos - skipping the multi-hour warm-up. "
+                        f"(set BACKTEST_CACHE_MAX_AGE_HOURS=0 or BOT_SKIP_BACKTEST_CACHE=1 to force a re-run)"
+                    )
+                    return restored
+        else:
+            logger.info("Backtest cache is stale or mismatched; running backtests fresh.")
+    return None
+
+
+def save_cached_combo_results(combo_results: dict) -> None:
+    combos = {f"{symbol}|{timeframe}": stats for (symbol, timeframe), stats in combo_results.items()}
+    payload = {
+        "stamp": {
+            "fingerprint": _cache_fingerprint(),
+            "saved_at": time.time(),
+            "max_age_hours": getattr(config, "BACKTEST_CACHE_MAX_AGE_HOURS", 0),
+        },
+        "combos": combos,
+    }
+    try:
+        tmp = _BACKTEST_CACHE_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp, _BACKTEST_CACHE_PATH)
+        logger.info(f"Cached backtest results for {len(combos)} combos -> {_BACKTEST_CACHE_PATH.name}")
+    except OSError as exc:
+        logger.warning(f"Could not write backtest cache: {exc}")
 
 
 def evaluate_all_combos() -> dict:

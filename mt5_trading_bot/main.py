@@ -86,7 +86,10 @@ def run_backtest_filter():
         f"Running historical performance backtest across {combo_count} (symbol, timeframe, strategy) "
         f"combos -- this can take a while with a broad universe, please be patient..."
     )
-    combo_results = bf.evaluate_all_combos()
+    combo_results = bf.load_cached_combo_results()
+    if combo_results is None:
+        combo_results = bf.evaluate_all_combos()
+        bf.save_cached_combo_results(combo_results)
     approved_combos = bf.approved_strategies_for(combo_results)
 
     any_approved = any(len(v) >= config.MIN_VOTES_TO_TRADE for v in approved_combos.values())
