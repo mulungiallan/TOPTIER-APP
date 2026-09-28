@@ -124,9 +124,21 @@ if (-not $PyReal) { $PyReal = $PythonPath }
 & $Nssm set ToptierBot AppStdout (Join-Path $ServiceDir "service.log")
 & $Nssm set ToptierBot AppStderr (Join-Path $ServiceDir "service.log")
 & $Nssm set ToptierBot Start SERVICE_AUTO_START
+# Restart the service if it ever exits (crash, bad deploy, OOM). Without this
+# NSSM leaves a dead service registered and the bot silently stops for good.
+& $Nssm set ToptierBot AppExit Default Restart
+& $Nssm set ToptierBot AppRestartDelay 10000
+# Recover only after repeated rapid failures, so a broken config does not
+# spin forever burning CPU.
+& $Nssm set ToptierBot AppThrottle 15000
 & $Nssm start ToptierBot
 if ($LASTEXITCODE -ne 0) { throw "Failed to start the ToptierBot service." }
 
 Write-Host ""
 Write-Host "Service 'ToptierBot' installed and running on port $Port."
 Write-Host "Verify: curl.exe http://127.0.0.1:$Port/api/health"
+Write-Host ""
+Write-Host "NOTE: the service only listens on $BindHost. The app reaches it over the"
+Write-Host "network, so it also needs a stable public URL (a named Cloudflare tunnel)."
+Write-Host "A quick tunnel ('cloudflared tunnel --url ...') changes hostname on every"
+Write-Host "restart, which breaks BOT_SERVICE_URL on Railway -- prefer a named tunnel."

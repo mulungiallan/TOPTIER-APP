@@ -71,6 +71,50 @@ Then inside the app: Trading Bot → Link MT5/MT4 → Start. The app spawns the
 bot on the server and shows live status, logs, trades and profit share — all
 in the UI.
 
+## Running 24/7
+
+Three separate things must survive a reboot. All three are required; missing
+any one leaves the bot silently stopped.
+
+| Piece | What happens without it |
+|-------|--------------------------|
+| `-InstallService` (NSSM) | The service does not start with Windows. Needs an **elevated** PowerShell. |
+| Named Cloudflare tunnel | `BOT_SERVICE_URL` breaks. A quick tunnel (`--url`) gets a **new random hostname on every restart**, so Railway keeps pointing at a dead host. |
+| Engine autostart | The service comes back but **no engine starts** — nothing trades until someone clicks Start. On by default; per-instance opt-out is `settings.autostart = false`, global kill switch is `BOT_AUTOSTART=0`. |
+
+The service is registered to **restart on unexpected exit** (NSSM
+`AppExit Default Restart`, 10s delay, 15s throttle), so a crash or a bad
+deploy recovers on its own instead of leaving a dead service registered.
+
+A quick tunnel is fine for a first test. For unattended use, point a *named*
+tunnel at port 8765 and set `BOT_SERVICE_URL` to its stable hostname:
+
+```yaml
+# cloudflared config.yml -- alongside the existing app ingress rule
+ingress:
+  - hostname: bot.toptier.app
+    service: http://localhost:8765
+  - hostname: app.toptier.app
+    service: https://localhost:3000
+  - service: http_status:404
+```
+
+Note `C:\Cloudflare\toptier.json` (the tunnel credentials file) must exist;
+without it the named tunnel cannot start and only quick tunnels work.
+
+## Verify
+
+```powershell
+# service is up
+curl.exe http://127.0.0.1:8765/api/health
+
+# an engine actually started (not just the service)
+curl.exe http://127.0.0.1:8765/api/instances -H "x-bot-service-key: $env:BOT_SERVICE_KEY"
+```
+
+The second call is the one that catches the "service up, bot idle" failure —
+every instance should report `"status": "running"` with a pid.
+
 ## Capacity (important for a worldwide service)
 
 Every running bot needs its own logged-in MetaTrader terminal (~300MB+ RAM
