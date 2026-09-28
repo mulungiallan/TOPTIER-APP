@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
 import { summarizeConnection } from '@/lib/services/bot-profit-share'
 import { botService } from '@/lib/services/bot-service'
+import { instanceLiveness } from '@/lib/services/bot-liveness'
 import { classifyAccountTier } from '@/lib/account-tiers'
 import { getEntitlements, BOT_PAYWALL_MESSAGE } from '@/lib/entitlements'
 
@@ -113,17 +114,31 @@ export async function GET(request: NextRequest) {
       reconcile = { healed: 0, stoppedExpired: 0, skipped: 0, errors: 0 }
     }
 
+    const now = new Date()
     const enriched = connections.map((conn) => {
       const settings = parseSettings(conn.settings)
       const instance = conn.instances[0] ?? null
       const snap = instance ? parsedSnapshot(instance) : null
       const balance = snap ? fin(snap.balance ?? snap.equity) : null
       const equity = snap ? fin(snap.equity) : null
+      const liveness = conn.instances.map((i) => instanceLiveness(i, now))
+      const anyLive = liveness.some((l) => l.live)
+      const anyStale = liveness.some((l) => l.stale)
+      const freshest = conn.instances
+        .map((i) => i.lastHeartbeatAt)
+        .filter((d): d is Date => !!d)
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
       return {
         ...conn,
         tradeCount: conn._count.trades,
         summary: summarizeConnection(conn),
-        runningInstance: conn.instances.some((i) => i.status === 'running' || i.status === 'starting'),
+        runningInstance: anyLive,
+        // The DB status says running but nothing has checked in: the process is
+        // dead or its reporting link is broken. Never present this as live.
+        staleInstance: anyStale,
+        claimsRunningInstance: liveness.some((l) => l.claimsRunning),
+        lastHeartbeatAt: freshest,
+        heartbeatAgeMs: freshest ? now.getTime() - freshest.getTime() : null,
         isCopyMaster: !!conn.masterTrader,
         copyMasterHandle: conn.masterTrader?.handle ?? null,
         accountBalance: balance,
@@ -140,12 +155,35 @@ export async function GET(request: NextRequest) {
         acc.totalDue += c.summary?.dueAmount ?? 0
         acc.totalTrades += c.tradeCount
         if (c.runningInstance) acc.runningInstances++
+        if (c.staleInstance) acc.staleInstances++
         return acc
       },
-      { totalRealizedPnl: 0, totalDue: 0, totalTrades: 0, runningInstances: 0, totalAccounts: enriched.length }
+      {
+        totalRealizedPnl: 0,
+        totalDue: 0,
+        totalTrades: 0,
+        runningInstances: 0,
+        staleInstances: 0,
+        totalAccounts: enriched.length,
+      },
     )
 
-    return successResponse({ connections: enriched, totals, serviceOnline, reconcile, access: { bot: true, paywall: null } })
+    // Newest heartbeat across every instance the user owns: when the bot last
+    // successfully reported to the app at all.
+    const lastReportAt = enriched
+      .map((c) => c.lastHeartbeatAt)
+      .filter((d): d is Date => !!d)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
+
+    return successResponse({
+      connections: enriched,
+      totals,
+      serviceOnline,
+      lastReportAt,
+      reportAgeMs: lastReportAt ? now.getTime() - lastReportAt.getTime() : null,
+      reconcile,
+      access: { bot: true, paywall: null },
+    })
   } catch (error) {
     console.error('Bot overview error:', error)
     return errorResponse('Failed to load bot data', 500)

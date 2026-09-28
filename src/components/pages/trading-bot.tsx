@@ -39,6 +39,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { cn } from '@/lib/utils'
+import { formatHeartbeatAge } from '@/lib/services/bot-liveness'
 import { toast } from 'sonner'
 import type { AccountTierInfo } from '@/lib/account-tiers'
 
@@ -85,6 +86,11 @@ interface BotConnection {
   grossProfit: number
   tradeCount: number
   runningInstance: boolean
+  /** Marked running in the DB but no recent heartbeat: dead or unreachable. */
+  staleInstance?: boolean
+  claimsRunningInstance?: boolean
+  lastHeartbeatAt?: string | null
+  heartbeatAgeMs?: number | null
   isCopyMaster?: boolean
   copyMasterHandle?: string | null
   accountBalance?: number | null
@@ -164,8 +170,17 @@ interface Settlement {
 
 interface OverviewData {
   connections: BotConnection[]
-  totals: { totalRealizedPnl: number; totalDue: number; totalTrades: number; runningInstances: number; totalAccounts: number }
+  totals: {
+    totalRealizedPnl: number
+    totalDue: number
+    totalTrades: number
+    runningInstances: number
+    staleInstances?: number
+    totalAccounts: number
+  }
   serviceOnline: boolean
+  lastReportAt?: string | null
+  reportAgeMs?: number | null
   access?: { bot: boolean; paywall: string | null }
 }
 
@@ -380,6 +395,8 @@ export function TradingBotPage() {
   const totals = overview?.totals
   const monitorConn = overview?.connections?.find((c) => c.id === monitorConnId) ?? overview?.connections?.[0] ?? null
   const running = overview?.connections?.filter((c) => c.runningInstance).length ?? 0
+  const staleCount = overview?.connections?.filter((c) => c.staleInstance).length ?? 0
+  const latestReportAge = formatHeartbeatAge(overview?.reportAgeMs ?? null)
   const due = overview?.connections?.reduce((a, c) => a + (c.summary?.dueAmount ?? 0), 0) ?? 0
   const realized = overview?.connections?.reduce((a, c) => a + (c.summary?.realizedPnl ?? 0), 0) ?? 0
 
@@ -432,6 +449,21 @@ export function TradingBotPage() {
           <div>
             <span className="font-semibold">Bot service is offline.</span>{' '}
             The app cannot reach the trading bot service. Make sure the bot service is running on the server and that <code className="font-mono text-xs">BOT_SERVICE_URL</code> in the app&apos;s environment points to it (see <code className="font-mono text-xs">deploy/bot/README.md</code>), then refresh.
+          </div>
+        </div>
+      )}
+
+      {overview && staleCount > 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-300/60 bg-red-50 dark:bg-red-500/10 p-3 text-sm text-red-800 dark:text-red-200">
+          <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-semibold">
+              {staleCount === 1 ? 'A bot stopped reporting.' : `${staleCount} bots stopped reporting.`}
+            </span>{' '}
+            The bot was marked running but has not checked in with the app
+            {latestReportAge ? ` for ${latestReportAge}` : ''}. Trades it places right now are not
+            being recorded, and it cannot be stopped from this app — stop it in MetaTrader on the
+            server if you need trading halted now.
           </div>
         </div>
       )}
@@ -518,6 +550,12 @@ export function TradingBotPage() {
                         <Bot className="size-3.5" />
                         {c.label}
                         {c.runningInstance && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                        {c.staleInstance && (
+                          <span
+                            className="size-1.5 rounded-full bg-red-500"
+                            title={`Marked running but stopped reporting ${formatHeartbeatAge(c.heartbeatAgeMs ?? null)}`}
+                          />
+                        )}
                       </button>
                     )
                   })}

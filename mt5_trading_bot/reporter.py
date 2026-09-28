@@ -65,7 +65,13 @@ def report_event(event: str, payload: dict):
     _post(body)
 
 
-def _post(body: bytes, timeout: float = 6.0):
+def _post(body: bytes, timeout: float = 6.0) -> bool:
+    """POSTs to the app webhook. Returns True only when the app acknowledged.
+
+    The caller MUST NOT record anything as delivered unless this returns True:
+    trades are remembered in reporter_state.json and skipped forever once
+    marked, so a false success silently discards real trade history.
+    """
     try:
         import urllib.request
         req = urllib.request.Request(
@@ -82,9 +88,19 @@ def _post(body: bytes, timeout: float = 6.0):
                 "Referer": _WEBHOOK_URL,
             },
         )
-        urllib.request.urlopen(req, timeout=timeout).read()
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            resp.read()
+            if resp.status is not None and not (200 <= int(resp.status) < 300):
+                logger.warning("webhook POST rejected with HTTP %s: %s", resp.status, _WEBHOOK_URL)
+                return False
+        return True
     except Exception:
-        logger.warning("webhook POST failed (will retry next scan): %s", _WEBHOOK_URL, exc_info=True)
+        logger.warning(
+            "webhook POST failed (trades stay queued and will be re-sent): %s",
+            _WEBHOOK_URL,
+            exc_info=True,
+        )
+        return False
 
 
 def report_closed_trades():
@@ -134,7 +150,15 @@ def report_closed_trades():
         "event": "trade_closed",
         "data": {"trades": new_trades},
     }).encode("utf-8")
-    _post(body)
+    if not _post(body):
+        # Leave reporter_state.json untouched: these closed trades are still
+        # unread from the app's point of view and must be re-sent once the
+        # app is reachable again.
+        logger.warning(
+            "%d closed trade(s) not delivered to the app; keeping them queued for the next scan",
+            len(new_trades),
+        )
+        return
 
     _save_state({**_state(), "reported_tickets": sorted(reported)})
     logger.info("reported %d closed trade(s) to webhook", len(new_trades))
@@ -190,7 +214,14 @@ def report_opened_trades():
         "event": "trade_opened",
         "data": {"trades": new_trades},
     }).encode("utf-8")
-    _post(body)
+    if not _post(body):
+        # Same contract as closed trades: only forget them once the app has
+        # taken delivery, otherwise they are dropped forever.
+        logger.warning(
+            "%d open trade(s) not delivered to the app; keeping them queued for the next scan",
+            len(new_trades),
+        )
+        return
 
     _save_state({**state, "reported_opened_tickets": sorted(reported)})
     logger.info("reported %d open trade(s) to webhook", len(new_trades))
