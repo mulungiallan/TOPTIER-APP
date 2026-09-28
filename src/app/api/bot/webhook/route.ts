@@ -5,6 +5,7 @@ import { BotProfitShareService } from '@/lib/services/bot-profit-share'
 import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
 import { ManagedCopyService, MasterTradeEvent } from '@/lib/services/managed-copy'
 import { hasBotAccess } from '@/lib/entitlements'
+import { parseTradeDate, parseTradeDateOr } from '@/lib/trade-dates'
 import { timingSafeEqual } from 'crypto'
 
 // POST /api/bot/webhook — called by the Python bot service (mini-services/bot)
@@ -30,6 +31,12 @@ function timingSafeCompare(a: string, b: string): boolean {
   const bufB = Buffer.from(b)
   if (bufA.length !== bufB.length) return false
   return timingSafeEqual(bufA, bufB)
+}
+
+/** Epoch seconds for copy-trading events, which is the shape they expect. */
+function unixSeconds(value: unknown): number | undefined {
+  const d = parseTradeDate(value)
+  return d ? Math.floor(d.getTime() / 1000) : undefined
 }
 
 /**
@@ -186,7 +193,7 @@ export async function POST(request: NextRequest) {
             profit: 0,
             strategyData: t.strategies ? JSON.stringify(t.strategies) : null,
             riskAmount: t.riskAmount != null ? Number(t.riskAmount) : null,
-            openedAt: t.openTime ? new Date(Number(t.openTime) * 1000) : new Date(),
+            openedAt: parseTradeDateOr(t.openTime, new Date()),
           },
           update: {
             stopLoss: t.stopLoss != null ? Number(t.stopLoss) : undefined,
@@ -209,7 +216,7 @@ export async function POST(request: NextRequest) {
           stopLoss: t.stopLoss != null ? Number(t.stopLoss) : null,
           takeProfit: t.takeProfit != null ? Number(t.takeProfit) : null,
           riskAmount: t.riskAmount != null ? Number(t.riskAmount) : null,
-          openTime: t.openTime ? Number(t.openTime) : undefined,
+          openTime: unixSeconds(t.openTime),
         }
         mirrored += (await ManagedCopyService.mirrorMasterOpen(instance.connectionId, ev)).mirrored
       }
@@ -247,8 +254,8 @@ export async function POST(request: NextRequest) {
             result: t.result ? String(t.result).toUpperCase() : null,
             strategyData: t.strategy ? JSON.stringify(t.strategy) : null,
             riskAmount: t.riskAmount != null ? Number(t.riskAmount) : null,
-            openedAt: t.openTime ? new Date(Number(t.openTime) * 1000) : new Date(),
-            closedAt: t.closeTime ? new Date(Number(t.closeTime) * 1000) : new Date(),
+            openedAt: parseTradeDateOr(t.openTime, new Date()),
+            closedAt: parseTradeDateOr(t.closeTime, new Date()),
           },
           update: {
             closePrice: t.closePrice != null ? Number(t.closePrice) : undefined,
@@ -256,7 +263,7 @@ export async function POST(request: NextRequest) {
             result: t.result ? String(t.result).toUpperCase() : undefined,
             strategyData: t.strategy ? JSON.stringify(t.strategy) : undefined,
             riskAmount: t.riskAmount != null ? Number(t.riskAmount) : undefined,
-            closedAt: t.closeTime ? new Date(Number(t.closeTime) * 1000) : new Date(),
+            closedAt: parseTradeDateOr(t.closeTime, new Date()),
           },
         })
         upserted++
@@ -289,8 +296,8 @@ export async function POST(request: NextRequest) {
           profit: Number(t.profit) || 0,
           result: t.result ? String(t.result) : null,
           riskAmount: t.riskAmount != null ? Number(t.riskAmount) : null,
-          openTime: t.openTime ? Number(t.openTime) : undefined,
-          closeTime: t.closeTime ? Number(t.closeTime) : undefined,
+          openTime: unixSeconds(t.openTime),
+          closeTime: unixSeconds(t.closeTime),
         }
         settled += (await ManagedCopyService.mirrorMasterClose(instance.connectionId, ev)).settled
       }
