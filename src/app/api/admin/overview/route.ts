@@ -320,7 +320,7 @@ export async function GET(request: NextRequest) {
       activityFeed,
       bots: botConnectionsList.map((b) => ({
         ...b,
-        dueAmount: Math.max(0, (b.grossProfit || 0) * ((b.providerSharePct || 30) / 100) - (b.settledProviderAmount || 0)),
+        dueAmount: Math.max(0, (b.grossProfit || 0) * ((b.providerSharePct ?? 0) / 100) - (b.settledProviderAmount || 0)),
       })),
       copySettlements,
       recentBotTrades,

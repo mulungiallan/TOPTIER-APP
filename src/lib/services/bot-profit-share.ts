@@ -1,9 +1,12 @@
 ﻿// src/lib/services/bot-profit-share.ts
 // Per-trade profit share for the TOPTIER auto-trading bot.
 //
-// The model: TOPTIER keeps `providerSharePct` (default 50%) of EVERY winning
-// trade the bot closes — both long (BUY) and short (SELL) — with no
-// high-water mark and no loss carry-forward:
+// The model: TOPTIER keeps `providerSharePct` of EVERY winning trade as its cut.
+// The default is now 0 (no profit share - the user keeps 100% of their profit),
+// but the percentage stays configurable per connection for legacy accounts.
+//
+// The share is taken from every winning trade the bot closes - both long (BUY)
+// and short (SELL) - with no high-water mark and no loss carry-forward:
 //
 //   totalShare     = grossProfit * providerSharePct / 100
 //   dueAmount      = max(0, totalShare - settledProviderAmount)

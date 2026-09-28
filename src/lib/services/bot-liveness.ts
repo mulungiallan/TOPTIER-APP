@@ -1,12 +1,18 @@
 import type { BotInstance } from '@/generated/prisma'
 
 /**
- * A bot instance is only genuinely alive if the bot service has checked in
- * recently. The `status` column is written when the instance starts/stops and
- * is never revised if the process dies, so a crashed (or unreachable) bot
- * keeps reporting "running" forever. Heartbeat age is the honest signal.
+ * Staleness window for bot liveness.
+ *
+ * The engine's main loop scans every SCAN_INTERVAL_SECONDS (60s) and pushes a
+ * status snapshot every DASHBOARD_REFRESH_EVERY_N_SCANS (5) scans, so a healthy
+ * bot reports roughly every 5 minutes. Allow three missed cycles before calling
+ * it dead: that tolerates one or two dropped posts (brief network loss, an app
+ * redeploy) while still catching a genuinely dead bot within ~15 minutes.
+ *
+ * Note: a freshly started engine stays silent while it backtests strategies
+ * during warm-up, so the banner can appear briefly right after a start.
  */
-export const HEARTBEAT_STALE_MS = 5 * 60 * 1000
+export const HEARTBEAT_STALE_MS = 15 * 60 * 1000
 
 export type InstanceLiveness = {
   /** Status flag claims running/starting. */

@@ -46,10 +46,20 @@ describe('instanceLiveness', () => {
     expect(r.stale).toBe(false)
   })
 
-  it('uses a 5 minute staleness window', () => {
-    expect(HEARTBEAT_STALE_MS).toBe(5 * 60 * 1000)
+  it('uses a 15 minute staleness window (3 missed 5-minute report cycles)', () => {
+    expect(HEARTBEAT_STALE_MS).toBe(15 * 60 * 1000)
+    // healthy cadence is ~5 min, so 4 min and 14 min are both alive
     expect(instanceLiveness({ status: 'running', lastHeartbeatAt: minsAgo(4) }, now).live).toBe(true)
-    expect(instanceLiveness({ status: 'running', lastHeartbeatAt: minsAgo(6) }, now).live).toBe(false)
+    expect(instanceLiveness({ status: 'running', lastHeartbeatAt: minsAgo(14) }, now).live).toBe(true)
+    // 16 min means three missed cycles: dead
+    expect(instanceLiveness({ status: 'running', lastHeartbeatAt: minsAgo(16) }, now).live).toBe(false)
+    expect(instanceLiveness({ status: 'running', lastHeartbeatAt: minsAgo(16) }, now).stale).toBe(true)
+  })
+
+  it('still flags a bot dead for 47 hours', () => {
+    const r = instanceLiveness({ status: 'running', lastHeartbeatAt: minsAgo(60 * 47) }, now)
+    expect(r.stale).toBe(true)
+    expect(r.live).toBe(false)
   })
 })
 

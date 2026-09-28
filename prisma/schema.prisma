@@ -1122,7 +1122,7 @@ model BotConnection {
   realizedPnl           Float @default(0) // cumulative closed-trade P/L for this account
   grossProfit           Float @default(0) // cumulative winning-trade profit (BUY + SELL)
   settledProviderAmount Float @default(0) // provider share already settled (cumulative)
-  providerSharePct      Float @default(50) // % of each winning trade's profit owed to TOPTIER
+  providerSharePct      Float @default(0) // % of each winning trade's profit owed to TOPTIER (0 = no profit share)
 
   isActive        Boolean   @default(true)
   lastConnectedAt DateTime?

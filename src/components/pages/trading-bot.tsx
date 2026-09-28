@@ -208,7 +208,7 @@ export function TradingBotPage() {
     server: '',
     terminalPath: '',
     riskPerTradePct: 1,
-    providerSharePct: 50,
+    providerSharePct: 0,
     forexBaseLot: 0.08,
     cryptoBaseLot: 0.04,
     highVolBaseLot: 0.02,
@@ -298,7 +298,7 @@ export function TradingBotPage() {
         toast.warning(`Bot did not auto-start: ${res.autoStart.message}`)
       }
       setShowLink(false)
-      setForm({ platform: 'mt5', label: '', brokerName: '', login: '', password: '', server: '', terminalPath: '', riskPerTradePct: 1, providerSharePct: 50, forexBaseLot: 0.08, cryptoBaseLot: 0.04, highVolBaseLot: 0.02, maxOpenPositions: 3 })
+      setForm({ platform: 'mt5', label: '', brokerName: '', login: '', password: '', server: '', terminalPath: '', riskPerTradePct: 1, providerSharePct: 0, forexBaseLot: 0.08, cryptoBaseLot: 0.04, highVolBaseLot: 0.02, maxOpenPositions: 3 })
       fetchAll()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to link account')
@@ -434,7 +434,7 @@ export function TradingBotPage() {
             Trading Bot
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Link your MetaTrader 5/4 account and let the AI bot trade it 24/7. You keep 100% of the account — TOPTIER earns a {overview?.connections?.[0]?.providerSharePct ?? 50}% share of every winning trade, long and short.
+            Link your MetaTrader 5/4 account and let the AI bot trade it 24/7. You keep 100% of the account and 100% of the profit — there is no profit share.
           </p>
         </div>
         <Button onClick={() => setShowLink(true)}>
@@ -583,7 +583,7 @@ export function TradingBotPage() {
               <CardHeader><CardTitle className="text-base flex items-center gap-2"><Wallet className="h-4 w-4 text-emerald-500" /> Profit Share</CardTitle></CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground mb-3">
-                  TOPTIER gets {overview?.connections?.[0]?.summary?.providerSharePct ?? 50}% of the profit on every winning trade — both long and short. Losses do not offset future winnings.
+                  No profit share — you keep 100% of every winning trade, long and short.
                 </p>
                 {settlements.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-6">No settlements yet. Finalize the current period from any account card.</p>
@@ -704,8 +704,8 @@ export function TradingBotPage() {
               <Input type="number" step="1" min="1" value={form.maxOpenPositions} onChange={(e) => setForm((p) => ({ ...p, maxOpenPositions: parseInt(e.target.value, 10) || 0 }))} />
             </div>
             <div>
-              <Label>Profit share %</Label>
-              <Input type="number" step="1" value={form.providerSharePct} onChange={(e) => setForm((p) => ({ ...p, providerSharePct: parseFloat(e.target.value) || 0 }))} />
+              <Label>Profit share % (0 = none)</Label>
+              <Input type="number" step="1" min="0" max="100" value={form.providerSharePct} onChange={(e) => setForm((p) => ({ ...p, providerSharePct: parseFloat(e.target.value) || 0 }))} />
             </div>
           </div>
           <DialogFooter>

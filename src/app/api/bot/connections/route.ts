@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
         server: String(server || ''),
         terminalPath: terminalPath ? String(terminalPath) : null,
         riskPerTradePct: riskPerTradePct != null ? Number(riskPerTradePct) : 1.0,
-        providerSharePct: providerSharePct != null ? Number(providerSharePct) : 50,
+        providerSharePct: providerSharePct != null ? Number(providerSharePct) : 0,
         settings: JSON.stringify({ ...DEFAULT_SETTINGS, ...(settings || {}) }),
       },
     })

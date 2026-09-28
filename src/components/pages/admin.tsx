@@ -2731,7 +2731,7 @@ export default function AdminPage() {
                         <span className="text-xs text-muted-foreground">{b.user?.name || b.user?.email}</span>
                       </div>
                       <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                        <span>Realized PnL: {fmtMoney(b.realizedPnl)} · Settled: {fmtMoney(b.settledProviderAmount)} · Due: {fmtMoney(b.dueAmount ?? Math.max(0, (b.grossProfit || 0) * ((b.providerSharePct || 30) / 100) - (b.settledProviderAmount || 0)))}</span>
+                        <span>Realized PnL: {fmtMoney(b.realizedPnl)} · Settled: {fmtMoney(b.settledProviderAmount)} · Due: {fmtMoney(b.dueAmount ?? Math.max(0, (b.grossProfit || 0) * ((b.providerSharePct ?? 0) / 100) - (b.settledProviderAmount || 0)))}</span>
                         <span>Connected {fmtDate(b.lastConnectedAt)}</span>
                       </div>
                       {b.instances?.length > 0 && (
