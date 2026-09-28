@@ -44,6 +44,14 @@ logger = logging.getLogger("bot-service")
 
 app = FastAPI(title="TOPTIER Bot Service", version="1.0.0")
 
+
+@app.on_event("startup")
+def _on_startup():
+    # The engine subprocesses die with the service; restart them so the bot
+    # resumes trading without anyone touching the UI.
+    n = autostart_instances()
+    logger.info("Service startup complete; autostarted %d instance(s).", n)
+
 # ---------------------------------------------------------------------------
 # Instance process registry
 # ---------------------------------------------------------------------------
@@ -110,6 +118,37 @@ class InstanceManager:
 
 manager = InstanceManager()
 manager._seed()
+
+
+def _autostart_enabled(spec: dict) -> bool:
+    """Per-instance opt-in for restarting the engine when the service boots."""
+    if os.environ.get("BOT_AUTOSTART", "1").strip().lower() in ("0", "false", "no"):
+        return False
+    return bool((spec.get("settings") or {}).get("autostart", True))
+
+
+def autostart_instances() -> int:
+    """Bring back every opted-in instance after a service restart.
+
+    Subprocesses do not survive a service (or machine) restart, so without
+    this the service comes back healthy and idle: the UI shows the bot as
+    stopped and nothing trades until someone presses Start by hand. That is
+    the difference between a bot that runs 24/7 and one that does not.
+    """
+    started = 0
+    for inst in list(manager._instances.values()):
+        spec = inst.spec or {}
+        label = spec.get("instanceId", "?")
+        if not _autostart_enabled(spec):
+            logging.info("autostart: skipped %s (disabled for this instance)", label)
+            continue
+        try:
+            _spawn(inst)
+            started += 1
+            logging.info("autostart: started %s", label)
+        except Exception:
+            logging.exception("autostart: failed to start %s", label)
+    return started
 
 
 # ---------------------------------------------------------------------------
