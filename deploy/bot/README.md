@@ -4,6 +4,44 @@ This folder deploys the **auto-trading bot service** that the app controls from
 inside the web UI. Users only ever see the app; the service runs on a Windows
 server next to the MetaTrader 5/4 terminals.
 
+## Fastest path: `bootstrap-vps.ps1`
+
+On a **fresh Windows VPS** use the bootstrap script rather than the steps below.
+It takes a bare Windows Server to a self-healing trading server in one run, and
+is safe to re-run (every step is idempotent).
+
+```powershell
+# As Administrator on the new box
+cd C:\path\to\app
+Set-ExecutionPolicy -Scope Process Bypass -Force
+
+# First pass — service only. Do this BEFORE logging into Cloudflare.
+.\deploy\bot\bootstrap-vps.ps1 -ServiceKey "<the-app-s-BOT_SERVICE_KEY>" -SkipTunnel
+
+# Then, once, interactively (opens a browser to authorise):
+& 'C:\Cloudflare\cloudflared.exe' tunnel login
+& 'C:\Cloudflare\cloudflared.exe' tunnel create toptier
+
+# Second pass — adds the named tunnel as a service, DNS route, watchdog.
+.\deploy\bot\bootstrap-vps.ps1 -ServiceKey "<key>" `
+    -TunnelName toptier -Hostname bot.toptier.app
+```
+
+It performs: preflight (admin, Python, disk, clock) → pip deps → `ToptierBot`
+service via NSSM (auto-start + crash restart) → `cloudflared` **as a service**
+→ 5-minute watchdog task → verification that the service, the tunnel and a
+*running engine* all answer. Exits non-zero if any step failed.
+
+Two notes on why the tunnel is a service and not a quick tunnel: a quick tunnel
+(`cloudflared tunnel --url`) hands out a **random hostname that changes on every
+restart**, so the app's `BOT_SERVICE_URL` silently points at a dead host. It is
+fine for a first test and unusable for unattended running.
+
+## Manual install (existing server)
+
+<details>
+<summary>Step-by-step, if you'd rather not run the bootstrap</summary>
+
 ## What gets deployed
 
 ```
@@ -117,7 +155,22 @@ every instance should report `"status": "running"` with a pid.
 
 ## Capacity (important for a worldwide service)
 
-Every running bot needs its own logged-in MetaTrader terminal (~300MB+ RAM
-each). Plan roughly **20–30 concurrent bots per 16GB RAM VPS** and scale out
-by adding servers — the app already isolates instances per account, so adding
-another Windows VPS just means pointing some users' instances at it.
+Every running bot needs its own **logged-in MetaTrader terminal** — that, not
+CPU or RAM, is the real limit. Measured on a live instance:
+
+| Per bot | RAM |
+|---------|-----|
+| Engine (peak, during warm-up) | ~110 MB |
+| MT5 terminal (idle) | ~25 MB, up to ~150 MB when busy |
+| Control service | ~15 MB, **shared** across all bots |
+
+So a 4 vCPU / 8 GB box runs **20+ bots** on memory alone, and comfortably holds
+the 2–3 most setups start with. The practical ceiling is how many MT5 terminals
+you keep logged in.
+
+CPU only matters during startup: the warm-up sweep is single-threaded, so N bots
+starting at once use N cores for ~90 minutes. After that the sweep is cached and
+restarts are instant. A 4 vCPU box starts ~4 bots at a time without slowdown.
+
+If you ever run client money, prefer one VPS per account: a single box outage
+then affects one account rather than all of them.
