@@ -143,6 +143,20 @@ async function pruneAndCompactOffVolume(
   console.warn("[reclaim] volume is completely full: pruning a copy in ephemeral storage");
   try {
     fs.copyFileSync(target, working);
+
+    // The -wal and -shm sidecars are NOT optional. SQLite runs in WAL mode, so
+    // recently committed transactions - including rows written by
+    // scripts/ensure-admin.js moments earlier in this same boot - live in the -wal
+    // until a checkpoint folds them into the main file. Copying only custom.db
+    // silently discards them: the compacted database then verifies fine (other
+    // users are all in the main file) but the admin row is simply absent, and the
+    // reclaim publishes a database that has lost the most recent writes. Copy all
+    // three, let SQLite replay the log when it opens the copy, and the
+    // checkpoint below folds it in before pruning.
+    for (const suffix of ["-wal", "-shm"]) {
+      const sidecar = `${target}${suffix}`;
+      if (fs.existsSync(sidecar)) fs.copyFileSync(sidecar, `${working}${suffix}`);
+    }
   } catch (err) {
     console.warn(
       "[reclaim] could not copy the database out for pruning:",
