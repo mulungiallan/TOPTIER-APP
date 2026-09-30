@@ -3,14 +3,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   TrendingUp,
-  TrendingDown,
   Camera,
-  Eye,
   Bell,
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
-  Clock,
   Zap,
   CreditCard,
   ArrowRight,
@@ -30,25 +27,15 @@ import {
   GraduationCap,
   Lock,
 } from 'lucide-react'
-import {
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { useLiveMarket } from '@/hooks/use-live-market'
 import { WalletBalanceCard } from '@/components/layout/wallet-balance-card'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
-import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { isAdminRole } from '@/lib/admin-permissions'
 
@@ -82,18 +69,6 @@ interface PerformanceStats {
   screenshotsLimit: number
   dailyPnl: number
   performanceData: { date: string; pnl: number }[]
-}
-
-interface EconomicEvent {
-  id: string
-  name: string
-  currency: string
-  impact: 'high' | 'medium' | 'low'
-  countdown: string
-  date?: string
-  actual?: string | null
-  forecast?: string | null
-  previous?: string | null
 }
 
 interface EBookSummary {
@@ -131,17 +106,6 @@ function formatMarketPrice(asset: string, price: number): string {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-function formatCountdown(targetMs: number): string {
-  const diff = targetMs - Date.now()
-  if (diff <= 0) return 'Now'
-  const d = Math.floor(diff / 86400000)
-  const h = Math.floor((diff % 86400000) / 3600000)
-  const m = Math.floor((diff % 3600000) / 60000)
-  const s = Math.floor((diff % 60000) / 1000)
-  if (d > 0) return `${d}d ${h}h ${m.toString().padStart(2, '0')}m`
-  return `${h}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`
-}
 
 function formatTimeAgo(dateStr: string): string {
   if (!dateStr) return ''
@@ -210,92 +174,6 @@ function StatCard({
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function PerformanceChart({ data, pnlTotal }: { data: { date: string; pnl: number }[]; pnlTotal: number }) {
-  const isPositive = pnlTotal >= 0
-
-  return (
-    <Card className="col-span-full lg:col-span-2">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-sm font-semibold">Daily Performance (30D)</CardTitle>
-            <CardDescription className="text-[11px] mt-0.5">Cumulative P&L across all signals</CardDescription>
-          </div>
-          <Badge
-            variant="outline"
-            className={cn(
-              'text-[10px] font-semibold',
-              isPositive
-                ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                : 'border-red-500/30 text-red-600 dark:text-red-400'
-            )}
-          >
-            {isPositive ? '+' : ''}${Math.abs(pnlTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="h-[260px] w-full">
-          {data.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="pnlGradientPositive" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="pnlGradientNegative" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.88 0.02 162 / 0.3)" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 10, fill: 'oklch(0.5 0.02 162)' }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval={4}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'oklch(0.5 0.02 162)' }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v: number) => `$${v}`}
-                />
-                <RechartsTooltip
-                  contentStyle={{
-                    backgroundColor: 'oklch(0.155 0.008 162)',
-                    border: '1px solid oklch(1 0 0 / 10%)',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    color: 'oklch(0.955 0.01 162)',
-                  }}
-                  formatter={(value: number) => [
-                    `$${value.toFixed(2)}`,
-                    'P&L',
-                  ]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="pnl"
-                  stroke={isPositive ? '#10b981' : '#ef4444'}
-                  strokeWidth={2}
-                  fill={isPositive ? 'url(#pnlGradientPositive)' : 'url(#pnlGradientNegative)'}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              No performance data available
-            </div>
-          )}
-        </div>
       </CardContent>
     </Card>
   )
@@ -725,133 +603,6 @@ function PlanUsageCard() {
   )
 }
 
-function UpcomingEvents({ events, loading, onRetry }: { events: EconomicEvent[]; loading: boolean; onRetry: () => void }) {
-  const [countdowns, setCountdowns] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    if (events.length === 0) return
-
-    const targets: Record<string, number> = {}
-    events.forEach((evt) => {
-      // Try to use the date field first for more accurate countdown
-      if (evt.date) {
-        targets[evt.name] = new Date(evt.date).getTime()
-      } else {
-        // Parse from countdown string
-        const parts = evt.countdown.match(/(\d+)h\s*(\d+)m/)
-        const days = evt.countdown.match(/(\d+)d/)
-        const h = parts ? parseInt(parts[1]) : 0
-        const m = parts ? parseInt(parts[2]) : 0
-        const d = days ? parseInt(days[1]) : 0
-        targets[evt.name] = Date.now() + d * 86400000 + h * 3600000 + m * 60000
-      }
-    })
-
-    const update = () => {
-      const c: Record<string, string> = {}
-      Object.entries(targets).forEach(([name, target]) => {
-        c[name] = formatCountdown(target)
-      })
-      setCountdowns(c)
-    }
-
-    update()
-    const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
-  }, [events])
-
-  const impactColor = (impact: 'high' | 'medium' | 'low') => {
-    switch (impact) {
-      case 'high': return 'bg-red-500'
-      case 'medium': return 'bg-yellow-500'
-      case 'low': return 'bg-emerald-500'
-    }
-  }
-
-  const impactLabel = (impact: 'high' | 'medium' | 'low') => {
-    switch (impact) {
-      case 'high': return 'High'
-      case 'medium': return 'Med'
-      case 'low': return 'Low'
-    }
-  }
-
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Upcoming Events</CardTitle>
-            <Skeleton className="h-5 w-16" />
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full rounded-lg" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Upcoming Events</CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 text-[11px] text-muted-foreground"
-            onClick={() => useStore.getState().setPage('calendar')}
-          >
-            View All <ArrowRight className="ml-1 size-3" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-3">
-          {events.length === 0 ? (
-            <div className="py-4 text-center text-sm text-muted-foreground">
-              <Calendar className="size-8 mx-auto mb-2 opacity-40" />
-              No upcoming high-impact events
-            </div>
-          ) : (
-            events.map((evt) => (
-              <div
-                key={evt.name}
-                className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2.5"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={cn('size-2 shrink-0 rounded-full', impactColor(evt.impact))} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium truncate">{evt.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] text-muted-foreground">{evt.currency}</span>
-                      <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                        {impactLabel(evt.impact)}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Clock className="size-3 text-muted-foreground" />
-                  <span className="text-[11px] font-mono text-muted-foreground">
-                    {countdowns[evt.name] || evt.countdown}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-
 function SubscriptionBanner() {
   const user = useStore((s) => s.user)
   const setPage = useStore((s) => s.setPage)
@@ -1129,7 +880,6 @@ export function DashboardPage() {
   const user = useStore((s) => s.user)
   const [signals, setSignals] = useState<DashboardSignal[]>([])
   const [stats, setStats] = useState<PerformanceStats | null>(null)
-  const [events, setEvents] = useState<EconomicEvent[]>([])
   const [signalsLocked, setSignalsLocked] = useState(false)
   const [books, setBooks] = useState<EBookSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -1141,10 +891,9 @@ export function DashboardPage() {
       setError(null)
 
       // Fetch all data in parallel â€” NOTE: api client already prepends /api
-      const [signalsRes, perfRes, eventsRes, booksRes] = await Promise.allSettled([
+      const [signalsRes, perfRes, booksRes] = await Promise.allSettled([
         api.get('/signals?status=active&limit=5', { signal }),
         api.get('/performance', { signal }),
-        api.get('/calendar?impact=high&limit=3', { signal }),
         api.get('/ebooks', { signal }),
       ])
 
@@ -1219,35 +968,6 @@ export function DashboardPage() {
         })
       }
 
-      // Process events â€” API returns { data: [...] } or { data: { events: [...] } }
-      if (eventsRes.status === 'fulfilled' && eventsRes.value) {
-        const res = eventsRes.value as any
-        const rawEvents = Array.isArray(res?.data)
-          ? res.data
-          : res?.data?.events
-            ? Array.isArray(res.data.events) ? res.data.events : []
-            : Array.isArray(res?.events) ? res.events : []
-
-        setEvents(
-          rawEvents.map((e: any) => ({
-            id: e.id || '',
-            // EconomicEvent stores `eventName`, and the value columns are
-            // `actualValue` / `forecastValue` / `previousValue`. The old
-            // mapping only looked at name/event/title and actual/forecast/
-            // previous, so every event rendered with a blank title and no
-            // figures even when the API returned rows.
-            name: e.eventName || e.name || e.event || e.title || '',
-            currency: e.currency || '',
-            impact: e.impactLevel || e.impact || 'medium',
-            countdown: e.countdown || e.timeUntil || '',
-            date: e.eventDate || e.date || undefined,
-            actual: e.actualValue ?? e.actual ?? null,
-            forecast: e.forecastValue ?? e.forecast ?? null,
-            previous: e.previousValue ?? e.previous ?? null,
-          }))
-        )
-      }
-
       // Process e-books â€” the dashboard had no e-book section at all, so a
       // user's purchased books were invisible outside the dedicated library
       // page. /api/ebooks returns { data: { books: [...] } } with `owned`.
@@ -1282,9 +1002,6 @@ export function DashboardPage() {
 
   // Show error state only if there's truly no data
   if (error && !stats && signals.length === 0) return <ErrorState error={error} onRetry={fetchDashboardData} />
-
-  const performanceData = stats?.performanceData || []
-  const pnlTotal = performanceData.reduce((sum, d) => sum + d.pnl, 0)
 
   return (
     <div className="p-3 lg:p-4 space-y-4 lg:space-y-5">
@@ -1365,16 +1082,12 @@ export function DashboardPage() {
         total={stats?.totalSignals ?? 0}
       />
 
-      {/* Performance Chart + Recent Signals */}
-      <div className="grid gap-3 lg:grid-cols-3">
-        <PerformanceChart data={performanceData} pnlTotal={pnlTotal} />
-        <RecentSignalsList signals={signals} loading={false} locked={signalsLocked} />
-      </div>
+      {/* Recent Signals */}
+      <RecentSignalsList signals={signals} loading={false} locked={signalsLocked} />
 
-      {/* Quick Actions + Upcoming Events + E-Books + Screenshot Usage */}
+      {/* Quick Actions + E-Books + Screenshot Usage */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         <QuickActions />
-        <UpcomingEvents events={events} loading={false} onRetry={fetchDashboardData} />
         <EBooksCard books={books} />
         <div className="space-y-3">
           <PlanUsageCard />
