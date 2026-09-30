@@ -131,27 +131,73 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
     return { ran: false, reason: "verify failed" };
   }
 
-  // The old file, its sidecars and the install happen in ONE shell invocation,
-  // so there is no window in which a crash leaves neither file present. The
-  // sidecars MUST go with the old database: a stale -wal replayed onto a
-  // different file would corrupt it.
+  // Install the compacted copy. The original is RENAMED aside first: a rename
+  // inside one filesystem costs no space and immediately releases the old file's
+  // bytes, which is the only way this can work on a volume with no free space.
+  // It used to `rm -f` the original and then copy, which needed room for the copy
+  // before it had freed anything - so on a full volume the copy failed and left
+  // no database at all. Parking the original first means a failed copy restores
+  // it intact.
   const q = (p: string): string => `'${p.replace(/'/g, "'\\''")}'`;
+  const aside = `${target}.reclaim-old`;
   try {
     execFileSync(
       "sh",
       [
         "-c",
-        `set -e; rm -f ${q(`${target}-wal`)} ${q(`${target}-shm`)}; rm -f ${q(target)}; ` +
-          `cp ${q(scratch)} ${q(target)}; rm -f ${q(scratch)}`,
+        // 1. park the original (frees its bytes, costs nothing) and drop its
+        //    sidecars - a stale -wal replayed onto the new file would corrupt it
+        `set -e; rm -f ${q(aside)}; mv ${q(target)} ${q(aside)}; ` +
+          `rm -f ${q(`${target}-wal`)} ${q(`${target}-shm`)}; ` +
+          // 2. land the compacted copy in the space that freed
+          `cp ${q(scratch)} ${q(target)}`,
       ],
       { env: process.env, stdio: "pipe" }
     );
   } catch (err) {
-    console.error(
-      "[reclaim] install of the compacted database failed:",
-      err instanceof Error ? err.message.split("\n")[0] : String(err)
-    );
-    return { ran: false, reason: "install failed" };
+    const detail = err instanceof Error ? err.message.split("\n")[0] : String(err);
+    console.error("[reclaim] install of the compacted database failed:", detail);
+    // Put the original back: it is still sitting there, intact.
+    try {
+      execFileSync("sh", ["-c", `set -e; rm -f ${q(target)}; mv ${q(aside)} ${q(target)}`], {
+        env: process.env,
+        stdio: "pipe",
+      });
+      fs.rmSync(scratch, { force: true });
+      return { ran: false, reason: "install failed, original restored" };
+    } catch (restoreErr) {
+      console.error(
+        `[reclaim] RESTORE FAILED - the original is parked at ${aside}:`,
+        restoreErr instanceof Error ? restoreErr.message.split("\n")[0] : String(restoreErr)
+      );
+      return { ran: false, reason: "install failed AND restore failed" };
+    }
+  }
+
+  // Only now that the copy is in place and the original is parked: prove the
+  // installed file is a working database before the backup is discarded.
+  const installed = await verify(PrismaClientCtor, target);
+  if (!installed.ok) {
+    console.error("[reclaim] installed database is not usable:", installed.detail);
+    try {
+      execFileSync("sh", ["-c", `set -e; rm -f ${q(target)}; mv ${q(aside)} ${q(target)}`], {
+        env: process.env,
+        stdio: "pipe",
+      });
+      fs.rmSync(scratch, { force: true });
+      return { ran: false, reason: "verify failed, original restored" };
+    } catch {
+      return { ran: false, reason: "verify failed AND restore failed" };
+    }
+  }
+
+  // The copy is installed and verified: the backup and the scratch are now dead
+  // weight on a volume we are trying to empty.
+  try {
+    fs.rmSync(aside, { force: true });
+    fs.rmSync(scratch, { force: true });
+  } catch {
+    /* the reclaim itself already succeeded; stale files are not worth failing on */
   }
 
   const after = fs.statSync(target).size;

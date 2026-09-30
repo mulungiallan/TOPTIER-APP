@@ -45,8 +45,6 @@ const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)}MB`
 
 /** Target: leave this much headroom so this cannot recur tomorrow. */
 const TARGET_FREE_BYTES = 100 * 1024 * 1024
-/** Safety margin required before swapping a compacted database in. */
-const SWAP_MARGIN_BYTES = 20 * 1024 * 1024
 /** Below this main-file size a VACUUM rewrite costs more than it saves. */
 const COMPACT_MIN_BYTES = Number(process.env.DB_COMPACT_MIN_BYTES || 64 * 1024 * 1024)
 
@@ -142,13 +140,14 @@ async function prune(prisma, windows, label) {
  * `VACUUM` in place would need room for a full second copy of the database,
  * which is exactly what we do not have. `VACUUM INTO` writes the compacted copy
  * to the container's ephemeral disk instead, so only the FINAL compacted file
- * has to fit on the volume - and we only swap it in when it does, after checking
- * that the copy is a working database.
+ * has to fit on the volume - and it always does, because the original is moved
+ * aside (a free, space-freeing rename) before the copy lands. The installed file
+ * is verified as a working database before the backup is dropped, and every
+ * failure path restores the original untouched.
  */
 async function compact() {
   const before = fileSizes()
   if (!before) return false
-  const free = diskInfo()?.free ?? 0
 
   // Already small enough: a VACUUM rewrite would cost more than it saves.
   if (before.main < COMPACT_MIN_BYTES) {
@@ -174,41 +173,78 @@ async function compact() {
 
   const compactSize = fs.statSync(SCRATCH).size
 
-  // The copy has to fit on the volume BEFORE the old file is removed, so this
-  // is the check that matters. If it does not fit, leave the database alone and
-  // let the operator raise the volume - a failed swap would be far worse.
-  if (compactSize + SWAP_MARGIN_BYTES > free) {
+  // A compaction that did not shrink the file frees nothing, and installing it
+  // would be pure risk. A volume that is full of live rows (not free pages)
+  // needs a bigger volume, not another VACUUM.
+  if (compactSize >= before.main) {
     console.warn(
-      `[ensure-space] compact would need ${mb(compactSize + SWAP_MARGIN_BYTES)} but only ` +
-        `${mb(free)} is free - skipped, raise the volume size to reclaim the rest`
+      `[ensure-space] compacted copy is not smaller (${mb(compactSize)} vs ${mb(before.main)}) - ` +
+        'the database holds live data, not free pages; skipping and telling the operator'
     )
     fs.rmSync(SCRATCH, { force: true })
     return false
   }
 
-  const staging = `${DB_PATH}.compact`
+  // ─── Step 1: park the original (same-fs rename: frees space, copies nothing) ──
+  // ORDER IS THE WHOLE POINT. The compacted copy has to land on a volume with no
+  // free bytes left, so the old file must be moved aside FIRST: a rename inside
+  // one filesystem consumes no space and instantly releases the old file's
+  // bytes, which is what makes room for the copy. Copying first - as this used
+  // to - required compactSize free bytes before it had freed anything, so on a
+  // full volume it could never run, the volume stayed full across every boot,
+  // and every write in the app kept failing with SQLITE_FULL.
+  const aside = `${DB_PATH}.reclaim-old`
   try {
-    fs.copyFileSync(SCRATCH, staging) // may throw ENOSPC; old db still intact
-    fs.rmSync(SCRATCH, { force: true })
-    // Verify the copy we are about to install actually opens, not the one we are
-    // about to delete.
-    const check = new PrismaClient({ datasources: { db: { url: `file:${staging}` } } })
-    try {
-      await check.$queryRawUnsafe('SELECT COUNT(*) FROM "User"')
-    } finally {
-      await check.$disconnect()
-    }
-    fs.rmSync(DB_PATH, { force: true })
-    fs.renameSync(staging, DB_PATH)
+    fs.rmSync(aside, { force: true })
+    fs.renameSync(DB_PATH, aside)
+    // The sidecars belong to the old inode. A stale -wal replayed onto the new,
+    // differently-shaped file would corrupt it, so they go with it.
     for (const suffix of ['-wal', '-shm']) fs.rmSync(`${DB_PATH}${suffix}`, { force: true })
-    console.log(`[ensure-space] compacted db ${mb(before.main)} -> ${mb(compactSize)}`)
-    return true
   } catch (err) {
-    console.warn('[ensure-space] compact swap failed:', err?.message?.split('\n')[0])
-    fs.rmSync(staging, { force: true })
+    console.warn('[ensure-space] could not set the old database aside:', err?.message?.split('\n')[0])
     fs.rmSync(SCRATCH, { force: true })
     return false
   }
+
+  const restore = (why) => {
+    console.warn(`[ensure-space] ${why} - restoring the original database`)
+    try {
+      fs.rmSync(DB_PATH, { force: true })
+      fs.renameSync(aside, DB_PATH)
+    } catch (err) {
+      console.error(
+        `[ensure-space] RESTORE FAILED - the original is parked at ${aside}:`,
+        err?.message?.split('\n')[0]
+      )
+    }
+    fs.rmSync(SCRATCH, { force: true })
+    return false
+  }
+
+  // ─── Step 2: install the compacted copy into the space we just freed ──────
+  try {
+    fs.copyFileSync(SCRATCH, DB_PATH)
+  } catch (err) {
+    return restore(`install failed (${err?.message?.split('\n')[0]})`)
+  }
+
+  // ─── Step 3: prove the INSTALLED file works, then drop the backup ────────
+  // Verify what actually landed, not what we intended to land.
+  try {
+    const check = new PrismaClient({ datasources: { db: { url: `file:${DB_PATH}` } } })
+    try {
+      await check.$queryRawUnsafe('SELECT COUNT(*) FROM "User"')
+    } finally {
+      await check.$disconnect().catch(() => {})
+    }
+  } catch (err) {
+    return restore(`installed database failed verification (${err?.message?.split('\n')[0]})`)
+  }
+
+  fs.rmSync(aside, { force: true })
+  fs.rmSync(SCRATCH, { force: true })
+  console.log(`[ensure-space] compacted db ${mb(before.main)} -> ${mb(compactSize)}`)
+  return true
 }
 
 async function main() {
