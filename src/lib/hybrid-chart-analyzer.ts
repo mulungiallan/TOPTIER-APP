@@ -20,6 +20,7 @@
 
 import { db } from '@/lib/db'
 import { chartAnalyzer, type ChartAnalysisResult } from '@/lib/chart-analyzer'
+import { crossCheckScreenshot, type CrossCheckResult } from '@/lib/services/screenshot-cross-check'
 
 export interface HybridAnalysisResult extends ChartAnalysisResult {
   planUsed: 'free' | 'premium'
@@ -27,6 +28,12 @@ export interface HybridAnalysisResult extends ChartAnalysisResult {
   analysesUsed: number
   analysesLimit: number
   analysesRemaining: number // -1 = unlimited
+  /**
+   * Independent verification of the vision model's call against real market
+   * data. Null only if the cross-check itself blew up, which must never fail a
+   * paid analysis.
+   */
+  crossCheck: CrossCheckResult | null
 }
 
 export class HybridChartAnalyzer {
@@ -54,7 +61,10 @@ export class HybridChartAnalyzer {
     }
 
     // Reset monthly counter if a month has elapsed
-    let { analysesLimit, analysesUsed, analysesResetAt } = user
+    const { analysesLimit } = user
+    const { analysesUsed: usedAtFetch, analysesResetAt: resetAtFetch } = user
+    let analysesUsed = usedAtFetch
+    let analysesResetAt = resetAtFetch
     const now = new Date()
     if (
       !analysesResetAt ||
@@ -66,8 +76,7 @@ export class HybridChartAnalyzer {
       await db.user.update({
         where: { id: userId },
         data: { analysesUsed: 0, analysesResetAt: now },
-      })
-    }
+      })    }
 
     // ─── Route: everyone receives the premium analysis experience ────────
     // (Ad-supported: all users are served the AdFlow on the client.)
@@ -75,6 +84,22 @@ export class HybridChartAnalyzer {
 
     // Run analysis — full fallback chain (premium path)
     const result = await chartAnalyzer.analyzeChart(imageBuffer, 'standard')
+
+    // ─── Independent cross-check against real market data ────────────────
+    // The VLM is guessing from pixels; this re-derives the same question from
+    // actual OHLCV bars. It is advisory only — the AI verdict is never
+    // overwritten — and any failure degrades to null rather than failing the
+    // analysis the user paid for.
+    let crossCheck: CrossCheckResult | null = null
+    try {
+      crossCheck = await crossCheckScreenshot(
+        result.detectedAsset,
+        result.detectedTimeframe,
+        result.signal
+      )
+    } catch (crossCheckError) {
+      console.error('Screenshot cross-check failed:', crossCheckError)
+    }
 
     // ─── Record usage ─────────────────────────────────────────────────────
     const updated = await db.user.update({
@@ -89,7 +114,7 @@ export class HybridChartAnalyzer {
     await db.analysis.create({
       data: {
         userId,
-        analysis: JSON.stringify(result),
+        analysis: JSON.stringify({ ...result, crossCheck }),
         planUsed,
         cost: result.cost,
         method: result.method,
@@ -107,6 +132,7 @@ export class HybridChartAnalyzer {
       analysesUsed: updated.analysesUsed,
       analysesLimit,
       analysesRemaining,
+      crossCheck,
     }
   }
 }

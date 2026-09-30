@@ -137,9 +137,11 @@ export async function POST(request: NextRequest) {
         return errorResponse(message, 429)
       }
 
+      // Never blame the user's image for a server-side failure — saying "try a
+      // clearer chart" sent people off to re-crop screenshots that were fine.
       return errorResponse(
-        'Chart analysis failed. Please try again with a clearer chart image.',
-        500
+        'Chart analysis is temporarily overloaded. Please try again in a moment — your screenshot is fine.',
+        503
       )
     }
   } catch (error) {

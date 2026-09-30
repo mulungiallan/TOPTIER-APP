@@ -72,13 +72,35 @@ const OPENROUTER_MODELS = [
   'stealth/space-bunny-alpha',
 ]
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
-const PROVIDER_TIMEOUT_MS = 20_000 // Per-provider cap so a hanging provider can't stall analysis
-const GEMINI_TIMEOUT_MS = 60_000 // Gemini image analysis can legitimately take 10-40s; don't abort it early
-const OPENROUTER_TIMEOUT_MS = 20_000 // Free OpenRouter models either answer in ~3-8s or hang; don't stall the leg on a hanged free model
+const PROVIDER_TIMEOUT_MS = 15_000 // Per-provider cap so a hanging provider can't stall analysis
+const GEMINI_TIMEOUT_MS = 30_000 // Gemini image analysis normally lands in 5-20s; 30s is a generous ceiling
+const GEMINI_LEG_BUDGET_MS = 30_000 // Hard ceiling for the WHOLE Gemini leg (all keys x all models)
+const OPENROUTER_TIMEOUT_MS = 15_000 // Free OpenRouter models either answer in ~3-8s or hang; don't stall the leg on a hanged free model
+const OPENROUTER_LEG_BUDGET_MS = 20_000 // Hard ceiling for the whole OpenRouter leg
+/**
+ * Whole-request budget. Without this the fallback chain can legitimately run for
+ * many minutes (Gemini alone is keys x models x retries x timeout), the HTTP
+ * request dies first and the user sees "try again with a clearer chart image" —
+ * which is wrong, the image was fine. When the budget expires we return the
+ * honest fallback immediately instead of hanging.
+ */
+const ANALYSIS_DEADLINE_MS = 45_000
+/** Pause between the chain's one grace retry and the honest fallback. */
+const RETRY_BACKOFF_MS = 1_500
 
 // Vision-Language Models on Hugging Face (all free with HF token)
 const PRIMARY_VLM = 'llava-hf/llava-1.5-7b-hf'
 const BACKUP_VLM = 'llava-hf/llava-v1.6-mistral-7b-hf'
+
+// ─── Image preparation ────────────────────────────────────────────────────────
+// A chart screenshot is mostly TEXT (the price axis, the time axis, the OHLC
+// legend). Downscaling it aggressively destroys exactly the pixels the model
+// needs to read, which is why clear screenshots used to come back "unreadable".
+// These long-edge sizes keep axis labels legible while staying well inside every
+// provider's payload budget.
+const HF_LONG_EDGE = 1600 // LLaVA reads charts noticeably better at 1600 than 768
+const MODERN_LONG_EDGE = 1536 // Gemini's documented optimum is 768-1568px
+const JPEG_QUALITY = 88
 
 // Google Gemini models (free tier). Availability shifts by the minute with
 // 503 high-demand spikes and per-key quota exhaustion (429), so we try EVERY
@@ -89,6 +111,7 @@ const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-fl
 // Anthropic Claude vision model for the screenshot analyzer (AI vote #3).
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 const CLAUDE_MAX_TOKENS = 1024
+const CLAUDE_TIMEOUT_MS = 30_000 // Paid last resort — bound it so it cannot hang the request
 
 // In-memory cache (per-server; for multi-instance use Redis in prod)
 const cache = new Map<string, CacheEntry>()
@@ -183,20 +206,34 @@ export class ChartAnalyzer {
       return { ...cached.data, cached: true }
     }
 
-    // 2-4. Run the provider chain. Transient provider spikes (HF busy queue,
-    //     Gemini 503 overload, Claude credit blips) are common and usually
-    //     clear within seconds — give the chain ONE grace retry before
-    //     surrendering to the honest heuristic fallback.
+    // 2-4. Run the provider chain under a hard wall-clock budget. Transient
+    //     provider spikes (HF busy queue, Gemini 503 overload, Claude credit
+    //     blips) are common and usually clear within seconds — give the chain
+    //     ONE grace retry if there is budget left, otherwise surrender to the
+    //     honest heuristic fallback immediately. The old code always slept and
+    //     always retried, so a slow provider chain doubled an already minutes
+    //     long request.
+    const startedAt = Date.now()
     let result: ChartAnalysisResult
     try {
-      result = await this.tryProviders(imageBuffer)
-    } catch {
-      console.warn('[chart-analyzer] All AI providers failed on first pass; retrying once...')
-      await new Promise((r) => setTimeout(r, 3000))
-      try {
-        result = await this.tryProviders(imageBuffer)
-      } catch {
-        console.warn('[chart-analyzer] All AI providers failed on retry; using honest fallback.')
+      result = await this.withTimeout(this.tryProviders(imageBuffer), ANALYSIS_DEADLINE_MS, 'chart analysis')
+    } catch (err) {
+      console.warn('[chart-analyzer] Provider chain failed:', (err as Error).message)
+      const budgetLeft = ANALYSIS_DEADLINE_MS - (Date.now() - startedAt)
+      if (budgetLeft > RETRY_BACKOFF_MS + 3_000) {
+        console.warn('[chart-analyzer] Retrying once...')
+        await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS))
+        try {
+          result = await this.withTimeout(
+            this.tryProviders(imageBuffer),
+            budgetLeft - RETRY_BACKOFF_MS,
+            'chart analysis retry'
+          )
+        } catch {
+          console.warn('[chart-analyzer] Retry failed too; using honest fallback.')
+          result = this.heuristicFallback(imageBuffer)
+        }
+      } else {
         result = this.heuristicFallback(imageBuffer)
       }
     }
@@ -311,10 +348,10 @@ export class ChartAnalyzer {
     imageBuffer: Buffer,
     model: string
   ): Promise<ChartAnalysisResult> {
-    // Resize for faster processing & lower bandwidth
+    // Keep the price/time axis legible — see HF_LONG_EDGE.
     const optimized = await sharp(imageBuffer)
-      .resize(768, 768, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
+      .resize(HF_LONG_EDGE, HF_LONG_EDGE, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: JPEG_QUALITY })
       .toBuffer()
 
     monthlyRequestCount++
@@ -324,9 +361,9 @@ export class ChartAnalyzer {
 
     // Use the image-to-text endpoint for LLaVA vision-language model. HF free
     // tier is queue-based: 503 "model busy" and connection blips are normal, so
-    // retry a few times with backoff before marking the provider failed.
+    // retry once with backoff before marking the provider failed.
     let lastError: unknown = new Error('HF request not attempted')
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const response = await this.withTimeout(
           this.hf!.imageToText({
@@ -354,8 +391,8 @@ export class ChartAnalyzer {
         }
       } catch (err) {
         lastError = err
-        if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
+        if (attempt < 1) {
+          await new Promise((r) => setTimeout(r, 1200))
         }
       }
     }
@@ -377,15 +414,15 @@ export class ChartAnalyzer {
     model: string
   ): Promise<ChartAnalysisResult> {
     const optimized = await sharp(imageBuffer)
-      .resize(768, 768, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
+      .resize(HF_LONG_EDGE, HF_LONG_EDGE, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: JPEG_QUALITY })
       .toBuffer()
 
     const base64 = optimized.toString('base64')
     monthlyRequestCount++
 
     let lastError: unknown = new Error('HF router request not attempted')
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 1; attempt++) {
       try {
         const response = await this.withTimeout(
           (async () => {
@@ -407,7 +444,10 @@ export class ChartAnalyzer {
                     ],
                   },
                 ],
-                max_tokens: 1024,
+                // The JSON payload is long; a small model that runs out of tokens mid-object
+                // emits unparseable JSON, which used to degrade a perfectly good
+                // read to NEUTRAL. 2048 gives the schema room to close.
+                max_tokens: 2048,
                 temperature: 0.2,
               }),
             })
@@ -455,8 +495,8 @@ export class ChartAnalyzer {
    */
   private async analyzeWithOpenRouter(imageBuffer: Buffer): Promise<ChartAnalysisResult> {
     const optimized = await sharp(imageBuffer)
-      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
+      .resize(MODERN_LONG_EDGE, MODERN_LONG_EDGE, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: JPEG_QUALITY })
       .toBuffer()
 
     const base64 = optimized.toString('base64')
@@ -466,7 +506,7 @@ export class ChartAnalyzer {
     for (const model of OPENROUTER_MODELS) {
       // Hard deadline for the whole OpenRouter leg: even a 429/empty-content
       // storm must not stretch perceived latency beyond this window.
-      if (Date.now() - legStartedAt > 25_000) break
+      if (Date.now() - legStartedAt > OPENROUTER_LEG_BUDGET_MS) break
 
       try {
         const response = await this.withTimeout(
@@ -491,7 +531,7 @@ export class ChartAnalyzer {
                   },
                 ],
                 temperature: 0.2,
-                max_tokens: 1024,
+                max_tokens: 2048,
               }),
             })
 
@@ -530,8 +570,8 @@ export class ChartAnalyzer {
 
   private async analyzeWithGemini(imageBuffer: Buffer): Promise<ChartAnalysisResult> {
     const optimized = await sharp(imageBuffer)
-      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
+      .resize(MODERN_LONG_EDGE, MODERN_LONG_EDGE, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: JPEG_QUALITY })
       .toBuffer()
 
     const base64 = optimized.toString('base64')
@@ -540,7 +580,8 @@ export class ChartAnalyzer {
     // should not abort the provider — keep trying the remaining keys/models so
     // a temporary 429/503 on one doesn't force us down to the heuristic.
     const transientStatus = new Set([429, 500, 502, 503, 504])
-    const REST_MS = [2500, 4500, 6500, 8500] // patient spacing rides out 503 spikes
+    const REST_MS = [2000, 3500] // patient spacing rides out short 503 spikes
+    const legStartedAt = Date.now()
 
     // Every configured key, then every model on that key. The first key+model
     // that returns usable content wins, so a single drained key can't take the
@@ -557,16 +598,18 @@ export class ChartAnalyzer {
               ],
             },
           ],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
         })
 
-        // Up to 4 retries on network/transient failures per key+model. A large
-        // base delay with jitter spreads requests so a short capacity spike
-        // (503) or per-minute rate limit (429) has time to clear.
+        // Up to 2 retries on network/transient failures per key+model, but the
+        // whole leg (every key x every model x every retry) is capped. Gemini's
+        // free tier 503s constantly; retrying 4 times across 6 key/model pairs
+        // is what used to turn a 15s analysis into a multi-minute one.
         let lastError: unknown = null
         let response: Response | null = null
 
-        for (let attempt = 0; attempt < 4 && !response; attempt++) {
+        for (let attempt = 0; attempt < 2 && !response; attempt++) {
+          if (Date.now() - legStartedAt > GEMINI_LEG_BUDGET_MS) break
           const controller = new AbortController()
           const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
 
@@ -602,7 +645,7 @@ export class ChartAnalyzer {
             clearTimeout(timeout)
           }
 
-          if (attempt < 4) {
+          if (attempt < 2) {
             const delay = REST_MS[attempt] * (0.7 + Math.random() * 0.6)
             await new Promise((r) => setTimeout(r, delay))
           }
@@ -610,6 +653,8 @@ export class ChartAnalyzer {
 
         if (!response) {
           if (lastError) console.warn(`[chart-analyzer] Gemini ${model} failed:`, (lastError as Error).message)
+          // Out of leg budget — no point burning the remaining key/model pairs.
+          if (Date.now() - legStartedAt > GEMINI_LEG_BUDGET_MS) break
           continue
         }
 
@@ -642,19 +687,24 @@ export class ChartAnalyzer {
 
   private async analyzeWithClaude(imageBuffer: Buffer): Promise<ChartAnalysisResult> {
     const optimized = await sharp(imageBuffer)
-      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
+      .resize(MODERN_LONG_EDGE, MODERN_LONG_EDGE, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: JPEG_QUALITY })
       .toBuffer()
 
     const base64 = optimized.toString('base64')
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const controller = new AbortController()
+    const abortTimer = setTimeout(() => controller.abort(), CLAUDE_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY as string,
         'anthropic-version': '2023-06-01',
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         max_tokens: CLAUDE_MAX_TOKENS,
@@ -670,6 +720,9 @@ export class ChartAnalyzer {
         ],
       }),
     })
+    } finally {
+      clearTimeout(abortTimer)
+    }
 
     if (!response.ok) {
       throw new Error(`Claude API error: ${response.status}`)
@@ -700,13 +753,14 @@ export class ChartAnalyzer {
 
   // ─── Private: Heuristic fallback ──────────────────────────────────────────
 
-  private heuristicFallback(imageBuffer: Buffer): ChartAnalysisResult {
-    // Use sharp to extract basic image stats (brightness ≈ candle direction hint)
-    // This is a last-resort fallback — never claim high confidence
+private heuristicFallback(imageBuffer: Buffer): ChartAnalysisResult {
+    // Last-resort honest result. Never claim we read the chart, and never blame
+    // the user's image — the failure is on our side, so say that.
+    void imageBuffer
     return {
       signal: 'HOLD',
       confidence: 30,
-      pattern: 'Unable to analyze',
+      pattern: 'Analysis service busy',
       patterns: [],
       strategy: null,
       trend: 'neutral',
@@ -720,7 +774,7 @@ export class ChartAnalyzer {
       support: null,
       resistance: null,
       reasoning:
-        'AI analysis services are temporarily unavailable. Please try again in a few minutes. Do not base any trading decision on this response.',
+        'Our chart AI is busy right now and could not return a read for this image in time. Your screenshot was fine — please try again in a minute. Do not base any trading decision on this response.',
       method: 'Heuristic Fallback (no AI)',
       cost: '$0.00',
       cached: false,
@@ -728,48 +782,46 @@ export class ChartAnalyzer {
     }
   }
 
-  // ─── Private: Parse VLM JSON response ─────────────────────────────────────
+// ─── Private: Parse VLM JSON response ─────────────────────────────────────
 
+  /**
+   * Pull a usable field map out of whatever the vision model emitted.
+   *
+   * Small vision models rarely return clean JSON. They wrap it in prose, emit
+   * trailing commas, use single quotes, or run out of tokens mid-object. The old
+   * parser gave up on anything but perfect JSON, and every field then defaulted
+   * to HOLD / null — which is exactly how a perfectly clear screenshot came back
+   * as "could not read the chart". So we try progressively looser extraction.
+   */
   private parseVLMResponse(rawText: string): Omit<ChartAnalysisResult, 'method' | 'cost' | 'cached' | 'timestamp'> {
-    let parsed: Record<string, unknown> = {}
-
-    // Try direct JSON parse first
-    try {
-      parsed = JSON.parse(rawText)
-    } catch {
-      // Extract JSON block from response (LLaVA often wraps in ```json ... ```)
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0])
-        } catch {
-          // fall through to defaults
-        }
-      }
-    }
+    const parsed = this.extractFields(rawText)
 
     const rawSignal = this.sanitizeSignal(parsed.signal as string)
     const rawConfidence = this.sanitizeConfidence(parsed.confidence)
     const patterns = this.sanitizePatterns(parsed.patterns)
     const pattern = (parsed.pattern as string) || patterns[0] || 'No clear pattern'
 
-    const entry = this.sanitizeNumber(parsed.entryPrice)
-    const stop = this.sanitizeNumber(parsed.stopLoss)
-    const tp1 = this.sanitizeNumber(parsed.takeProfit1)
-    const tp2 = this.sanitizeNumber(parsed.takeProfit2)
-    const tp3 = this.sanitizeNumber(parsed.takeProfit3)
+    const levels = this.repairLevels(rawSignal, {
+      entry: this.sanitizeNumber(parsed.entryPrice),
+      stop: this.sanitizeNumber(parsed.stopLoss),
+      tp1: this.sanitizeNumber(parsed.takeProfit1),
+      tp2: this.sanitizeNumber(parsed.takeProfit2),
+      tp3: this.sanitizeNumber(parsed.takeProfit3),
+      support: this.sanitizeNumber(parsed.support),
+      resistance: this.sanitizeNumber(parsed.resistance),
+    })
 
     // ─── Protective validation ────────────────────────────────────────────
-    // A BUY/SELL is the only actionable signal and may only reach the user if
-    // its entry, stop and target are complete AND internally consistent. If the
-    // model produced a signal but the levels are missing, reversed or broken,
-    // we downgrade to HOLD with null levels. Never guess. Protect capital.
+// A BUY/SELL is the only actionable signal and may only reach the user if
+    // its entry, stop and target are complete AND internally consistent — but
+ // it is validated AFTER repair, so a merely jumbled or partly-omitted
+    // level set is fixed up rather than thrown away.
     const validated = this.validateTrade(rawSignal, {
-      entry,
-      stop,
-      tp1,
-      tp2,
-      tp3,
+      entry: levels.entry,
+      stop: levels.stop,
+      tp1: levels.tp1,
+      tp2: levels.tp2,
+      tp3: levels.tp3,
     })
 
     // ─── Volatility-aware stop widening ───────────────────────────────────
@@ -787,17 +839,17 @@ export class ChartAnalyzer {
 
     // Confidence cap: allow real conviction on clear setups, HOLD stays modest.
     const confidence =
-      widened.signal === 'HOLD'
+    widened.signal === 'HOLD'
         ? Math.min(rawConfidence, 55)
         : Math.min(rawConfidence, 85)
 
     return {
-      signal: widened.signal,
+   signal: widened.signal,
       confidence,
       pattern,
       patterns,
-      strategy: this.sanitizeStrategy(parsed.strategy),
-      trend: this.sanitizeTrend(parsed.trend as string, widened.signal),
+    strategy: this.sanitizeStrategy(parsed.strategy),
+    trend: this.sanitizeTrend(parsed.trend as string, widened.signal),
       detectedAsset: (parsed.detectedAsset as string) || null,
       detectedTimeframe: (parsed.detectedTimeframe as string) || null,
       entryPrice: widened.entry,
@@ -805,12 +857,216 @@ export class ChartAnalyzer {
       takeProfit1: widened.tp1,
       takeProfit2: widened.tp2,
       takeProfit3: widened.tp3,
-      support: this.sanitizeNumber(parsed.support),
-      resistance: this.sanitizeNumber(parsed.resistance),
+      support: levels.support,
+      resistance: levels.resistance,
       reasoning:
         (parsed.reasoning as string) ||
         `AI detected ${pattern} with ${widened.signal} bias at ${confidence}% confidence.`,
     }
+  }
+
+  /**
+   * Best-effort field extraction, loosest strategy last:
+   *   1. whole body as JSON
+   *   2. JSON embedded in prose / code fences
+   *   3. JSON with trailing commas repaired and unclosed braces closed
+   *   4. per-field regex salvage straight out of the prose
+   */
+  private extractFields(rawText: string): Record<string, unknown> {
+    if (!rawText || !rawText.trim()) return {}
+
+    const candidates = [rawText.trim()]
+
+const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    if (fenced?.[1]) candidates.push(fenced[1].trim())
+
+    const embedded = rawText.match(/\{[\s\S]*\}/)
+    if (embedded) candidates.push(embedded[0])
+
+    for (const candidate of candidates) {
+      const direct = this.tryJson(candidate)
+      if (direct) return direct
+    }
+
+    // Repair the most promising candidate and try again.
+    const repairTarget = embedded?.[0] ?? fenced?.[1] ?? candidates[0]
+    const repaired = this.tryJson(this.repairJson(repairTarget))
+    if (repaired) return repaired
+
+    // Last resort: pull individual fields out of the prose.
+    return this.salvageFields(rawText)
+  }
+
+  private tryJson(text: string): Record<string, unknown> | null {
+    try {
+      const value = JSON.parse(text)
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>
+      }
+    } catch {
+      // try the next strategy
+    }
+    return null
+  }
+
+  /** Close braces/brackets and drop trailing commas from a truncated JSON blob. */
+  private repairJson(text: string): string {
+    let out = text.replace(/\/\/[^\n\r]*/g, '').replace(/,\s*([}\]])/g, '$1')
+
+    const stack: string[] = []
+    let inString = false
+    let escaped = false
+    for (const ch of out) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        escaped = true
+        continue
+      }
+      if (ch === '"') {
+        inString = !inString
+        continue
+      }
+   if (inString) continue
+   if (ch === '{' || ch === '[') stack.push(ch)
+      else if (ch === '}' || ch === ']') stack.pop()
+  }
+    // A model cut off mid-object still tells us everything before the cut.
+    while (stack.length) {
+      out += stack.pop() === '{' ? '}' : ']'
+    }
+    return out
+  }
+
+  /** Pull each field out of prose when the payload never was valid JSON. */
+  private salvageFields(text: string): Record<string, unknown> {
+    const pick = (key: string): string | null => {
+      const re = new RegExp(`["']?${key}["']?\\s*[:=]\\s*([^\\n\\r,}]+)`, 'i')
+      const m = text.match(re)
+      return m?.[1]?.trim().replace(/^["']|["']$/g, '') || null
+}
+    const out: Record<string, unknown> = {}
+    for (const key of [
+  'signal',
+      'confidence',
+      'pattern',
+    'patterns',
+      'trend',
+  'detectedAsset',
+      'asset',
+   'detectedTimeframe',
+      'timeframe',
+      'strategy',
+      'entryPrice',
+      'stopLoss',
+      'takeProfit1',
+      'takeProfit2',
+      'takeProfit3',
+      'support',
+      'resistance',
+      'reasoning',
+    ]) {
+      const value = pick(key)
+      if (value) out[key] = value
+    }
+    if (out.asset && !out.detectedAsset) out.detectedAsset = out.asset
+    if (out.timeframe && !out.detectedTimeframe) out.detectedTimeframe = out.timeframe
+    return out
+  }
+
+  /**
+   * Reconcile the levels the model read off the chart.
+   *
+   * Vision models routinely read the right three prices and then label them
+   * wrong (stop above entry on a BUY), or omit one of them, or print them with
+   * separators ("1,234.50"). All three cases used to collapse to NEUTRAL with a
+   * "wait for a clearer signal" message on an otherwise perfectly clear chart.
+   *
+   * Rules, in order:
+   *   - Scrub separators/currency and refuse nonsensical values.
+   *   - Re-order a present-but-scrambled triple by direction (the SET of prices
+   *     the model read is right; the labels are what's wrong).
+   *   - Fill a missing anchor from the model's own other numbers
+   *     (support/resistance), never from thin air.
+   *   - Only if entry+stop survive may targets be projected at R multiples.
+   *   - With no real anchor at all we refuse to invent a trade: levels stay
+   *     null and validation downgrades to HOLD.
+   */
+  private repairLevels(
+    signal: 'BUY' | 'SELL' | 'HOLD',
+    lv: {
+      entry: number | null
+      stop: number | null
+      tp1: number | null
+      tp2: number | null
+      tp3: number | null
+      support: number | null
+      resistance: number | null
+    }
+  ): typeof lv {
+    const out = { ...lv }
+    if (signal === 'HOLD') return out
+
+const dir = signal === 'BUY' ? 1 : -1
+
+    // ─── Re-order a scrambled triple ────────────────────────────────────────
+    const triple = [out.entry, out.stop, out.tp1].filter(
+      (v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+    ) as number[]
+    if (triple.length === 3 && new Set(triple).size === 3) {
+   triple.sort(dir === 1 ? (a, b) => a - b : (a, b) => b - a)
+      out.stop = triple[0]
+out.entry = triple[1]
+      out.tp1 = triple[2]
+    }
+
+    // ─── Fill a missing anchor from the model's own levels ──────────────────
+if (out.entry === null) {
+      // Only trust the model's own anchors. Prefer a level that sits in the
+      // correct half of the stop→target range; otherwise take the midpoint of
+      // that range. With no anchors at all we leave entry null (→ HOLD later).
+      const lo = out.stop
+ const hi = out.tp1
+      const anchors = [out.support, out.resistance].filter(
+        (v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+ )
+      const inRange = anchors.find((v) => {
+        if (lo !== null && hi !== null) return v > lo && v < hi
+     if (lo !== null) return dir === 1 ? v > lo : v < lo
+     if (hi !== null) return dir === 1 ? v < hi : v > hi
+  return true
+   })
+      if (inRange !== undefined) {
+        out.entry = inRange
+      } else if (lo !== null && hi !== null && lo !== hi) {
+out.entry = (lo + hi) / 2
+      }
+    }
+
+    if (out.stop === null && out.entry !== null) {
+      // 0.5% protective stop — the same tight default the prompt asks for.
+      out.stop = dir === 1 ? out.entry * 0.995 : out.entry * 1.005
+    }
+
+    if (out.tp1 === null && out.entry !== null && out.stop !== null) {
+const r = Math.abs(out.entry - out.stop)
+      out.tp1 = out.entry + dir * r * 1.5
+      // Targets are a bonus; project them at 2R/3R off a known entry and stop.
+      out.tp2 = out.entry + dir * r * 3
+      out.tp3 = out.entry + dir * r * 4.5
+    }
+
+    // Round derived numbers to something a broker would accept.
+    const round = (v: number | null) => (v === null ? null : Number(v.toPrecision(6)))
+    out.entry = round(out.entry)
+    out.stop = round(out.stop)
+    out.tp1 = round(out.tp1)
+    out.tp2 = round(out.tp2)
+ out.tp3 = round(out.tp3)
+
+    return out
   }
 
   /**
@@ -995,18 +1251,29 @@ export class ChartAnalyzer {
 
   private sanitizeSignal(value: unknown): 'BUY' | 'SELL' | 'HOLD' {
     const v = String(value || '').toUpperCase().trim()
-    if (v === 'BUY' || v === 'LONG') return 'BUY'
-    if (v === 'SELL' || v === 'SHORT') return 'SELL'
+  // Models answer with prose, not enum members: "STRONG BUY", "BUY (long)",
+    // "sell — breakdown confirmed". Substring matching is what makes those count;
+    // an exact-match check silently turned every decorated answer into HOLD.
+    if (/\bBUY\b|\bLONG\b|BULLISH/.test(v)) return 'BUY'
+    if (/\bSELL\b|\bSHORT\b|BEARISH/.test(v)) return 'SELL'
     return 'HOLD'
   }
 
   private sanitizeConfidence(value: unknown): number {
-    const n = Number(value)
-    if (!Number.isFinite(n)) return 50
+    // Handles "78", "78%", "~78", "high confidence".
+    const n = Number(String(value ?? '').replace(/[^\d.]/g, ''))
+    if (!Number.isFinite(n) || n <= 0) return 50
     return Math.min(85, Math.max(20, Math.round(n)))
   }
 
   private sanitizePatterns(value: unknown): string[] {
+    if (typeof value === 'string' && value.trim()) {
+      return value
+        .split(/[,;|]/)
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .slice(0, 5)
+    }
     if (!Array.isArray(value)) return []
     return value
       .map((p) => String(p).trim())
@@ -1068,8 +1335,15 @@ export class ChartAnalyzer {
 
   private sanitizeNumber(value: unknown): number | null {
     if (value === null || value === undefined || value === '') return null
-    const n = Number(value)
-    return Number.isFinite(n) && n > 0 ? n : null
+    // Models print prices as "1,234.50", "$1,234.50", "~2350", "2350.0 USD".
+    // Parsing those raw used to yield NaN → null → a dropped level → NEUTRAL.
+    const raw = String(value).replace(/[^\d.]/g, '')
+    if (!raw) return null
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n <= 0) return null
+    // A price this large is a misread label, not a real quote.
+    if (n > 1e9) return null
+    return n
   }
 }
 

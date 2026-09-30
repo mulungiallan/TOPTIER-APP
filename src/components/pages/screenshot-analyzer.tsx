@@ -47,6 +47,27 @@ import { toast } from 'sonner'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+interface CrossCheck {
+  verdict: 'AGREES' | 'CONFLICTS' | 'NEUTRAL' | 'INSUFFICIENT_DATA'
+  summary: string
+  asset: string | null
+  timeframe: string | null
+  engine: { direction: 'BUY' | 'SELL'; score: number; confidence: number; reason: string } | null
+  indicators: {
+    close: number
+    ema20: number
+    ema50: number
+    rsi14: number
+    adx14: number
+    atr14: number
+    macdHist: number
+    supertrendDirection: number
+  } | null
+  structures: Array<{ name: string; direction: 1 | -1; barsAgo: number }>
+  candlesticks: Array<{ name: string; direction: 1 | -1; barsAgo: number }>
+  bars: number
+}
+
 interface AnalysisResult {
   id: string
   signalType: 'BUY' | 'SELL' | 'NEUTRAL'
@@ -63,6 +84,8 @@ interface AnalysisResult {
   strategy: string
   imageUrl: string
   createdAt: Date
+  /** Independent verification against real market data. Absent on restored history. */
+  crossCheck?: CrossCheck | null
 }
 
 // ─── Trade Setups (Scalp / Day / Swing) ────────────────────────────────────────
@@ -222,6 +245,105 @@ function TradeSetups({ result }: { result: AnalysisResult }) {
   )
 }
 
+// ─── Independent Cross-Check (real market data) ────────────────────────────────
+
+const VERDICT_META: Record<CrossCheck['verdict'], { label: string; tone: string; box: string }> = {
+  AGREES: {
+    label: 'Confirmed by market data',
+    tone: 'text-emerald-500',
+    box: 'border-emerald-500/30 bg-emerald-500/5',
+  },
+  CONFLICTS: {
+    label: 'Not confirmed',
+    tone: 'text-red-500',
+    box: 'border-red-500/30 bg-red-500/5',
+  },
+  NEUTRAL: {
+    label: 'Neutral',
+    tone: 'text-yellow-600',
+    box: 'border-yellow-500/30 bg-yellow-500/5',
+  },
+  INSUFFICIENT_DATA: {
+    label: 'Could not verify',
+    tone: 'text-muted-foreground',
+    box: 'border-border bg-muted/30',
+  },
+}
+
+function fmtNum(v: number | undefined, digits = 2): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—'
+  return v.toFixed(digits)
+}
+
+function CrossCheckPanel({ crossCheck }: { crossCheck: CrossCheck }) {
+  const meta = VERDICT_META[crossCheck.verdict]
+  const ind = crossCheck.indicators
+  const found = [...crossCheck.structures, ...crossCheck.candlesticks]
+
+  return (
+    <div className={`rounded-lg border p-4 ${meta.box}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold">Independent Check</p>
+        <span className={`font-display text-xs font-bold ${meta.tone}`}>{meta.label}</span>
+      </div>
+
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{crossCheck.summary}</p>
+
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Checked against {crossCheck.bars} real {crossCheck.asset} candles
+        {crossCheck.timeframe ? ` on the ${crossCheck.timeframe} timeframe` : ''} — not just the image.
+      </p>
+
+      {found.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {found.map((s, i) => (
+            <Badge
+              key={`${s.name}-${i}`}
+              variant="secondary"
+              className={`gap-1 text-[10px] ${
+                s.direction === 1 ? 'text-emerald-500' : 'text-red-500'
+              }`}
+            >
+              {s.direction === 1 ? 'Bullish' : 'Bearish'} · {s.name}
+              {s.barsAgo === 0 ? ' (now)' : ` (${s.barsAgo} bars ago)`}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {ind && (
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-xs sm:grid-cols-4">
+          <div className="rounded-md bg-background/70 p-1.5">
+            <span className="block text-[10px] text-muted-foreground">RSI 14</span>
+            <span className="font-semibold">{fmtNum(ind.rsi14, 1)}</span>
+          </div>
+          <div className="rounded-md bg-background/70 p-1.5">
+            <span className="block text-[10px] text-muted-foreground">ADX 14</span>
+            <span className="font-semibold">{fmtNum(ind.adx14, 1)}</span>
+          </div>
+          <div className="rounded-md bg-background/70 p-1.5">
+            <span className="block text-[10px] text-muted-foreground">Supertrend</span>
+            <span className={`font-semibold ${ind.supertrendDirection === 1 ? 'text-emerald-500' : 'text-red-500'}`}>
+              {ind.supertrendDirection === 1 ? 'Up' : 'Down'}
+            </span>
+          </div>
+          <div className="rounded-md bg-background/70 p-1.5">
+            <span className="block text-[10px] text-muted-foreground">EMA 20/50</span>
+            <span className="font-semibold">
+              {ind.ema20 > ind.ema50 ? 'Bullish' : 'Bearish'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
+        This is a second opinion computed from market data, not a prediction. It never changes the
+        analysis above — treat a disagreement as a reason to double-check the chart yourself.
+      </p>
+    </div>
+  )
+}
+
 // ─── Signal Badge Component ────────────────────────────────────────────────────
 
 function SignalBadge({ type, size = 'md' }: { type: 'BUY' | 'SELL' | 'NEUTRAL'; size?: 'sm' | 'md' | 'lg' }) {
@@ -348,6 +470,9 @@ function AnalysisResultCard({
 
           {/* Trade Setups — Scalp / Day / Swing */}
           <TradeSetups result={result} />
+
+          {/* Independent verification against real market data */}
+          {result.crossCheck && <CrossCheckPanel crossCheck={result.crossCheck} />}
 
           {/* Detected Info */}
           <div className="flex flex-wrap gap-2">
@@ -1070,6 +1195,10 @@ export function ScreenshotAnalyzer() {
       // New endpoint returns nested { analysis, result, quota, provider }
       const d = responseData.data.analysis || responseData.data
       const result = mapResult(d)
+      // The live cross-check rides on `result` (it is not a column on the row).
+      const liveCrossCheck = (responseData.data.result as { crossCheck?: CrossCheck } | undefined)
+        ?.crossCheck
+      if (liveCrossCheck) result.crossCheck = liveCrossCheck
       setIsAnalyzing(false)
       // Reveal the result immediately — no ad gate.
       setAnalysisResult(result)
