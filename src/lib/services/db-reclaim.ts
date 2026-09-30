@@ -71,6 +71,43 @@ async function verify(
   }
 }
 
+/**
+ * Log what is actually occupying the database file.
+ *
+ * Row counts are not enough to explain a full volume: a table can hold three
+ * rows and still cost 300MB if each row carries a large JSON blob, and a
+ * delete-and-reinsert loop leaves a huge file full of free pages with almost no
+ * live data. `dbstat` exposes per-table page usage, which separates those two
+ * cases immediately. This runs only when the volume is already in trouble, so
+ * the cost is irrelevant and the answer is in the boot log.
+ */
+async function logPageUsage(PrismaClientCtor: typeof PrismaClient, target: string): Promise<void> {
+  try {
+    const client = new PrismaClientCtor({ datasources: { db: { url: `file:${target}` } } });
+    try {
+      const rows = await client.$queryRawUnsafe<Array<{ name: string; bytes: number | bigint }>>(
+        "SELECT name, SUM(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY bytes DESC LIMIT 12"
+      );
+      const freelist = await client.$queryRawUnsafe<Array<{ n: number | bigint }>>(
+        "PRAGMA freelist_count"
+      );
+      const free = Number(freelist?.[0]?.n ?? 0);
+      const shown = rows
+        .map((r) => `${r.name}=${mb(Number(r.bytes))}`)
+        .join(" ");
+      console.warn(`[reclaim] page usage: ${shown || "(unavailable)"}`);
+      console.warn(`[reclaim] free pages: ${free} (${mb(free * 4096)} reclaimable by VACUUM)`);
+    } finally {
+      await client.$disconnect().catch(() => {});
+    }
+  } catch (err) {
+    console.warn(
+      "[reclaim] page usage unavailable:",
+      err instanceof Error ? err.message.split("\n")[0] : String(err)
+    );
+  }
+}
+
 export interface ReclaimResult {
   ran: boolean;
   reason: string;
@@ -95,10 +132,11 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
   const before = fs.statSync(target).size;
   const scratch = path.join(os.tmpdir(), `toptier-reclaim-${process.pid}.db`);
 
-  console.warn(`[reclaim] volume is full (${mb(free)} free, db ${mb(before)}), compacting`);
-  fs.rmSync(scratch, { force: true });
-
   const { PrismaClient: PrismaClientCtor } = await import("@/generated/prisma");
+
+  console.warn(`[reclaim] volume is full (${mb(free)} free, db ${mb(before)}), compacting`);
+  await logPageUsage(PrismaClientCtor, target);
+  fs.rmSync(scratch, { force: true });
 
   // VACUUM returns no rows, so this is the correct raw call. The output goes to
   // the container's ephemeral disk, which is not the full volume, so this can
