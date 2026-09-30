@@ -172,6 +172,51 @@ async function pruneAndCompactOffVolume(
   return fs.existsSync(scratch);
 }
 
+/**
+ * Log the raw volume numbers, not just a derived "MB free".
+ *
+ * `cp` failing with ENOSPC after the original 423MB database was parked aside
+ * cannot be explained by bytes alone - parking it should have left ~423MB free.
+ * `ENOSPC` is also what a filesystem returns when it has run out of INODES, and
+ * a volume with a small inode table reports plenty of free bytes while refusing
+ * to create a single new file. `statfs` exposes both (`blocks`/`bavail` and
+ * `files`/`ffree`), so print all of them plus the directory listing and let the
+ * log settle which one it is.
+ */
+function logVolumeDetail(target: string): void {
+  try {
+    const stat = fs.statfsSync(path.dirname(target));
+    const total = Number(stat.blocks) * Number(stat.bsize);
+    const avail = Number(stat.bavail) * Number(stat.bsize);
+    const inodes = Number(stat.files);
+    const inodesFree = Number(stat.ffree);
+    console.warn(
+      `[reclaim] volume raw: ${mb(total)} total, ${mb(avail)} avail, ` +
+        `bsize ${stat.bsize}, inodes ${inodes} total / ${inodesFree} free`
+    );
+  } catch (err) {
+    console.warn("[reclaim] volume raw unavailable:", err instanceof Error ? err.message : String(err));
+  }
+
+  try {
+    const dir = path.dirname(target);
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const listing = entries
+      .map((e) => {
+        if (!e.isFile()) return `${e.name}/`;
+        try {
+          return `${e.name}=${mb(fs.statSync(path.join(dir, e.name)).size)}`;
+        } catch {
+          return `${e.name}=?`;
+        }
+      })
+      .join(" ");
+    console.warn(`[reclaim] ${dir}: ${entries.length} entries | ${listing}`);
+  } catch (err) {
+    console.warn("[reclaim] directory listing unavailable:", err instanceof Error ? err.message : String(err));
+  }
+}
+
 export interface ReclaimResult {
   ran: boolean;
   reason: string;
@@ -199,6 +244,7 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
   const { PrismaClient: PrismaClientCtor } = await import("@/generated/prisma");
 
   console.warn(`[reclaim] volume is full (${mb(free)} free, db ${mb(before)}), compacting`);
+  logVolumeDetail(target);
   await logPageUsage(PrismaClientCtor, target);
   fs.rmSync(scratch, { force: true });
 
@@ -240,6 +286,7 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
   }
 
   const compactSize = fs.statSync(scratch).size;
+  console.warn(`[reclaim] compacted copy is ${mb(compactSize)} (from ${mb(before)})`);
   const check = await verify(PrismaClientCtor, scratch);
   if (!check.ok) {
     fs.rmSync(scratch, { force: true });
@@ -280,20 +327,57 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
     const detail = err instanceof Error ? err.message.split("\n")[0] : String(err);
     console.error("[reclaim] install of the compacted database failed:", detail);
     if (stderr) console.error("[reclaim] install stderr:", stderr.slice(0, 500));
-    // Put the original back: it is still sitting there, intact.
+
+    // Retry once after purging every other file in the database directory.
+    // ENOSPC on `cp` after the 423MB original was parked aside does not add up
+    // on bytes alone, and ENOSPC is also what a filesystem with an exhausted
+    // inode table returns. Purging strays is free - they are all regenerable
+    // sidecars - and it frees inodes if that is what ran out. The original stays
+    // parked in `aside` throughout, so this cannot lose the database.
     try {
-      execFileSync("sh", ["-c", `set -e; rm -f ${q(target)}; mv ${q(aside)} ${q(target)}`], {
-        env: process.env,
-        stdio: "pipe",
-      });
-      fs.rmSync(scratch, { force: true });
-      return { ran: false, reason: "install failed, original restored" };
-    } catch (restoreErr) {
-      console.error(
-        `[reclaim] RESTORE FAILED - the original is parked at ${aside}:`,
-        restoreErr instanceof Error ? restoreErr.message.split("\n")[0] : String(restoreErr)
+      const dir = path.dirname(target);
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const p = path.join(dir, entry.name);
+        if (p === aside || p === target || p === scratch) continue;
+        fs.rmSync(p, { force: true });
+      }
+      logVolumeDetail(target);
+      execFileSync(
+        "sh",
+        [
+          "-c",
+          `set -e; rm -f ${q(target)} ${q(`${target}-wal`)} ${q(`${target}-shm`)}; ` +
+            `cp ${q(scratch)} ${q(target)}`,
+        ],
+        { env: process.env, stdio: "pipe" }
       );
-      return { ran: false, reason: "install failed AND restore failed" };
+      console.warn("[reclaim] install succeeded after purging stray files");
+    } catch (retryErr) {
+      const retryStderr =
+        typeof retryErr === "object" && retryErr !== null && "stderr" in retryErr
+          ? String((retryErr as { stderr?: unknown }).stderr ?? "").trim()
+          : "";
+      console.error(
+        "[reclaim] install retry failed:",
+        retryErr instanceof Error ? retryErr.message.split("\n")[0] : String(retryErr)
+      );
+      if (retryStderr) console.error("[reclaim] install retry stderr:", retryStderr.slice(0, 500));
+      // Put the original back: it is still sitting there, intact.
+      try {
+        execFileSync("sh", ["-c", `set -e; rm -f ${q(target)}; mv ${q(aside)} ${q(target)}`], {
+          env: process.env,
+          stdio: "pipe",
+        });
+        fs.rmSync(scratch, { force: true });
+        return { ran: false, reason: "install failed, original restored" };
+      } catch (restoreErr) {
+        console.error(
+          `[reclaim] RESTORE FAILED - the original is parked at ${aside}:`,
+          restoreErr instanceof Error ? restoreErr.message.split("\n")[0] : String(restoreErr)
+        );
+        return { ran: false, reason: "install failed AND restore failed" };
+      }
     }
   }
 
