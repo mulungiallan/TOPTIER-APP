@@ -79,7 +79,46 @@ export async function register() {
           );
         }
       } else {
-        console.warn("[self-heal] admin@toptier.app not found - run scripts/ensure-admin.js");
+        // Create it. This block used to only warn and point at
+        // scripts/ensure-admin.js, which made the account's existence depend on
+        // that script running - and the deployed start command does not reliably
+        // include it. When a reclaim or a restore dropped the row, every admin
+        // login then failed with "invalid email" and the only fix was a manual
+        // script run.
+        //
+        // The password is the same scrypt hash scripts/ensure-admin.js writes, so
+        // the credentials are identical whichever path creates the account.
+        const password = process.env.ADMIN_PASSWORD;
+        if (!password) {
+          console.warn("[self-heal] admin@toptier.app not found and ADMIN_PASSWORD is unset");
+        } else {
+          const { randomBytes } = await import("crypto");
+          let referralCode = "";
+          for (let i = 0; i < 10; i++) {
+            const candidate = randomBytes(4).toString("hex").toUpperCase();
+            if (!(await db.user.findUnique({ where: { referralCode: candidate } }))) {
+              referralCode = candidate;
+              break;
+            }
+          }
+
+          const created = await db.user.create({
+            data: {
+              email: "admin@toptier.app",
+              password: rehashPassword(password),
+              name: "TOPTIER Admin",
+              role: "super_admin",
+              subscriptionTier: "premium",
+              onboardingCompleted: true,
+              onboardingStep: 7,
+              referralCode,
+              isEmailVerified: true,
+              country: "Kenya",
+            },
+            select: { id: true, role: true },
+          });
+          console.log(`[self-heal] admin@toptier.app created (role=${created.role})`);
+        }
       }
     } catch (err) {
       console.warn("[self-heal] admin reconciliation skipped:", (err as Error).message);
