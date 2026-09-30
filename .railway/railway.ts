@@ -3,7 +3,11 @@ import { defineRailway, preserve, project, service, volume } from "railway/iac";
 export default defineRailway(() => {
   // 500MB was not enough: the app grew to a ~379MB database plus a ~65MB WAL,
   // which filled the volume and took down every write path. Resizable online.
-  const toptierVolume = volume("toptier-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {}, "70": {} } }, allowOnlineResize: true, region: "ams", sizeMB: 2000 });
+  // 5GB, resized live on 2026-09-30 (was 500MB). At 500MB the database plus its
+  // WAL filled the volume and took down every write path. Keep this in sync with
+  // the actual volume - railway up does NOT reconcile IaC volumes, so a mismatch
+  // here only bites whenever the IaC is next applied.
+  const toptierVolume = volume("toptier-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {}, "70": {} } }, allowOnlineResize: true, region: "ams", sizeMB: 5000 });
   const toptier = service("toptier", {
     build: "npm install --include=dev --no-audit --no-fund && npx prisma generate && npm run build",
     // ensure-space MUST be first: this IaC file overrides railway.toml, so the
