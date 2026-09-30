@@ -18,11 +18,17 @@
  * Why it is safe here
  * -------------------
  * This runs as the FIRST thing in instrumentation, before any Prisma query has
- * been issued in this process, so nothing holds the old file open. Deleting the
- * original and installing the copy happens in ONE shell invocation, so the
- * window in which neither file is present is a single batch of syscalls, and
- * the compacted copy is verified as a working database BEFORE the original is
- * touched. Every failure path leaves the original file exactly as it was.
+ * been issued in this process, so nothing holds the old file open. The
+ * compacted copy is verified as a working database BEFORE the original is
+ * touched, the pristine original is kept on the container's ephemeral disk for
+ * rollback, and the unlink plus install of the copy happens in ONE shell
+ * invocation, so the window in which the database does not exist is a single
+ * batch of syscalls. Every failure path restores the original.
+ *
+ * Renaming the original out of the way is NOT an option: a rename within one
+ * filesystem releases no blocks, so a "park it aside then copy" install fails
+ * with ENOSPC on a full volume no matter how small the copy is. The original has
+ * to be unlinked, which is why the rollback copy lives on ephemeral storage.
  */
 
 import { execFileSync } from "child_process";
@@ -294,28 +300,72 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
     return { ran: false, reason: "verify failed" };
   }
 
-  // Install the compacted copy. The original is RENAMED aside first: a rename
-  // inside one filesystem costs no space and immediately releases the old file's
-  // bytes, which is the only way this can work on a volume with no free space.
-  // It used to `rm -f` the original and then copy, which needed room for the copy
-  // before it had freed anything - so on a full volume the copy failed and left
-  // no database at all. Parking the original first means a failed copy restores
-  // it intact.
+  // Install the compacted copy.
+  //
+  // The original must be UNLINKED, not renamed. Renaming a file within one
+  // filesystem is just a new directory entry for the same inode - it releases
+  // ZERO blocks. This code spent several deploys parking the original as
+  // `custom.db.reclaim-old` and then copying the compacted file into the space it
+  // believed that had freed, while statfs kept reporting `433MB total, 0MB
+  // avail` and `cp` failed with ENOSPC on a 3MB file. Only `rm` gives the blocks
+  // back.
+  //
+  // Rollback therefore cannot live on the volume, which is the whole point - it
+  // is full. The pristine original is copied to the container's ephemeral disk
+  // first (verified by size), and that /tmp copy is what a failure restores from.
   const q = (p: string): string => `'${p.replace(/'/g, "'\\''")}'`;
-  const aside = `${target}.reclaim-old`;
+  const backup = path.join(os.tmpdir(), `toptier-reclaim-backup-${process.pid}.db`);
+  const sh = { env: process.env, stdio: "pipe" } as const;
+
+  try {
+    fs.rmSync(backup, { force: true });
+    fs.copyFileSync(target, backup);
+    if (fs.statSync(backup).size !== before) {
+      throw new Error(`rollback copy is ${mb(fs.statSync(backup).size)}, expected ${mb(before)}`);
+    }
+  } catch (err) {
+    fs.rmSync(backup, { force: true });
+    console.warn(
+      "[reclaim] could not stage a rollback copy in ephemeral storage:",
+      err instanceof Error ? err.message.split("\n")[0] : String(err)
+    );
+    return { ran: false, reason: "no rollback copy" };
+  }
+
+  const restore = (): { ok: boolean; detail: string } => {
+    try {
+      execFileSync(
+        "sh",
+        ["-c", `set -e; rm -f ${q(target)} ${q(`${target}-wal`)} ${q(`${target}-shm`)}; ` +
+          `cp ${q(backup)} ${q(target)}; rm -f ${q(backup)}`],
+        sh
+      );
+      return { ok: true, detail: "restored from ephemeral backup" };
+    } catch (err) {
+      return {
+        ok: false,
+        detail:
+          "RESTORE FAILED - the original is at " +
+          backup +
+          " (" +
+          (err instanceof Error ? err.message.split("\n")[0] : String(err)) +
+          ")",
+      };
+    }
+  };
+
   try {
     execFileSync(
       "sh",
       [
         "-c",
-        // 1. park the original (frees its bytes, costs nothing) and drop its
-        //    sidecars - a stale -wal replayed onto the new file would corrupt it
-        `set -e; rm -f ${q(aside)}; mv ${q(target)} ${q(aside)}; ` +
-          `rm -f ${q(`${target}-wal`)} ${q(`${target}-shm`)}; ` +
+        // 1. unlink the original and its sidecars. A stale -wal replayed onto the
+        //    new file would corrupt it. This is what actually returns the blocks.
+        `set -e; rm -f ${q(`${target}-wal`)} ${q(`${target}-shm`)}; rm -f ${q(target)}; ` +
           // 2. land the compacted copy in the space that freed
           `cp ${q(scratch)} ${q(target)}`,
       ],
-      { env: process.env, stdio: "pipe" }
+      sh
     );
   } catch (err) {
     // The stderr from `sh` is where "No space left on device" lives; without
@@ -324,84 +374,37 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
       typeof err === "object" && err !== null && "stderr" in err
         ? String((err as { stderr?: unknown }).stderr ?? "").trim()
         : "";
-    const detail = err instanceof Error ? err.message.split("\n")[0] : String(err);
-    console.error("[reclaim] install of the compacted database failed:", detail);
+    console.error(
+      "[reclaim] install of the compacted database failed:",
+      err instanceof Error ? err.message.split("\n")[0] : String(err)
+    );
     if (stderr) console.error("[reclaim] install stderr:", stderr.slice(0, 500));
-
-    // Retry once after purging every other file in the database directory.
-    // ENOSPC on `cp` after the 423MB original was parked aside does not add up
-    // on bytes alone, and ENOSPC is also what a filesystem with an exhausted
-    // inode table returns. Purging strays is free - they are all regenerable
-    // sidecars - and it frees inodes if that is what ran out. The original stays
-    // parked in `aside` throughout, so this cannot lose the database.
-    try {
-      const dir = path.dirname(target);
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (!entry.isFile()) continue;
-        const p = path.join(dir, entry.name);
-        if (p === aside || p === target || p === scratch) continue;
-        fs.rmSync(p, { force: true });
-      }
-      logVolumeDetail(target);
-      execFileSync(
-        "sh",
-        [
-          "-c",
-          `set -e; rm -f ${q(target)} ${q(`${target}-wal`)} ${q(`${target}-shm`)}; ` +
-            `cp ${q(scratch)} ${q(target)}`,
-        ],
-        { env: process.env, stdio: "pipe" }
-      );
-      console.warn("[reclaim] install succeeded after purging stray files");
-    } catch (retryErr) {
-      const retryStderr =
-        typeof retryErr === "object" && retryErr !== null && "stderr" in retryErr
-          ? String((retryErr as { stderr?: unknown }).stderr ?? "").trim()
-          : "";
-      console.error(
-        "[reclaim] install retry failed:",
-        retryErr instanceof Error ? retryErr.message.split("\n")[0] : String(retryErr)
-      );
-      if (retryStderr) console.error("[reclaim] install retry stderr:", retryStderr.slice(0, 500));
-      // Put the original back: it is still sitting there, intact.
-      try {
-        execFileSync("sh", ["-c", `set -e; rm -f ${q(target)}; mv ${q(aside)} ${q(target)}`], {
-          env: process.env,
-          stdio: "pipe",
-        });
-        fs.rmSync(scratch, { force: true });
-        return { ran: false, reason: "install failed, original restored" };
-      } catch (restoreErr) {
-        console.error(
-          `[reclaim] RESTORE FAILED - the original is parked at ${aside}:`,
-          restoreErr instanceof Error ? restoreErr.message.split("\n")[0] : String(restoreErr)
-        );
-        return { ran: false, reason: "install failed AND restore failed" };
-      }
+    logVolumeDetail(target);
+    const r = restore();
+    if (r.ok) {
+      fs.rmSync(scratch, { force: true });
+      return { ran: false, reason: "install failed, original restored" };
     }
+    console.error(`[reclaim] ${r.detail}`);
+    return { ran: false, reason: "install failed AND restore failed" };
   }
 
-  // Only now that the copy is in place and the original is parked: prove the
-  // installed file is a working database before the backup is discarded.
+  // Only now that the copy is in place: prove the installed file is a working
+  // database before the backup is discarded.
   const installed = await verify(PrismaClientCtor, target);
   if (!installed.ok) {
     console.error("[reclaim] installed database is not usable:", installed.detail);
-    try {
-      execFileSync("sh", ["-c", `set -e; rm -f ${q(target)}; mv ${q(aside)} ${q(target)}`], {
-        env: process.env,
-        stdio: "pipe",
-      });
-      fs.rmSync(scratch, { force: true });
-      return { ran: false, reason: "verify failed, original restored" };
-    } catch {
-      return { ran: false, reason: "verify failed AND restore failed" };
-    }
+    const r = restore();
+    fs.rmSync(scratch, { force: true });
+    if (r.ok) return { ran: false, reason: "verify failed, original restored" };
+    console.error(`[reclaim] ${r.detail}`);
+    return { ran: false, reason: "verify failed AND restore failed" };
   }
 
-  // The copy is installed and verified: the backup and the scratch are now dead
-  // weight on a volume we are trying to empty.
+  // Installed and verified: the ephemeral rollback copy and the scratch are dead
+  // weight now.
   try {
-    fs.rmSync(aside, { force: true });
+    fs.rmSync(backup, { force: true });
     fs.rmSync(scratch, { force: true });
   } catch {
     /* the reclaim itself already succeeded; stale files are not worth failing on */
