@@ -151,29 +151,71 @@ const EMERGENCY_DAYS = {
 const MAX_NOTIFICATIONS_PER_USER = 100;
 
 /**
+ * First line of an error that is actually worth logging.
+ *
+ * Prisma connector errors arrive as "\n\nError occurred during query
+ * execution:\n...", so a plain `split("\n")[0]` yields an empty string and the
+ * log line says the operation was "skipped: " with no reason attached.
+ */
+function errLine(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  return (
+    raw
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? "unknown error"
+  );
+}
+
+/**
+ * Cut the notification table down, using whichever Prisma client it is given.
+ *
+ * Takes a client rather than the shared `db` because this same prune has to run
+ * against a throwaway COPY of the database on the container's ephemeral disk:
+ * when the volume is 100% full, deleting rows in place is itself impossible -
+ * SQLite cannot journal the transaction - so the only way to prune is somewhere
+ * with free space. See {@link reclaimDatabaseFile}.
+ *
+ * Exported so the policy has exactly one definition shared by the in-place
+ * retention pass and the off-volume boot prune.
+ */
+export async function pruneNotificationsWith(client: typeof db): Promise<number> {
+  const before = await client.notification.count();
+
+  await client.notification.deleteMany({
+    where: { createdAt: { lt: daysAgo(EMERGENCY_DAYS.notification) } },
+  });
+
+  await client.$executeRawUnsafe(
+    `DELETE FROM "Notification" WHERE "id" NOT IN (
+       SELECT "id" FROM (
+         SELECT "id", ROW_NUMBER() OVER (
+           PARTITION BY "userId" ORDER BY "createdAt" DESC
+         ) AS rn
+         FROM "Notification"
+       ) WHERE rn <= ?
+     )`,
+    MAX_NOTIFICATIONS_PER_USER
+  );
+
+  const after = await client.notification.count();
+  if (before !== after) console.warn(`[retention] notifications ${before} -> ${after}`);
+  return before - after;
+}
+
+/**
  * Delete all but the newest {@link MAX_NOTIFICATIONS_PER_USER} rows per user.
  *
  * Fails harmlessly on a database with no free space: the window function needs a
  * temporary b-tree it cannot always get, and the age-based pass still runs. The
- * point is to bound growth between deploys, not to rescue a full disk on its own.
+ * point is to bound growth between deploys, not to rescue a full disk on its own
+ * - {@link reclaimDatabaseFile} handles the full-disk case off-volume.
  */
 export async function trimNotificationsPerUser(): Promise<number> {
   try {
-    const count: number = await db.$executeRawUnsafe(
-      `DELETE FROM "Notification" WHERE "id" NOT IN (
-         SELECT "id" FROM (
-           SELECT "id", ROW_NUMBER() OVER (
-             PARTITION BY "userId" ORDER BY "createdAt" DESC
-           ) AS rn
-           FROM "Notification"
-         ) WHERE rn <= ?
-       )`,
-      MAX_NOTIFICATIONS_PER_USER
-    );
-    if (count > 0) console.info(`[retention] trimmed ${count} excess notifications`);
-    return count;
+    return await pruneNotificationsWith(db);
   } catch (err) {
-    console.warn("[retention] notification trim skipped:", err instanceof Error ? err.message.split("\n")[0] : err);
+    console.warn(`[retention] notification trim skipped: ${errLine(err)}`);
     return 0;
   }
 }

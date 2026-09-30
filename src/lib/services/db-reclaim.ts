@@ -108,6 +108,70 @@ async function logPageUsage(PrismaClientCtor: typeof PrismaClient, target: strin
   }
 }
 
+/**
+ * Prune a COPY of the database on the container's ephemeral disk, then compact
+ * that copy.
+ *
+ * Why the prune cannot happen in place
+ * ------------------------------------
+ * Deleting rows in place on a 100% full volume is impossible: SQLite has to
+ * journal the delete transaction, and there is nowhere to put those journal
+ * pages. Observed exactly that - the boot retention pass reported
+ * "notification trim skipped" and "reclaimed 0 rows" against a volume with 20KB
+ * free, then VACUUM faithfully reproduced a 423MB copy that could not be
+ * installed, so the volume stayed full across every deploy.
+ *
+ * So when the volume is full the whole job moves to `/tmp`, which is not the
+ * full volume: copy the file out, prune the copy, VACUUM the copy. Only the
+ * final compacted copy - small, because the prune already removed the bulk -
+ * ever has to fit on the volume.
+ */
+async function pruneAndCompactOffVolume(
+  PrismaClientCtor: typeof PrismaClient,
+  target: string,
+  scratch: string
+): Promise<boolean> {
+  const working = path.join(os.tmpdir(), `toptier-prune-${process.pid}.db`);
+  fs.rmSync(working, { force: true });
+
+  console.warn("[reclaim] volume is completely full: pruning a copy in ephemeral storage");
+  try {
+    fs.copyFileSync(target, working);
+  } catch (err) {
+    console.warn(
+      "[reclaim] could not copy the database out for pruning:",
+      err instanceof Error ? err.message.split("\n")[0] : String(err)
+    );
+    return false;
+  }
+
+  let client: PrismaClient | undefined;
+  try {
+    client = new PrismaClientCtor({ datasources: { db: { url: `file:${working}` } } });
+
+    // Best effort: fold any committed-but-uncheckpointed WAL frames into the
+    // copy so recent rows are not lost when the -wal sidecar is dropped.
+    await client.$queryRawUnsafe("PRAGMA wal_checkpoint(TRUNCATE)").catch(() => {});
+
+    const { pruneNotificationsWith } = await import("./db-retention");
+    const deleted = await pruneNotificationsWith(client);
+    console.warn(`[reclaim] pruned ${deleted} notification rows off-volume`);
+
+    await client.$executeRawUnsafe(`VACUUM INTO '${scratch.replace(/'/g, "''")}'`);
+  } catch (err) {
+    console.warn(
+      "[reclaim] off-volume prune/compact failed:",
+      err instanceof Error ? err.message.split("\n")[0] : String(err)
+    );
+    return false;
+  } finally {
+    await client?.$disconnect().catch(() => {});
+    fs.rmSync(working, { force: true });
+  }
+
+  return fs.existsSync(scratch);
+}
+
 export interface ReclaimResult {
   ran: boolean;
   reason: string;
@@ -138,22 +202,36 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
   await logPageUsage(PrismaClientCtor, target);
   fs.rmSync(scratch, { force: true });
 
-  // VACUUM returns no rows, so this is the correct raw call. The output goes to
-  // the container's ephemeral disk, which is not the full volume, so this can
-  // succeed when the volume cannot fit a second copy of the database.
-  let vacuumer: PrismaClient | undefined;
-  try {
-    vacuumer = new PrismaClientCtor({ datasources: { db: { url: `file:${target}` } } });
-    await vacuumer.$executeRawUnsafe(`VACUUM INTO '${scratch.replace(/'/g, "''")}'`);
-  } catch (err) {
-    fs.rmSync(scratch, { force: true });
-    console.warn(
-      "[reclaim] VACUUM INTO failed:",
-      err instanceof Error ? err.message.split("\n")[0] : String(err)
-    );
-    return { ran: false, reason: "vacuum failed" };
-  } finally {
-    await vacuumer?.$disconnect().catch(() => {});
+  const completelyFull = free < 8 * 1024 * 1024;
+  let produced = false;
+
+  if (completelyFull) {
+    // Nothing can be journalled in place at 0 free, so prune and compact on the
+    // container's ephemeral disk instead.
+    produced = await pruneAndCompactOffVolume(PrismaClientCtor, target, scratch);
+    if (!produced) {
+      console.warn("[reclaim] off-volume route produced nothing, trying an in-place VACUUM");
+    }
+  }
+
+  if (!produced) {
+    // VACUUM returns no rows, so this is the correct raw call. The output goes to
+    // the container's ephemeral disk, which is not the full volume, so this can
+    // succeed when the volume cannot fit a second copy of the database.
+    let vacuumer: PrismaClient | undefined;
+    try {
+      vacuumer = new PrismaClientCtor({ datasources: { db: { url: `file:${target}` } } });
+      await vacuumer.$executeRawUnsafe(`VACUUM INTO '${scratch.replace(/'/g, "''")}'`);
+    } catch (err) {
+      fs.rmSync(scratch, { force: true });
+      console.warn(
+        "[reclaim] VACUUM INTO failed:",
+        err instanceof Error ? err.message.split("\n")[0] : String(err)
+      );
+      return { ran: false, reason: "vacuum failed" };
+    } finally {
+      await vacuumer?.$disconnect().catch(() => {});
+    }
   }
 
   if (!fs.existsSync(scratch)) {
