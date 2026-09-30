@@ -34,14 +34,17 @@ import path from "path";
 
 import type { PrismaClient } from "@/generated/prisma";
 
-/** Where snapshots are written. A separate volume, mounted at /backups. */
-const backupDir = (): string => process.env.DB_BACKUP_DIR ?? "/backups";
 /** How often to snapshot. */
 const intervalMs = (): number => Number(process.env.DB_BACKUP_INTERVAL_HOURS ?? 6) * 60 * 60 * 1000;
-/** How many snapshots to keep. */
-const keep = (): number => Number(process.env.DB_BACKUP_KEEP ?? 24);
-/** Hard ceiling on total snapshot bytes, so the backup volume cannot fill up. */
-const maxTotalBytes = (): number => Number(process.env.DB_BACKUP_MAX_MB ?? 1500) * 1024 * 1024;
+/** How many snapshots to keep. Deliberately small: Railway permits one volume per
+ *  service, so snapshots live on the same disk as the database and must stay a
+ *  rounding error against it. */
+const keep = (): number => Number(process.env.DB_BACKUP_KEEP ?? 5);
+/** Hard ceiling on total snapshot bytes, so backups can never be what fills the
+ *  volume. Overridden downward by a fraction of the volume in budgetBytes(). */
+const maxTotalBytes = (): number => Number(process.env.DB_BACKUP_MAX_MB ?? 400) * 1024 * 1024;
+/** Refuse to write a snapshot when the volume is this close to full. */
+const MIN_FREE_BYTES = Number(process.env.DB_BACKUP_MIN_FREE_MB ?? 100) * 1024 * 1024;
 
 const PREFIX = "toptier-";
 const mb = (bytes: number): string => `${Math.round(bytes / 1024 / 1024)}MB`;
@@ -50,6 +53,48 @@ function liveDbPath(): string | null {
   const url = process.env.DATABASE_URL ?? "";
   if (!url.startsWith("file:")) return null;
   return path.resolve(process.cwd(), url.replace(/^file:/, ""));
+}
+
+/**
+ * Where snapshots go: a sibling of the live database, so it is on the data volume
+ * without needing to be told where the volume is mounted.
+ */
+function backupDir(live: string): string {
+  return process.env.DB_BACKUP_DIR ?? path.join(path.dirname(live), "backups");
+}
+
+/**
+ * True when the directory sits on the container's own filesystem rather than the
+ * mounted volume.
+ *
+ * This guard exists because the failure mode is silent. Writing to an unmounted
+ * /backups succeeds, logs a healthy snapshot, and is erased by the next deploy -
+ * so the app would look like it was backing up while holding nothing durable. A
+ * different st_dev than the root filesystem means a real mount.
+ */
+function isEphemeral(dir: string): boolean {
+  if (process.env.DB_BACKUP_ALLOW_EPHEMERAL === "1") return false;
+  try {
+    return fs.statSync(dir).dev === fs.statSync(path.parse(dir).root).dev;
+  } catch {
+    return false;
+  }
+}
+
+function freeBytes(dir: string): number | null {
+  try {
+    const s = fs.statfsSync(dir);
+    return s.bavail * s.bsize;
+  } catch {
+    return null;
+  }
+}
+
+/** Snapshot budget: the smaller of the byte cap and a share of the volume. */
+function budgetBytes(dir: string): number {
+  const free = freeBytes(dir);
+  if (free === null) return maxTotalBytes();
+  return Math.min(maxTotalBytes(), Math.floor(free * 0.25));
 }
 
 function stamp(): string {
@@ -76,7 +121,7 @@ function snapshots(dir: string): string[] {
  */
 function rotate(dir: string): void {
   const files = snapshots(dir);
-  const max = maxTotalBytes();
+  const max = budgetBytes(dir);
   let total = files.reduce((sum, f) => sum + (fs.statSync(path.join(dir, f)).size || 0), 0);
 
   for (let i = 0; i < files.length; i++) {
@@ -113,7 +158,7 @@ export async function runBackup(): Promise<BackupResult> {
   if (!live) return { ok: false, reason: "DATABASE_URL is not a file: URL" };
   if (!fs.existsSync(live)) return { ok: false, reason: `live database ${live} does not exist` };
 
-  const dir = backupDir();
+  const dir = backupDir(live);
   try {
     fs.mkdirSync(dir, { recursive: true });
   } catch (err) {
@@ -121,6 +166,22 @@ export async function runBackup(): Promise<BackupResult> {
       ok: false,
       reason: `backup dir ${dir} unavailable: ${err instanceof Error ? err.message : String(err)}`,
     };
+  }
+
+  if (isEphemeral(dir)) {
+    return {
+      ok: false,
+      reason: `${dir} is on the container filesystem, not the data volume - snapshots there are erased on every deploy`,
+    };
+  }
+
+  // The snapshot lands on the same volume as the database, so it must not be the
+  // thing that fills it. Estimated from the live file, since SQLite cannot report
+  // the compacted size before writing.
+  const estimate = fs.statSync(live).size;
+  const free = freeBytes(dir);
+  if (free !== null && free - estimate < MIN_FREE_BYTES) {
+    return { ok: false, reason: `only ${mb(free - estimate)} free, need ${mb(MIN_FREE_BYTES)}` };
   }
 
   const file = path.join(dir, `${PREFIX}${stamp()}.db`);

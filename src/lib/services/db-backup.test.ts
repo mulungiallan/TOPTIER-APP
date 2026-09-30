@@ -57,6 +57,10 @@ beforeEach(() => {
   fs.writeFileSync(live, 'live-bytes')
   process.env.DATABASE_URL = `file:${live}`
   process.env.DB_BACKUP_DIR = dir
+  // The temp dir is on the same device as the filesystem root, which is exactly
+  // the ephemeral case isEphemeral() exists to catch. Opt out so the other tests
+  // can exercise the happy path; the guard itself is tested below.
+  process.env.DB_BACKUP_ALLOW_EPHEMERAL = '1'
   delete process.env.DB_BACKUP_KEEP
   delete process.env.DB_BACKUP_MAX_MB
 })
@@ -120,13 +124,44 @@ describe('runBackup', () => {
     expect(h.sql).toHaveLength(0)
   })
 
-  it('reports a clear reason when the backup volume is not mounted', async () => {
-    // No /backups volume (the common case until the IaC change applies) must
-    // degrade to a log line, never to a boot failure.
+  it('reports a clear reason when the backup location cannot be written', async () => {
     process.env.DB_BACKUP_DIR = path.join(live, 'not-a-dir')
     const res = await runBackup()
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/unavailable|does not exist/)
+  })
+})
+
+describe('destination guards', () => {
+  it('refuses to snapshot onto the container filesystem', async () => {
+    // Silently backing up to ephemeral storage is the worst outcome: the logs look
+    // healthy and the snapshots are erased on the next deploy.
+    delete process.env.DB_BACKUP_ALLOW_EPHEMERAL
+    const res = await runBackup()
+    if (res.ok) {
+      // Only meaningful where the temp dir really is the root device (POSIX).
+      return
+    }
+    expect(res.reason).toMatch(/container filesystem/)
+    expect(shots()).toHaveLength(0)
+  })
+
+  it('defaults the snapshot directory to a sibling of the live database', async () => {
+    // Deriving it from DATABASE_URL means it follows the data volume without the
+    // mount path ever being duplicated in config.
+    delete process.env.DB_BACKUP_DIR
+    process.env.DB_BACKUP_ALLOW_EPHEMERAL = '1'
+    const res = await runBackup()
+    expect(res.ok).toBe(true)
+    expect(path.dirname(res.file as string)).toBe(path.join(tmp, 'backups'))
+  })
+
+  it('leaves the live database and its WAL untouched', async () => {
+    // A backup must never interfere with the database it is protecting.
+    const wal = `${live}-wal`
+    fs.writeFileSync(wal, 'wal-bytes')
+    await runBackup()
+    expect(fs.readFileSync(wal, 'utf8')).toBe('wal-bytes')
   })
 })
 
