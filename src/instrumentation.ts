@@ -191,6 +191,20 @@ export async function register() {
     const { startRetentionMonitor } = await import("./lib/services/db-retention");
     startRetentionMonitor();
 
+    // Automatic off-volume backups. Retention deletes rows to keep writes alive;
+    // this is what makes the data itself recoverable. It snapshots to a SEPARATE
+    // volume (default /backups) via VACUUM INTO, which only reads the live file,
+    // so a completely full data volume does not block a backup - and verifies each
+    // snapshot by opening it and counting users before trusting it.
+    //
+    // Failures are logged and swallowed: backups must never take the server down.
+    try {
+      const { startBackupMonitor } = await import("./lib/services/db-backup");
+      startBackupMonitor();
+    } catch (err) {
+      console.warn("[backup] monitor failed to start (continuing):", (err as Error).message);
+    }
+
     // Start the background signal generator so the Signals feed stays populated
     // without blocking API requests. It refreshes every few minutes and is
     // internally throttled + guarded against overlapping runs.

@@ -1,0 +1,194 @@
+/**
+ * Automatic, off-volume backups of the SQLite database.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The database is a single file on a fixed-size volume. On 2026-09-30 that volume
+ * filled up, and the automatic file-swap reclaim that used to run at boot
+ * replaced the database with a compacted copy - destroying every user, wallet and
+ * payment row, because the writes that had not yet been checkpointed lived only in
+ * the -wal sidecar and the swap copied the main file alone.
+ *
+ * The lesson is not "be careful with the swap" (that swap is now disabled by
+ * default). The lesson is that we had NO BACKUP, so a single bad automatic
+ * operation was indistinguishable from a fatal incident. This is that backup.
+ *
+ * HOW IT WORKS
+ * ------------
+ * `VACUUM INTO` writes a consistent, defragmented copy of the whole database to a
+ * path we choose. Two properties make it the right tool here:
+ *
+ *   1. It READS the source. A completely full live volume does not prevent a
+ *      backup - only writing to the source would.
+ *   2. The destination can be a DIFFERENT filesystem. Backups go to a dedicated
+ *      volume mounted at /backups, never to the volume that fills up, because a
+ *      backup on the same disk protects against nothing that matters.
+ *
+ * Every snapshot is verified by opening it and counting users before it is
+ * trusted, and rotation is bounded by both a file count and a total size so the
+ * backup volume cannot fill up either.
+ */
+
+import fs from "fs";
+import path from "path";
+
+import type { PrismaClient } from "@/generated/prisma";
+
+/** Where snapshots are written. A separate volume, mounted at /backups. */
+const backupDir = (): string => process.env.DB_BACKUP_DIR ?? "/backups";
+/** How often to snapshot. */
+const intervalMs = (): number => Number(process.env.DB_BACKUP_INTERVAL_HOURS ?? 6) * 60 * 60 * 1000;
+/** How many snapshots to keep. */
+const keep = (): number => Number(process.env.DB_BACKUP_KEEP ?? 24);
+/** Hard ceiling on total snapshot bytes, so the backup volume cannot fill up. */
+const maxTotalBytes = (): number => Number(process.env.DB_BACKUP_MAX_MB ?? 1500) * 1024 * 1024;
+
+const PREFIX = "toptier-";
+const mb = (bytes: number): string => `${Math.round(bytes / 1024 / 1024)}MB`;
+
+function liveDbPath(): string | null {
+  const url = process.env.DATABASE_URL ?? "";
+  if (!url.startsWith("file:")) return null;
+  return path.resolve(process.cwd(), url.replace(/^file:/, ""));
+}
+
+function stamp(): string {
+  // Lexicographically sortable, so rotation can sort by filename.
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+function snapshots(dir: string): string[] {
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.startsWith(PREFIX) && f.endsWith(".db"))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Delete the oldest snapshots until both the count and the byte budget are met.
+ *
+ * Newest-last ordering means the tail is always the most recent, so trimming from
+ * the front keeps the snapshots you would actually want.
+ */
+function rotate(dir: string): void {
+  const files = snapshots(dir);
+  const max = maxTotalBytes();
+  let total = files.reduce((sum, f) => sum + (fs.statSync(path.join(dir, f)).size || 0), 0);
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const survivors = files.length - i;
+    if (survivors <= keep() && total <= max) break;
+    const p = path.join(dir, f);
+    try {
+      total -= fs.statSync(p).size;
+      fs.rmSync(p, { force: true });
+      console.info(`[backup] rotated out ${f}`);
+    } catch {
+      /* a snapshot we cannot delete is not worth failing the backup over */
+    }
+  }
+  console.info(`[backup] ${files.length} snapshots, ${mb(total)} total`);
+}
+
+export interface BackupResult {
+  ok: boolean;
+  reason: string;
+  file?: string;
+  bytes?: number;
+  users?: number;
+}
+
+/**
+ * Take one verified snapshot.
+ *
+ * Never throws: a backup failing must not disturb a running app.
+ */
+export async function runBackup(): Promise<BackupResult> {
+  const live = liveDbPath();
+  if (!live) return { ok: false, reason: "DATABASE_URL is not a file: URL" };
+  if (!fs.existsSync(live)) return { ok: false, reason: `live database ${live} does not exist` };
+
+  const dir = backupDir();
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `backup dir ${dir} unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const file = path.join(dir, `${PREFIX}${stamp()}.db`);
+  const { PrismaClient: PrismaClientCtor } = await import("@/generated/prisma");
+
+  let client: PrismaClient | undefined;
+  try {
+    client = new PrismaClientCtor();
+    // VACUUM returns no rows, so $executeRawUnsafe is the correct call.
+    await client.$executeRawUnsafe(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  } catch (err) {
+    fs.rmSync(file, { force: true });
+    return {
+      ok: false,
+      reason: err instanceof Error ? err.message.split("\n")[0] : String(err),
+    };
+  } finally {
+    await client?.$disconnect().catch(() => {});
+  }
+
+  // Trust nothing: prove the snapshot opens and contains the rows we care about
+  // before counting it as a backup. A snapshot that cannot be read is worthless
+  // precisely when it is needed.
+  let users = 0;
+  let checker: PrismaClient | undefined;
+  try {
+    checker = new PrismaClientCtor({ datasources: { db: { url: `file:${file}` } } });
+    users = await checker.user.count();
+  } catch (err) {
+    fs.rmSync(file, { force: true });
+    return {
+      ok: false,
+      reason: `snapshot unreadable: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`,
+    };
+  } finally {
+    await checker?.$disconnect().catch(() => {});
+  }
+
+  const bytes = fs.statSync(file).size;
+  console.warn(`[backup] wrote ${path.basename(file)} (${mb(bytes)}, ${users} users) to ${dir}`);
+  rotate(dir);
+  return { ok: true, reason: "ok", file, bytes, users };
+}
+
+/**
+ * Snapshot now, then keep doing it on a timer.
+ *
+ * The first run is immediate: a backup service that has never run is not a
+ * backup service, and the moment you most want a snapshot is the moment right
+ * after you deploy one.
+ */
+export function startBackupMonitor(ms = intervalMs()): void {
+  let running = false;
+
+  const run = async (): Promise<void> => {
+    if (running) return;
+    running = true;
+    try {
+      const result = await runBackup();
+      if (!result.ok) console.warn(`[backup] skipped: ${result.reason}`);
+    } catch (err) {
+      console.warn("[backup] failed:", err instanceof Error ? err.message : String(err));
+    } finally {
+      running = false;
+    }
+  };
+
+  void run();
+  const timer = setInterval(() => void run(), Math.max(ms, 60 * 1000));
+  if (typeof timer.unref === "function") timer.unref();
+}
