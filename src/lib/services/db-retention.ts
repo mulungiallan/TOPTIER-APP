@@ -116,10 +116,19 @@ export const TARGET_FREE_BYTES = 100 * 1024 * 1024
  * Emergency windows, used when the volume is (nearly) full. Deliberately brutal:
  * reaching a write-capable database matters more than keeping a month of signal
  * history, and the normal pass keeps the last 30 days of everything.
+ *
+ * `notification` is measured in hours, not days, and that is not a typo. Every
+ * generated signal writes one Notification row PER USER, and the generator
+ * refreshes dozens of assets every cycle, so this table was observed at 287MB
+ * (420MB including its two indexes) out of a 500MB volume - a single table
+ * holding 99% of the file, with zero free pages, which made every write in the
+ * app fail. A two-day window deleted nothing because the whole table was less
+ * than two days old. In-app notifications are ephemeral UI; six hours is more
+ * than anyone reads.
  */
 const EMERGENCY_DAYS = {
   signal: 3,
-  notification: 2,
+  notification: 0.25,
   activityLog: 1,
   usageEvent: 7,
   usageSession: 7,
@@ -129,6 +138,61 @@ const EMERGENCY_DAYS = {
   botSnapshot: 3,
   adminAuditLog: 30,
 };
+
+/**
+ * Hard ceiling on notifications kept per user, enforced on every retention pass
+ * rather than only in an emergency.
+ *
+ * Age-based cuts alone cannot bound this table: the signal generator writes rows
+ * faster than any day-granular window retires them, so the table regrows to fill
+ * the volume between deploys no matter how aggressively the ages are tuned. A
+ * per-user row cap is the only invariant that holds regardless of write rate.
+ */
+const MAX_NOTIFICATIONS_PER_USER = 100;
+
+/**
+ * Delete all but the newest {@link MAX_NOTIFICATIONS_PER_USER} rows per user.
+ *
+ * Fails harmlessly on a database with no free space: the window function needs a
+ * temporary b-tree it cannot always get, and the age-based pass still runs. The
+ * point is to bound growth between deploys, not to rescue a full disk on its own.
+ */
+export async function trimNotificationsPerUser(): Promise<number> {
+  try {
+    const count: number = await db.$executeRawUnsafe(
+      `DELETE FROM "Notification" WHERE "id" NOT IN (
+         SELECT "id" FROM (
+           SELECT "id", ROW_NUMBER() OVER (
+             PARTITION BY "userId" ORDER BY "createdAt" DESC
+           ) AS rn
+           FROM "Notification"
+         ) WHERE rn <= ?
+       )`,
+      MAX_NOTIFICATIONS_PER_USER
+    );
+    if (count > 0) console.info(`[retention] trimmed ${count} excess notifications`);
+    return count;
+  } catch (err) {
+    console.warn("[retention] notification trim skipped:", err instanceof Error ? err.message.split("\n")[0] : err);
+    return 0;
+  }
+}
+
+/**
+ * Row-level reclaim only, with no file operations, so it is safe to call while
+ * the server is running.
+ *
+ * Boot order matters: rows have to go BEFORE the file is compacted. An age-based
+ * delete frees pages inside the database file but never shrinks the file itself,
+ * so compacting first reclaims nothing - which is exactly how a 287MB
+ * Notification table kept the volume full: VACUUM reproduced a full-size copy
+ * because nothing had been deleted yet, and that copy could not be installed.
+ * Delete first, then the compacted copy is small enough to land.
+ */
+export async function reclaimRowsNow(): Promise<number> {
+  const { deleted } = await reclaimNow();
+  return deleted;
+}
 
 export function freeBytes(): number | null {
   const url = process.env.DATABASE_URL ?? "";
@@ -172,6 +236,11 @@ export async function reclaimNow(): Promise<{ deleted: number; free: number | nu
   } else {
     deleted = await pruneExpiredRows().then((r) => r.reduce((s, x) => s + x.deleted, 0));
   }
+
+  // Always, not just in an emergency: a per-user row cap is the only bound that
+  // holds against the signal generator's write rate, so the table cannot refill
+  // the volume between deploys no matter how the age windows are tuned.
+  deleted += await trimNotificationsPerUser();
 
   await checkpointWal();
   const after = freeBytes();

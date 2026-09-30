@@ -2,14 +2,29 @@
 // server-side + client-side crash reporting. @sentry/nextjs is a dependency.
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    // FIRST THING, before anything opens the database. A full volume breaks
-    // every write in the app (login, signup, screenshot analysis, signals) and
-    // the row-level retention job cannot fix it, because deleting rows frees
-    // pages inside the file but no filesystem space. Only replacing the file
-    // with a compacted copy gives bytes back.
+    // ORDER MATTERS: delete rows FIRST, compact the file SECOND.
     //
-    // It has to run before the first Prisma query in this process: that is what
-    // makes deleting the original file safe. No-op unless the volume is full.
+    // A full volume breaks every write in the app (login, signup, screenshot
+    // analysis, signals). Deleting rows frees pages inside the file but never
+    // filesystem space, so it is only half a fix - only replacing the file with
+    // a compacted copy gives bytes back, and that compaction is useless unless
+    // the rows are gone first. That is how a single oversized table
+    // (Notification reached 287MB of a 500MB volume) kept the volume full
+    // forever: every boot compacted a database that still held every row, and
+    // the resulting full-size copy could not be installed. Prune first, and the
+    // compacted copy becomes small enough to land.
+    //
+    // The file swap still has to happen before the first Prisma query in this
+    // process, because that is what makes deleting the original file safe.
+    // No-op unless the volume is full.
+    try {
+      const { reclaimRowsNow } = await import("./lib/services/db-retention");
+      const deleted = await reclaimRowsNow();
+      if (deleted > 0) console.info(`[retention] boot reclaim deleted ${deleted} rows`);
+    } catch (err) {
+      console.warn("[retention] boot reclaim failed (continuing):", (err as Error).message);
+    }
+
     try {
       const { reclaimDatabaseFile } = await import("./lib/services/db-reclaim");
       await reclaimDatabaseFile();
