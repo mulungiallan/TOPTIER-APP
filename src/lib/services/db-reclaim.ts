@@ -317,6 +317,29 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
   const backup = path.join(os.tmpdir(), `toptier-reclaim-backup-${process.pid}.db`);
   const sh = { env: process.env, stdio: "pipe" } as const;
 
+  // Close our own handle on the database BEFORE unlinking it.
+  //
+  // Unlinking a file that any process still has open frees ZERO blocks - the
+  // inode's pages are released only when the last descriptor closes. Boot runs an
+  // in-place row prune first (it opens the database through the shared Prisma
+  // client and leaves it connected), so by the time we get here this process is
+  // itself holding /data/db/custom.db open. The unlink appeared to work - the
+  // directory listing showed `custom.db=0MB` and nothing else - while statfs went
+  // on reporting `0MB avail` and the copy still failed with ENOSPC.
+  //
+  // Prisma reconnects transparently on the next query, so disconnecting here is
+  // safe even though the server has already started using the database.
+  try {
+    const { db } = await import("@/lib/db");
+    await db.$disconnect();
+  } catch (err) {
+    console.warn(
+      "[reclaim] could not disconnect the shared client before swapping:",
+      err instanceof Error ? err.message.split("\n")[0] : String(err)
+    );
+    return { ran: false, reason: "database still held open" };
+  }
+
   try {
     fs.rmSync(backup, { force: true });
     fs.copyFileSync(target, backup);
