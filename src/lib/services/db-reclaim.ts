@@ -254,6 +254,40 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
   const target = dbPath();
   if (!target || !fs.existsSync(target)) return { ran: false, reason: "no database file" };
 
+  // THIS FUNCTION IS OFF BY DEFAULT, AND THAT IS NOT A BUG TO UNDO.
+  //
+  // It replaced the live database file with a VACUUM'd copy, automatically, at
+  // boot, on the one occasion the volume was full. That destroyed the production
+  // user base: every account, wallet and payment row is gone.
+  //
+  // The mechanism is worth writing down so it is never repeated. When the volume
+  // has no free space, SQLite cannot checkpoint - a checkpoint has to WRITE pages
+  // into the main database file - so committed transactions pile up in
+  // `custom.db-wal` and never fold back into the main file. A boot-time swap
+  // that copies `custom.db` therefore ships a database missing everything
+  // written since the disk filled, and it cannot tell: reads succeed, the
+  // compacted copy verifies, and the only symptom is that real users have
+  // vanished. Copying the -wal alongside fixes that specific case, but the whole
+  // category is "rewrite the only copy of the production database, unattended,
+  // while it is in a state too corrupt to be reasoned about".
+  //
+  // Row-level pruning (db-retention.ts) is the only automatic remedy from now on:
+  // deleting rows frees pages in place and cannot lose data. Freeing actual
+  // filesystem space is an operator decision that needs a verified backup first.
+  if (process.env.DB_RECLAIM_ALLOW_FILE_SWAP !== "1") {
+    const free = freeBytes(target);
+    if (free !== null && free < TRIGGER_FREE_BYTES) {
+      console.error(
+        `[reclaim] DISABLED: volume has only ${mb(free)} free and this will not rewrite the ` +
+          "database file automatically - it destroyed the user table when it was enabled. " +
+          "Row pruning still runs (see [retention]). To reclaim space, take a verified backup " +
+          "and set DB_RECLAIM_ALLOW_FILE_SWAP=1 deliberately, or move to a larger volume/Postgres."
+      );
+      logVolumeDetail(target);
+    }
+    return { ran: false, reason: "file swap disabled by default" };
+  }
+
   const free = freeBytes(target);
   if (free === null) return { ran: false, reason: "cannot stat volume" };
   if (free >= TRIGGER_FREE_BYTES) return { ran: false, reason: `${mb(free)} free, above trigger` };
