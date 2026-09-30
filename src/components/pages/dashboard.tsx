@@ -41,7 +41,7 @@ import {
 } from 'recharts'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
-import { useLiveMarket, type LivePriceItem } from '@/hooks/use-live-market'
+import { useLiveMarket } from '@/hooks/use-live-market'
 import { WalletBalanceCard } from '@/components/layout/wallet-balance-card'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -52,7 +52,7 @@ import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { isAdminRole } from '@/lib/admin-permissions'
 
-// ─── Types ──────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface DashboardSignal {
   id: string
@@ -108,14 +108,6 @@ interface EBookSummary {
   owned?: boolean
 }
 
-interface MarketItem {
-  asset: string
-  price: number
-  change: number
-  direction: 'up' | 'down' | 'neutral'
-  source?: 'finnhub' | 'yahoo'
-}
-
 // ─── Live price formatting helpers ─────────────────────────────────────────────
 
 function formatMarketPrice(asset: string, price: number): string {
@@ -138,17 +130,7 @@ function formatMarketPrice(asset: string, price: number): string {
   return price.toFixed(4)
 }
 
-function livePriceToMarketItem(p: LivePriceItem): MarketItem {
-  return {
-    asset: p.symbol,
-    price: p.price,
-    change: p.changePercent,
-    direction: p.change > 0 ? 'up' : p.change < 0 ? 'down' : 'neutral',
-    source: p.source === 'mock' ? undefined : p.source,
-  }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────────â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function formatCountdown(targetMs: number): string {
   const diff = targetMs - Date.now()
@@ -175,7 +157,7 @@ function formatTimeAgo(dateStr: string): string {
   }
 }
 
-// ─── Sub Components ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Sub Components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function StatCard({
   title,
@@ -367,13 +349,13 @@ function EBooksCard({ books }: { books: EBookSummary[] }) {
                 className="flex size-10 shrink-0 items-center justify-center rounded-md text-lg"
                 style={{ backgroundColor: book.coverColor || '#1f2937' }}
               >
-                {book.emoji || '📘'}
+                {book.emoji || 'ðŸ“˜'}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{book.title}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {book.owned ? 'In your library' : `$${(book.price ?? 0).toFixed(2)}`}
-                  {book.category ? ` · ${book.category}` : ''}
+                  {book.category ? ` Â· ${book.category}` : ''}
                 </p>
               </div>
               {book.owned ? (
@@ -526,7 +508,7 @@ function RecentSignalsList({ signals, loading, locked }: { signals: DashboardSig
                               : 'text-muted-foreground'
                           )}
                         >
-                          · Live: {formatMarketPrice(signal.asset, livePrice!)}
+                          Â· Live: {formatMarketPrice(signal.asset, livePrice!)}
                           {livePips !== null && (
                             <span className="ml-1 text-[10px] opacity-80">
                               ({liveProfitable === true ? '+' : ''}
@@ -628,7 +610,7 @@ function QuickActions() {
 }
 
 /**
- * PlanUsageCard — shows the user's current plan and analyses quota.
+ * PlanUsageCard â€” shows the user's current plan and analyses quota.
  * Fetches from /api/packages on mount.
  */
 function PlanUsageCard() {
@@ -659,7 +641,7 @@ function PlanUsageCard() {
         if (json?.data?.userPlan) setPlan(json.data.userPlan)
       })
       .catch(() => {
-        // silent fail — dashboard still works
+        // silent fail â€” dashboard still works
       })
       .finally(() => setLoading(false))
     return () => ctrl.abort()
@@ -869,126 +851,6 @@ function UpcomingEvents({ events, loading, onRetry }: { events: EconomicEvent[];
   )
 }
 
-function MarketOverviewTable() {
-  const { prices, loading, lastUpdated, refresh, source } = useLiveMarket({
-    overview: true,
-    refreshMs: 30_000,
-  })
-
-  // Map live prices to the table's expected shape. If none arrive, show an
-  // honest "unavailable" state instead of fabricated numbers.
-  const items: MarketItem[] = prices.map(livePriceToMarketItem)
-
-  const isLive = source === 'finnhub' || source === 'yahoo' || source === 'mixed'
-  const sourceLabel =
-    source === 'finnhub' ? 'Finnhub' :
-    source === 'yahoo' ? 'Yahoo Finance' :
-    source === 'mixed' ? 'Finnhub + Yahoo' :
-    'No data source configured'
-  const lastUpdatedLabel = lastUpdated
-    ? lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    : '—'
-
-  return (
-    <Card className="col-span-full">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              Market Overview
-              {isLive && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
-                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  LIVE
-                </span>
-              )}
-            </CardTitle>
-            <CardDescription className="text-[11px] mt-0.5">
-              Major pairs &amp; assets · {sourceLabel} · Updated {lastUpdatedLabel}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-[11px] text-muted-foreground"
-              onClick={refresh}
-              disabled={loading}
-            >
-              <RefreshCw className={cn('size-3 mr-1', loading && 'animate-spin')} />
-              Refresh
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 text-[11px] text-muted-foreground"
-              onClick={() => useStore.getState().setPage('watchlist')}
-            >
-              View Watchlist <ArrowRight className="ml-1 size-3" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border/50">
-                <th className="pb-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Asset</th>
-                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Price</th>
-                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Change</th>
-                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Dir</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-8 text-center text-xs text-muted-foreground">
-                    Market data is currently unavailable. Try refreshing in a moment.
-                  </td>
-                </tr>
-              ) : (
-                items.map((item) => (
-                <tr key={item.asset} className="border-b border-border/30 last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="py-2.5 text-sm font-medium">
-                    {item.asset}
-                    {item.source && (
-                      <span className="ml-1 inline-block size-1.5 rounded-full bg-emerald-500/70" title={`Source: ${item.source}`} />
-                    )}
-                  </td>
-                  <td className="py-2.5 text-right text-sm font-mono tabular-nums">
-                    {loading && !item.price ? '—' : formatMarketPrice(item.asset, item.price)}
-                  </td>
-                  <td
-                    className={cn(
-                      'py-2.5 text-right text-sm font-medium tabular-nums',
-                      item.change > 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : item.change < 0
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-muted-foreground'
-                    )}
-                  >
-                    {item.change > 0 ? '+' : ''}{item.change.toFixed(2)}%
-                  </td>
-                  <td className="py-2.5 text-right">
-                    {item.direction === 'up' ? (
-                      <ArrowUpRight className="ml-auto size-4 text-emerald-500" />
-                    ) : item.direction === 'down' ? (
-                      <ArrowDownRight className="ml-auto size-4 text-red-500" />
-                    ) : (
-                      <span className="ml-auto block text-muted-foreground">—</span>
-                    )}
-                  </td>
-                </tr>
-              )))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 function SubscriptionBanner() {
   const user = useStore((s) => s.user)
@@ -1047,7 +909,7 @@ function MentorshipCard() {
                 <p className="text-sm font-medium">1-on-1 Mentorship</p>
                 {hasMentorship && (
                   <Badge className="capitalize">
-                    {type ? `${type} · Active` : 'Active'}
+                    {type ? `${type} Â· Active` : 'Active'}
                   </Badge>
                 )}
               </div>
@@ -1068,7 +930,7 @@ function MentorshipCard() {
                   key={o.name}
                   className={cn('inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-medium', o.color)}
                 >
-                  {o.name} · {o.price}/2 mo
+                  {o.name} Â· {o.price}/2 mo
                 </span>
               ))}
             </div>
@@ -1121,13 +983,13 @@ function ScreenshotUsageCard() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold">Screenshot Analysis</CardTitle>
           <Badge variant="outline" className="text-[10px]">
-            Free · Unlimited
+            Free Â· Unlimited
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
         <p className="text-[11px] text-muted-foreground">
-          Upload any chart for instant AI pattern analysis — completely free for everyone.
+          Upload any chart for instant AI pattern analysis â€” completely free for everyone.
         </p>
         <Button
           size="sm"
@@ -1152,7 +1014,7 @@ function CommunityStats() {
       .then((res: any) => {
         if (!cancelled) setStats(res?.data ?? res ?? null)
       })
-      .catch(() => { /* leave stats null — shows honest placeholders */ })
+      .catch(() => { /* leave stats null â€” shows honest placeholders */ })
     return () => { cancelled = true }
   }, [])
 
@@ -1177,21 +1039,21 @@ function CommunityStats() {
             <div className="flex items-center justify-center mb-1">
               <Users className="size-4 text-primary" />
             </div>
-            <p className="text-sm font-bold">{stats ? stats.traders.toLocaleString() : '—'}</p>
+            <p className="text-sm font-bold">{stats ? stats.traders.toLocaleString() : 'â€”'}</p>
             <p className="text-[10px] text-muted-foreground">Traders</p>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
               <Globe className="size-4 text-primary" />
             </div>
-            <p className="text-sm font-bold">{stats ? stats.countries.toLocaleString() : '—'}</p>
+            <p className="text-sm font-bold">{stats ? stats.countries.toLocaleString() : 'â€”'}</p>
             <p className="text-[10px] text-muted-foreground">Countries</p>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
               <Shield className="size-4 text-primary" />
             </div>
-            <p className="text-sm font-bold">{stats ? stats.totalSignals.toLocaleString() : '—'}</p>
+            <p className="text-sm font-bold">{stats ? stats.totalSignals.toLocaleString() : 'â€”'}</p>
             <p className="text-[10px] text-muted-foreground">Signals</p>
           </div>
         </div>
@@ -1200,7 +1062,7 @@ function CommunityStats() {
   )
 }
 
-// ─── Loading Skeleton ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Loading Skeleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function DashboardLoadingSkeleton() {
   return (
@@ -1235,7 +1097,7 @@ function DashboardLoadingSkeleton() {
   )
 }
 
-// ─── Error State ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Error State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
@@ -1261,7 +1123,7 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) 
   )
 }
 
-// ─── Main Dashboard ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function DashboardPage() {
   const user = useStore((s) => s.user)
@@ -1278,7 +1140,7 @@ export function DashboardPage() {
       setLoading(true)
       setError(null)
 
-      // Fetch all data in parallel — NOTE: api client already prepends /api
+      // Fetch all data in parallel â€” NOTE: api client already prepends /api
       const [signalsRes, perfRes, eventsRes, booksRes] = await Promise.allSettled([
         api.get('/signals?status=active&limit=5', { signal }),
         api.get('/performance', { signal }),
@@ -1302,7 +1164,7 @@ export function DashboardPage() {
         setSignalsLocked(false)
       }
 
-      // Process signals — API returns { data: { signals: [...] } }
+      // Process signals â€” API returns { data: { signals: [...] } }
       if (signalsRes.status === 'fulfilled' && signalsRes.value) {
         const res = signalsRes.value as any
         const rawSignals = Array.isArray(res?.data)
@@ -1329,7 +1191,7 @@ export function DashboardPage() {
         )
       }
 
-      // Process performance — API returns { data: { overview, dailyPerformance, ... } }
+      // Process performance â€” API returns { data: { overview, dailyPerformance, ... } }
       if (perfRes.status === 'fulfilled' && perfRes.value) {
         const res = perfRes.value as any
         const d = res?.data?.overview || res?.data || res?.overview || {}
@@ -1357,7 +1219,7 @@ export function DashboardPage() {
         })
       }
 
-      // Process events — API returns { data: [...] } or { data: { events: [...] } }
+      // Process events â€” API returns { data: [...] } or { data: { events: [...] } }
       if (eventsRes.status === 'fulfilled' && eventsRes.value) {
         const res = eventsRes.value as any
         const rawEvents = Array.isArray(res?.data)
@@ -1386,7 +1248,7 @@ export function DashboardPage() {
         )
       }
 
-      // Process e-books — the dashboard had no e-book section at all, so a
+      // Process e-books â€” the dashboard had no e-book section at all, so a
       // user's purchased books were invisible outside the dedicated library
       // page. /api/ebooks returns { data: { books: [...] } } with `owned`.
       if (booksRes.status === 'fulfilled' && booksRes.value) {
@@ -1520,9 +1382,6 @@ export function DashboardPage() {
           <CommunityStats />
         </div>
       </div>
-
-      {/* Market Overview */}
-      <MarketOverviewTable />
     </div>
   )
 }
