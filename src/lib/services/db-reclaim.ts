@@ -155,8 +155,15 @@ export async function reclaimDatabaseFile(): Promise<ReclaimResult> {
       { env: process.env, stdio: "pipe" }
     );
   } catch (err) {
+    // The stderr from `sh` is where "No space left on device" lives; without
+    // printing it, a failed reclaim is completely opaque.
+    const stderr =
+      typeof err === "object" && err !== null && "stderr" in err
+        ? String((err as { stderr?: unknown }).stderr ?? "").trim()
+        : "";
     const detail = err instanceof Error ? err.message.split("\n")[0] : String(err);
     console.error("[reclaim] install of the compacted database failed:", detail);
+    if (stderr) console.error("[reclaim] install stderr:", stderr.slice(0, 500));
     // Put the original back: it is still sitting there, intact.
     try {
       execFileSync("sh", ["-c", `set -e; rm -f ${q(target)}; mv ${q(aside)} ${q(target)}`], {
