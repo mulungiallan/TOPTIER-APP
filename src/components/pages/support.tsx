@@ -104,7 +104,8 @@ interface SupportTicket {
 }
 
 interface PlatformStats {
-  traders: number
+  /** Admin-only. Omitted by /api/platform/stats for non-admins. */
+  traders?: number
   countries: number
   totalSignals: number
   totalPosts: number
@@ -914,10 +915,15 @@ export default function SupportPage() {
             {stats ? (
               <>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-2xl font-bold">{stats.traders.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Traders</p>
-                  </div>
+                  {/* Admin-only: the API omits `traders` for everyone else, so the
+                      tile is absent for non-admins rather than a placeholder that
+                      hints at a withheld number. */}
+                  {typeof stats.traders === 'number' && (
+                    <div className="rounded-lg border p-3 text-center">
+                      <p className="text-2xl font-bold">{stats.traders.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Traders</p>
+                    </div>
+                  )}
                   <div className="rounded-lg border p-3 text-center">
                     <p className="text-2xl font-bold">{stats.countries.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Countries</p>

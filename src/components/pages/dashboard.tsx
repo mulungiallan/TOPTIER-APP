@@ -757,7 +757,7 @@ function ScreenshotUsageCard() {
 }
 
 function CommunityStats() {
-  const [stats, setStats] = useState<{ traders: number; countries: number; totalSignals: number } | null>(null)
+  const [stats, setStats] = useState<{ traders?: number; countries: number; totalSignals: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -785,7 +785,11 @@ function CommunityStats() {
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="grid grid-cols-3 gap-3">
+        <div className={`grid gap-3 ${typeof stats?.traders === 'number' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {/* Admin-only: /api/platform/stats omits `traders` for everyone else, so
+              the registered-user tile is absent rather than a placeholder that
+              hints at a withheld number. */}
+          {typeof stats?.traders === 'number' && (
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
               <Users className="size-4 text-primary" />
@@ -793,6 +797,7 @@ function CommunityStats() {
             <p className="text-sm font-bold">{stats ? stats.traders.toLocaleString() : 'â€”'}</p>
             <p className="text-[10px] text-muted-foreground">Traders</p>
           </div>
+          )}
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
               <Globe className="size-4 text-primary" />
