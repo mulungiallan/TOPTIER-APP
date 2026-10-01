@@ -127,3 +127,25 @@ Integration - Overview - Pesapal Developer Community_files/
 .tmp-ensure-space/
 .tmp-ensure-space-compact*
 
+
+# Local operator notes and credentials -- never commit
+# vps.txt held Contabo + Railway + SSH secrets before it was overwritten
+vps.txt
+BOT.txt
+# deploy-bot-local.ps1 embeds BOT_SERVICE_KEY
+deploy-bot-local.ps1
+cf-token.txt
+*.cf-token
+
+# Scratch notes kept on the workstation
+CORRECT.txt
+apiz.txt
+install.txt
+is.txt
+TRADING STATEGIES.txt
+
+# Backup copies of tracked sources
+*.orig
+
+# Local bot tooling scratch
+/tools/
