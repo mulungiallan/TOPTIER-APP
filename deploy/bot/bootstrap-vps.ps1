@@ -184,12 +184,18 @@ if (-not (Test-Path $Nssm)) {
 
 if (Test-Path $Nssm) {
     $existing = Get-Service -Name ToptierBot -ErrorAction SilentlyContinue
-    if ($existing -and $existing.Status -eq "Running") {
-        Write-Info "stopping running ToptierBot to reconfigure..."
-        & $Nssm stop ToptierBot 2>$null | Out-Null
-        Start-Sleep -Seconds 3
+    if ($existing) {
+        if ($existing.Status -eq "Running") {
+            Write-Info "stopping running ToptierBot to reconfigure..."
+            & $Nssm stop ToptierBot 2>$null | Out-Null
+            Start-Sleep -Seconds 3
+        }
+        # Only remove when it exists. `nssm remove` on a missing service writes
+        # "Can't open service!" to stderr, and under $ErrorActionPreference=Stop
+        # PowerShell 5.1 promotes that to a terminating NativeCommandError --
+        # aborting a fresh install before the service is ever registered.
+        & $Nssm remove ToptierBot confirm 2>$null | Out-Null
     }
-    & $Nssm remove ToptierBot confirm 2>$null | Out-Null
     & $Nssm install ToptierBot $PyReal "-m uvicorn server:app --host 127.0.0.1 --port $Port" | Out-Null
     & $Nssm set ToptierBot AppDirectory      $ServiceDir          | Out-Null
     & $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_KEY=$ServiceKey | Out-Null
