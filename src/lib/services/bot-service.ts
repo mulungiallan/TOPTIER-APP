@@ -37,6 +37,24 @@ export interface CreateInstanceSpec {
   // to each instance through the process environment. Sending a second copy in
   // the request body only widened the places the secret could leak.
   settings: Record<string, unknown>
+  // 'standard' runs the multi-strategy engine. 'funded' runs the isolated
+  // FundingPips guard, which sizes from a fixed percentage of the profile's
+  // account size and enforces the firm's loss limits. The bot service picks a
+  // separate execution path per mode; the two never share position sizing.
+  mode?: 'standard' | 'funded'
+  // Only read when mode === 'funded'. Flat keys (fundedModel, fundedSize, ...)
+  // rather than one nested object so the bot service can whitelist each field.
+  fundedModel?: string | null
+  fundedPhase?: string | null
+  fundedSize?: number | null
+  fundedSplit?: number | null
+  fundedPeakEquity?: number | null
+  fundedSymbols?: string[] | null
+  fundedAvoidNews?: boolean | null
+  fundedDryRun?: boolean | null
+  fundedGuard?: Record<string, unknown> | null
+  fundedStrategy?: Record<string, unknown> | null
+  fundedNews?: Record<string, unknown> | null
 }
 
 function serviceUrl(): string {

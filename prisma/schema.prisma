@@ -1118,6 +1118,33 @@ model BotConnection {
   settings        String @default("{}")
   riskPerTradePct Float  @default(1.0) // convenience override of settings.risk
 
+  // ─── Trading mode ────────────────────────────────────────────────────────
+  // "standard" runs the multi-strategy engine (mt5_trading_bot), which sizes
+  // lots off account equity. "funded" runs the isolated FundingPips guard and
+  // strategy (mini-services/funded_bot), which sizes from a fixed percentage of
+  // the profile's account size and enforces the firm's daily/trailing loss
+  // limits. The two paths never share position sizing: equity-scaled lots would
+  // size ~80 lots of EURUSD on a 100k funded account.
+  mode String @default("standard")
+
+  // Funded-account profile (mini-services/funded_bot/profiles.py). JSON so the
+  // shape can grow with new models without a migration every time. Shape:
+  // {
+  //   model: "zero" | "1step_flex" | "2step_standard" | "2step_flex" | "2step_pro",
+  //   phase: "phase1" | "phase2" | "master",
+  //   size: 100000,            // starting size the limits are computed from
+  //   split: 80 | 95,          // 2step_flex reward split
+  //   peakEquity: 104500.0,    // highest equity seen; the trailing floor needs it
+  //   symbols: ["EURUSD", "XAUUSD"],
+  //   avoidNews: true,         // false during a firm's evaluation phase
+  //   dryRun: false,           // log signals, send no orders
+  //   guard: { risk_per_trade_pct: 0.25, max_positions: 2 },
+  //   strategy: { sl_atr: 1.5, rr: 1.5 },
+  //   news: { feed_url: "...", impacts: ["High"], include_speeches: true }
+  // }
+  // Only meaningful when mode = "funded". Unknown keys are dropped on the bot side.
+  fundedConfig String?
+
   // Profit-share accounting (per winning trade: long and short)
   realizedPnl           Float @default(0) // cumulative closed-trade P/L for this account
   grossProfit           Float @default(0) // cumulative winning-trade profit (BUY + SELL)

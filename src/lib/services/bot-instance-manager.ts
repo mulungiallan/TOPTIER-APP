@@ -7,6 +7,11 @@ import { db } from '@/lib/db'
 import { decryptSecret } from '@/lib/bot-crypto'
 import { hasBotAccess } from '@/lib/entitlements'
 import {
+  FUNDED_MODELS,
+  FUNDED_PHASES,
+  type FundedConfig,
+} from '@/lib/funded-profiles'
+import {
   botService,
   BotServiceOfflineError,
   type CreateInstanceSpec,
@@ -32,8 +37,30 @@ function parseSettings(raw: string): Record<string, unknown> {
   }
 }
 
+// A funded connection is only ever handed to the funded runner. If the stored
+// profile is missing or unusable we refuse rather than quietly falling back to
+// standard sizing, which on a large funded account would open enormous lots.
+export function parseFundedConfig(raw: string | null | undefined): FundedConfig | null {
+  if (!raw) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const cfg = parsed as Record<string, unknown>
+  const model = String(cfg.model)
+  const phase = String(cfg.phase)
+  if (!(FUNDED_MODELS as readonly string[]).includes(model)) return null
+  if (!(FUNDED_PHASES as readonly string[]).includes(phase)) return null
+  const size = Number(cfg.size)
+  if (!Number.isFinite(size) || size <= 0) return null
+  return cfg as unknown as FundedConfig
+}
+
 export async function buildSpec(
-  connection: { passwordEnc: string },
+  connection: { passwordEnc: string; mode?: string | null; fundedConfig?: string | null },
   instance: { id: string },
   platform: string,
   login: string,
@@ -41,6 +68,35 @@ export async function buildSpec(
   terminalPath: string | null,
   settings: string
 ): Promise<CreateInstanceSpec> {
+  const mode = connection.mode === 'funded' ? 'funded' : 'standard'
+  const funded = mode === 'funded' ? parseFundedConfig(connection.fundedConfig) : null
+
+  if (mode === 'funded' && !funded) {
+    throw new Error(
+      'This account is set to funded mode but has no valid FundingPips profile. ' +
+        'Re-select the model, phase and account size before starting the bot.'
+    )
+  }
+
+  // The funded fields only travel when the account really is in funded mode, so
+  // a standard-mode start can never pick them up.
+  const fundedFields: Partial<CreateInstanceSpec> = funded
+    ? {
+        mode: 'funded',
+        fundedModel: String(funded.model),
+        fundedPhase: String(funded.phase),
+        fundedSize: Number(funded.size),
+        fundedSplit: funded.split === 95 ? 95 : 80,
+        fundedPeakEquity: typeof funded.peakEquity === 'number' ? funded.peakEquity : null,
+        fundedSymbols: Array.isArray(funded.symbols) ? (funded.symbols as string[]) : null,
+        fundedAvoidNews: funded.avoidNews !== false,
+        fundedDryRun: funded.dryRun === true,
+        fundedGuard: (funded.guard as Record<string, unknown>) ?? null,
+        fundedStrategy: (funded.strategy as Record<string, unknown>) ?? null,
+        fundedNews: (funded.news as Record<string, unknown>) ?? null,
+      }
+    : {}
+
   // GUI-attach mode: if no broker login is set, the password stays empty and
   // the engine attaches to the terminal already signed in on the hosting box.
   if (!String(login || '').trim() && !connection.passwordEnc) {
@@ -53,6 +109,8 @@ export async function buildSpec(
       terminalPath,
       webhookUrl: appWebhookUrl(),
       settings: parseSettings(settings),
+      mode,
+      ...fundedFields,
     }
   }
   const password = decryptSecret(connection.passwordEnc)
@@ -68,6 +126,8 @@ export async function buildSpec(
     terminalPath,
     webhookUrl: appWebhookUrl(),
     settings: parseSettings(settings),
+    mode,
+    ...fundedFields,
   }
 }
 

@@ -5,6 +5,7 @@ import { encryptSecret } from '@/lib/bot-crypto'
 import { BotInstanceManager } from '@/lib/services/bot-instance-manager'
 import { BotServiceOfflineError } from '@/lib/services/bot-service'
 import { hasBotAccess, BOT_PAYWALL_MESSAGE } from '@/lib/entitlements'
+import { normaliseFundedConfig, type FundedConfigInput } from '@/lib/funded-profiles'
 
 const DEFAULT_SETTINGS = {
   FOREX_BASE_LOT_PER_100: 0.08,
@@ -49,7 +50,8 @@ export async function GET(request: NextRequest) {
       select: {
         id: true, userId: true, platform: true, label: true, brokerName: true,
         login: true, server: true, terminalPath: true, riskPerTradePct: true,
-        providerSharePct: true, createdAt: true, updatedAt: true,
+        providerSharePct: true, mode: true, fundedConfig: true,
+        createdAt: true, updatedAt: true,
         instances: { orderBy: { updatedAt: 'desc' } },
         _count: { select: { trades: true } },
       },
@@ -75,13 +77,34 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { platform, label, brokerName, login, password, server, terminalPath, riskPerTradePct, providerSharePct, settings } = body
+    const {
+      platform, label, brokerName, login, password, server, terminalPath,
+      riskPerTradePct, providerSharePct, settings, mode, funded,
+    } = body
 
     if (!platform || !['mt5', 'mt4'].includes(platform)) {
       return errorResponse('platform must be mt5 or mt4', 400)
     }
     if (!label) {
       return errorResponse('label is required', 400)
+    }
+
+    // A user links an account in exactly one of two modes. `standard` runs the
+    // multi-strategy engine. `funded` runs the isolated FundingPips guard and
+    // requires a valid profile — we refuse to fall back to standard sizing,
+    // which on a large funded account would open enormous lots.
+    const tradingMode = mode === 'funded' ? 'funded' : 'standard'
+    let fundedConfig: string | null = null
+    if (tradingMode === 'funded') {
+      if (!funded || typeof funded !== 'object') {
+        return errorResponse(
+          'Funded mode needs a FundingPips profile: choose the model, phase and account size.',
+          400
+        )
+      }
+      const result = normaliseFundedConfig(funded as FundedConfigInput)
+      if (!result.ok) return errorResponse(result.error, 400)
+      fundedConfig = JSON.stringify(result.config)
     }
 
     // Broker credentials are optional as a set — either ALL of login/password/
@@ -105,6 +128,8 @@ export async function POST(request: NextRequest) {
         riskPerTradePct: riskPerTradePct != null ? Number(riskPerTradePct) : 1.0,
         providerSharePct: providerSharePct != null ? Number(providerSharePct) : 0,
         settings: JSON.stringify({ ...DEFAULT_SETTINGS, ...(settings || {}) }),
+        mode: tradingMode,
+        fundedConfig,
       },
     })
 
