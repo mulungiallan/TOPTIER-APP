@@ -1,0 +1,30 @@
+{
+  "mt5": {
+    "path": "",
+    "login": 0,
+    "password": "",
+    "server": "",
+    "symbol_suffix": "",
+    "server_utc_offset_hours": 3.0
+  },
+  "symbols": ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD"],
+  "avoid_news_in_evaluation": true,
+  "news": {
+    "feed_url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+    "calendar_file": "news_calendar.csv",
+    "impacts": ["High"],
+    "include_speeches": true
+  },
+  "guard": {
+    "risk_per_trade_pct": 0.25,
+    "max_positions": 2,
+    "daily_profit_stop_pct": 0.6,
+    "daily_loss_stop_pct": 0.5,
+    "news_before_min": 10,
+    "news_after_min": 10
+  },
+  "strategy": {
+    "sl_atr": 1.5,
+    "rr": 1.5
+  }
+}

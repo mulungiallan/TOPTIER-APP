@@ -149,3 +149,9 @@ TRADING STATEGIES.txt
 
 # Local bot tooling scratch
 /tools/
+
+# Funded-account bot runtime state (peak equity behind the trailing floor - do not delete)
+mini-services/funded_bot/logs/
+state_*.json
+# Standalone funded-bot tuning file; credentials belong in the environment
+mini-services/funded_bot/config.json
