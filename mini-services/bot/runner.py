@@ -69,6 +69,22 @@ def _report(event: str, payload: dict, instance_id: str, workspace: Path):
             pass
 
 
+def _export_credentials(spec: dict):
+    """Hand the broker credentials to the engine through the environment.
+
+    The engine's config.py reads MT5_LOGIN / MT5_PASSWORD / MT5_SERVER with
+    os.environ.get(...), so exporting them here is enough for it to pick them up
+    - and it keeps them out of the generated config.py on disk. Values are
+    decrypted from the spec just before use and live only in this process.
+    """
+    os.environ["MT5_LOGIN"] = str(spec.get("login", "") or "")
+    os.environ["MT5_PASSWORD"] = spec.get("password", "") or ""
+    os.environ["MT5_SERVER"] = spec.get("server", "") or ""
+    # The service already injected its own key; keep it for the webhook calls.
+    if not os.environ.get("BOT_SERVICE_KEY") and settings.BOT_SERVICE_KEY:
+        os.environ["BOT_SERVICE_KEY"] = settings.BOT_SERVICE_KEY
+
+
 def main():
     if len(sys.argv) < 2:
         print("usage: runner.py <instanceId>", file=sys.stderr)
@@ -81,6 +97,10 @@ def main():
         return 1
 
     workspace = instance_util.instance_dir(instance_id)
+
+    # Credentials must be in the environment before write_config generates the
+    # file (it emits env lookups) and before the engine is imported.
+    _export_credentials(spec)
 
     # 1 + 2: generate the instance config.py
     instance_util.write_config(spec, workspace / "config.py")

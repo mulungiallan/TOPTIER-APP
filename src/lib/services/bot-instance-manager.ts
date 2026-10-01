@@ -52,7 +52,6 @@ export async function buildSpec(
       server,
       terminalPath,
       webhookUrl: appWebhookUrl(),
-      serviceKey: process.env.BOT_SERVICE_KEY || '',
       settings: parseSettings(settings),
     }
   }
@@ -68,7 +67,6 @@ export async function buildSpec(
     server,
     terminalPath,
     webhookUrl: appWebhookUrl(),
-    serviceKey: process.env.BOT_SERVICE_KEY || '',
     settings: parseSettings(settings),
   }
 }

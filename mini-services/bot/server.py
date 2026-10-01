@@ -236,7 +236,11 @@ class InstanceSpec(BaseModel):
     server: str = ""
     terminalPath: str | None = None
     webhookUrl: str = ""
-    serviceKey: str = ""
+    # Accepted for backwards compatibility with older app builds, then dropped:
+    # the service holds the key in its own environment and instance_util
+    # refuses to persist it. Keep the field so an in-flight request from a
+    # pre-upgrade app still validates.
+    serviceKey: str = Field(default="", repr=False)
     settings: dict = {}
 
 

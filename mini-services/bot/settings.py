@@ -59,6 +59,13 @@ BOT_SERVICE_PORT = int(os.environ.get("BOT_SERVICE_PORT", "8765"))
 # and the engine sends to the app's /api/bot/webhook. Required.
 BOT_SERVICE_KEY = os.environ.get("BOT_SERVICE_KEY", "")
 
+# Secret used to encrypt broker passwords at rest in each instance.json
+# (see crypto.py). Must match the value the Next.js app uses for
+# src/lib/bot-crypto.ts so a linked account can round-trip through both sides.
+# Without it the service refuses to persist a password rather than writing it
+# in plaintext.
+BOT_CREDENTIALS_SECRET = os.environ.get("BOT_CREDENTIALS_SECRET", "")
+
 # Python interpreter used to launch bot instances. Defaults to the interpreter
 # running the service itself. On a Windows VPS, set this to a Python that has
 # the MetaTrader5 package installed.

@@ -36,6 +36,12 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$ServiceKey = $env:BOT_SERVICE_KEY,
 
+    # Secret used to encrypt broker passwords at rest in instance.json. MUST
+    # match the app's BOT_CREDENTIALS_SECRET. Falls back to the service key so
+    # a fresh install still encrypts; pass it explicitly in production.
+    [Parameter(Mandatory = $false)]
+    [string]$CredentialsSecret = $env:BOT_CREDENTIALS_SECRET,
+
     [int]$Port = 8765,
 
     # Named Cloudflare tunnel + public hostname. Leave Hostname empty to
@@ -208,6 +214,7 @@ if (Test-Path $Nssm) {
         BOT_SERVICE_PORT=$Port `
         BOT_ENGINE_DIR=$EngineDir `
         BOT_DATA_DIR=$(Join-Path $ServiceDir "data") `
+        BOT_CREDENTIALS_SECRET=$(if ($CredentialsSecret) { $CredentialsSecret } else { $ServiceKey }) `
         BOT_PYTHON=$PyReal | Out-Null
     & $Nssm set ToptierBot AppStdout (Join-Path $ServiceDir "service.log")   | Out-Null
     & $Nssm set ToptierBot AppStderr (Join-Path $ServiceDir "service.log")   | Out-Null

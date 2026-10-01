@@ -20,26 +20,36 @@ import json
 import os
 from pathlib import Path
 
+import crypto
 import settings
 
 # config.py constants that are instance-owned and MUST always be regenerated
 # (never taken from the user-supplied settings blob).
+#
+# MT5_LOGIN / MT5_PASSWORD / MT5_SERVER are deliberately NOT written here.
+# The engine's base config.py already reads them from the environment
+# (MT5_PASSWORD = os.environ.get("MT5_PASSWORD", "")), and runner.py exports the
+# decrypted values into the environment before importing the engine. Emitting
+# literals here used to write the broker password to disk in clear text, next to
+# a live MT5 terminal.
 INSTANCE_OVERRIDES = {
-    "MT5_LOGIN": None,   # filled at generation time
-    "MT5_PASSWORD": None,
-    "MT5_SERVER": None,
     "MT5_PATH": None,
     "PLATFORM": None,
     "BOT_MAGIC_NUMBER": None,
     "INSTANCE_ID": None,
     "WEBHOOK_URL": None,
-    "BOT_SERVICE_KEY": None,
     "LOG_FILE": "bot_activity.log",
     "TRADE_LOG_FILE": "trade_log.csv",
     "PENDING_TRADES_FILE": "pending_trades.json",
     "DASHBOARD_SNAPSHOT_FILE": "dashboard_snapshot.json",
     "MT4_BRIDGE_DIR": None,   # filled at generation time (per-instance folder)
 }
+
+# Emitted after the overrides so the value is read at import time rather than
+# baked into the file. Same effect, but the secret never touches the disk.
+ENV_BACKED_LITERALS = [
+    "BOT_SERVICE_KEY = os.environ.get('BOT_SERVICE_KEY', '')",
+]
 
 # Keys a user may tweak from the app. Everything else in config.py keeps the
 # engine's conservative defaults.
@@ -86,18 +96,43 @@ def spec_path(instance_id: str) -> Path:
 
 
 def load_spec(instance_id: str) -> dict | None:
+    """Read an instance spec, returning the broker password in clear text.
+
+    A spec written before credential encryption holds a legacy plaintext
+    password. That is migrated to the encrypted form on the next save_spec, so
+    an existing install keeps working while it stops leaking on disk.
+    """
     p = spec_path(instance_id)
     if not p.exists():
         return None
     with open(p, "r", encoding="utf-8") as f:
-        return json.load(f)
+        spec = json.load(f)
+    if "password" in spec:
+        spec["password"] = crypto.decrypt(spec["password"])
+    return spec
 
 
 def save_spec(spec: dict):
-    p = spec_path(spec["instanceId"])
+    """Persist a spec with the broker password encrypted at rest.
+
+    `password` arrives in clear text from the caller and is encrypted here.
+    `serviceKey` is dropped on purpose: the service already holds it in its own
+    environment and hands it to each instance process through the inherited
+    environment, so a second copy in the file bought nothing and leaked the
+    secret to anything that could read the directory.
+    """
+    stored = dict(spec)
+    stored.pop("serviceKey", None)
+    if stored.get("password"):
+        stored["password"] = crypto.encrypt(stored["password"])
+    p = spec_path(stored["instanceId"])
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w", encoding="utf-8") as f:
-        json.dump(spec, f, indent=2)
+        json.dump(stored, f, indent=2)
+    try:
+        os.chmod(p, 0o600)
+    except OSError:
+        pass  # best effort; Windows ACLs are inherited from the data dir
 
 
 def delete_workspace(instance_id: str):
@@ -118,24 +153,25 @@ def write_config(spec: dict, config_py: Path):
     """
     Writes the instance's config.py:
       1. the engine's base config.py verbatim, then
-      2. a generated override block (credentials, instance identity, webhook,
-         and any allowed user settings).
+      2. a generated override block (instance identity, webhook, and any
+         allowed user settings).
     Python module semantics make the last assignment win, so the overrides
     take effect without touching the shared engine file.
+
+    No credential is written to this file. MT5_LOGIN / MT5_PASSWORD /
+    MT5_SERVER stay as the base config's `os.environ.get(...)` lines and are
+    supplied by runner.py through the environment; BOT_SERVICE_KEY is emitted
+    as an env lookup for the same reason.
     """
     base = settings.ENGINE_DIR / "config.py"
     base_text = base.read_text(encoding="utf-8") if base.exists() else ""
 
     overrides = INSTANCE_OVERRIDES.copy()
-    overrides["MT5_LOGIN"] = spec.get("login", 0)
-    overrides["MT5_PASSWORD"] = spec.get("password", "")
-    overrides["MT5_SERVER"] = spec.get("server", "")
     overrides["MT5_PATH"] = spec.get("terminalPath", "")
     overrides["PLATFORM"] = spec.get("platform", "mt5")
     overrides["BOT_MAGIC_NUMBER"] = derive_magic(spec["instanceId"])
     overrides["INSTANCE_ID"] = spec["instanceId"]
     overrides["WEBHOOK_URL"] = spec.get("webhookUrl", "")
-    overrides["BOT_SERVICE_KEY"] = spec.get("serviceKey", "")
     bridge_dir = config_py.parent / "mt4_bridge"
     overrides["MT4_BRIDGE_DIR"] = str(bridge_dir)
 
@@ -149,12 +185,14 @@ def write_config(spec: dict, config_py: Path):
         "# " + "=" * 62,
         "# TOPTIER instance overrides (generated by mini-services/bot/runner.py)",
         "# Do not edit by hand - this file is rewritten on every start.",
+        "# Credentials are read from the process environment, never stored here.",
         "# " + "=" * 62,
     ]
 
     lines = [base_text.rstrip("\n")] + header
     for key, value in overrides.items():
         lines.append(f"{key} = {value!r}")
+    lines.extend(ENV_BACKED_LITERALS)
     if settings_block:
         lines.append("")
         lines.append("# --- account-specific settings (from the app) ---")

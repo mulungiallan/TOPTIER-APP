@@ -33,7 +33,9 @@ export interface CreateInstanceSpec {
   server: string
   terminalPath?: string | null
   webhookUrl: string
-  serviceKey: string
+  // No serviceKey: the bot service already holds the shared key and passes it
+  // to each instance through the process environment. Sending a second copy in
+  // the request body only widened the places the secret could leak.
   settings: Record<string, unknown>
 }
 
