@@ -53,6 +53,7 @@ def run_funded_bot(
     dry_run: bool = False,
     check_only: bool = False,
     news_always: bool = True,
+    magic: Optional[int] = None,
 ) -> dict[str, Any]:
     """Run the funded bot. Credentials must arrive in ``mt5_cfg`` in memory.
 
@@ -78,7 +79,8 @@ def run_funded_bot(
         return {"profile": profile.label, "limits": limits}
 
     from broker_mt5 import MT5Broker
-    broker = MT5Broker(mt5_cfg, mt5_cfg.get("server_utc_offset_hours", 3.0))
+    broker = MT5Broker(mt5_cfg, mt5_cfg.get("server_utc_offset_hours", 3.0),
+                       magic=magic if magic is not None else 26092026)
     ai = broker.connect()
     if abs(ai.balance - profile.size) / profile.size > 0.05:
         log.warning("account balance %.2f differs >5%% from profile size %s. Limits are computed from the "
