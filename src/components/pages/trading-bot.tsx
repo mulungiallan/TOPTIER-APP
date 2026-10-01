@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Bot,
@@ -42,6 +42,18 @@ import { cn } from '@/lib/utils'
 import { formatHeartbeatAge } from '@/lib/services/bot-liveness'
 import { toast } from 'sonner'
 import type { AccountTierInfo } from '@/lib/account-tiers'
+import {
+  FUNDED_LABELS,
+  FUNDED_MODELS,
+  FUNDED_PHASES_FOR,
+  FUNDED_PHASE_LABELS,
+  FUNDED_SIZES,
+  buildFundedProfile,
+  fundedSoftFloors,
+  validateFundedRisk,
+  type FundedModel,
+  type FundedPhase,
+} from '@/lib/funded-profiles'
 
 interface LivePosition {
   symbol: string | null
@@ -78,6 +90,8 @@ interface BotConnection {
   id: string
   platform: string
   label: string
+  /** 'standard' runs the multi-strategy engine, 'funded' the guarded FundingPips bot. */
+  mode?: 'standard' | 'funded'
   brokerName: string | null
   login: string
   server: string
@@ -200,6 +214,7 @@ export function TradingBotPage() {
   const [monitorConnId, setMonitorConnId] = useState<string | null>(null)
 
   const [form, setForm] = useState({
+    mode: 'standard' as 'standard' | 'funded',
     platform: 'mt5',
     label: '',
     brokerName: '',
@@ -213,7 +228,31 @@ export function TradingBotPage() {
     cryptoBaseLot: 0.04,
     highVolBaseLot: 0.02,
     maxOpenPositions: 3,
+    fundedModel: 'zero' as FundedModel,
+    fundedPhase: 'master' as FundedPhase,
+    fundedSize: 100000,
+    fundedSplit: 80,
+    fundedRiskPerTrade: 0.25,
+    fundedMaxPositions: 2,
+    fundedAvoidNews: true,
   })
+
+  // Live view of the selected funded profile so the picker can show the real
+  // limits before the account is linked. Never throws: an incomplete selection
+  // just yields null and the caller shows nothing.
+  const fundedPreview = useMemo(() => {
+    if (form.mode !== 'funded') return null
+    try {
+      return buildFundedProfile(form.fundedModel, form.fundedPhase, form.fundedSize, form.fundedSplit)
+    } catch {
+      return null
+    }
+  }, [form.mode, form.fundedModel, form.fundedPhase, form.fundedSize, form.fundedSplit])
+
+  // Phases and sizes are per-model; an invalid combination falls back to the
+  // first valid one so the selects can never hold a value the bot would reject.
+  const fundedPhases = FUNDED_PHASES_FOR[form.fundedModel]
+  const fundedSizes = FUNDED_SIZES[form.fundedModel]
 
   const fetchAll = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -264,17 +303,61 @@ export function TradingBotPage() {
     })
   }, [overview])
 
+  const EMPTY_FORM = {
+    mode: 'standard' as 'standard' | 'funded',
+    platform: 'mt5',
+    label: '',
+    brokerName: '',
+    login: '',
+    password: '',
+    server: '',
+    terminalPath: '',
+    riskPerTradePct: 1,
+    providerSharePct: 0,
+    forexBaseLot: 0.08,
+    cryptoBaseLot: 0.04,
+    highVolBaseLot: 0.02,
+    maxOpenPositions: 3,
+    fundedModel: 'zero' as FundedModel,
+    fundedPhase: 'master' as FundedPhase,
+    fundedSize: 100000,
+    fundedSplit: 80,
+    fundedRiskPerTrade: 0.25,
+    fundedMaxPositions: 2,
+    fundedAvoidNews: true,
+  }
+
   const handleLink = async () => {
     if (!form.label || !form.login || !form.password || !form.server) {
       toast.error('Label, login, password and server are required')
       return
     }
+
+    // Fail before the request if the selected risk cannot stay inside the
+    // firm's limits, so the user is told why rather than watching the bot
+    // refuse to start.
+    if (form.mode === 'funded') {
+      if (!fundedPreview) {
+        toast.error('Choose a funded model, phase and account size')
+        return
+      }
+      const riskError = validateFundedRisk(fundedPreview, {
+        risk_per_trade_pct: form.fundedRiskPerTrade,
+        max_positions: form.fundedMaxPositions,
+      })
+      if (riskError) {
+        toast.error(riskError)
+        return
+      }
+    }
+
     setLinking(true)
     try {
       const res = await api.post<{
         success: boolean
         autoStart: { attempted: boolean; ok: boolean; message: string }
       }>('/bot/connections', {
+        mode: form.mode,
         platform: form.platform,
         label: form.label,
         brokerName: form.brokerName || undefined,
@@ -290,6 +373,21 @@ export function TradingBotPage() {
           HIGH_VOL_BASE_LOT_PER_100: parseFloat(String(form.highVolBaseLot)),
           MAX_OPEN_POSITIONS: parseInt(String(form.maxOpenPositions), 10),
         },
+        ...(form.mode === 'funded'
+          ? {
+              funded: {
+                model: form.fundedModel,
+                phase: form.fundedPhase,
+                size: form.fundedSize,
+                split: form.fundedSplit,
+                avoidNews: form.fundedAvoidNews,
+                guard: {
+                  risk_per_trade_pct: form.fundedRiskPerTrade,
+                  max_positions: form.fundedMaxPositions,
+                },
+              },
+            }
+          : {}),
       })
       toast.success('MetaTrader account linked')
       if (res?.autoStart?.ok) {
@@ -298,7 +396,7 @@ export function TradingBotPage() {
         toast.warning(`Bot did not auto-start: ${res.autoStart.message}`)
       }
       setShowLink(false)
-      setForm({ platform: 'mt5', label: '', brokerName: '', login: '', password: '', server: '', terminalPath: '', riskPerTradePct: 1, providerSharePct: 0, forexBaseLot: 0.08, cryptoBaseLot: 0.04, highVolBaseLot: 0.02, maxOpenPositions: 3 })
+      setForm(EMPTY_FORM)
       fetchAll()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to link account')
@@ -658,6 +756,56 @@ export function TradingBotPage() {
           )}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
+              <Label>What are you trading?</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, mode: 'standard' }))}
+                  className={cn(
+                    'rounded-lg border p-3 text-left transition-colors',
+                    form.mode === 'standard'
+                      ? 'border-[#1b4f9c] bg-[#1b4f9c]/5'
+                      : 'border-border hover:border-[#1b4f9c]/50'
+                  )}
+                >
+                  <div className="text-sm font-medium">Standard bot</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Your own account. Multi-strategy signals, sized from your equity.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, mode: 'funded' }))}
+                  className={cn(
+                    'rounded-lg border p-3 text-left transition-colors',
+                    form.mode === 'funded'
+                      ? 'border-[#1b4f9c] bg-[#1b4f9c]/5'
+                      : 'border-border hover:border-[#1b4f9c]/50'
+                  )}
+                >
+                  <div className="text-sm font-medium">Funded account</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Prop firm account. Sized as a fixed % and halted well short of your
+                    daily and max loss limits.
+                  </div>
+                </button>
+              </div>
+            </div>
+            {form.mode === 'funded' && (
+              <div className="col-span-2 rounded-lg border border-amber-300/50 bg-amber-50 p-3 text-xs text-amber-900 space-y-1">
+                <p className="font-medium">Funded mode — please read before linking.</p>
+                <p>
+                  This sizes every trade as a fixed percentage of your account size and flattens
+                  at 50% of your daily and max loss limits. It reduces the chance of a breach; it
+                  cannot prevent one. Stops can slip during gaps or thin liquidity.
+                </p>
+                <p>
+                  Check your prop firm&apos;s terms first — some terminate accounts that use
+                  automated trading. This guard is built for FundingPips models.
+                </p>
+              </div>
+            )}
+            <div className="col-span-2">
               <Label>Platform</Label>
               <Select value={form.platform} onValueChange={(v) => setForm((p) => ({ ...p, platform: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -691,22 +839,189 @@ export function TradingBotPage() {
               <Label>Terminal path (MT4 only, optional)</Label>
               <Input value={form.terminalPath} onChange={(e) => setForm((p) => ({ ...p, terminalPath: e.target.value }))} placeholder="C:\Program Files\MetaTrader 4\terminal.exe" />
             </div>
-            <div className="col-span-2">
-              <Label>Base lots per $100 equity — Forex (0.08), Crypto (0.04), Metals/Oil/Indices (0.02)</Label>
-              <div className="grid grid-cols-3 gap-2">
-                <Input type="number" step="0.01" min="0" value={form.forexBaseLot} onChange={(e) => setForm((p) => ({ ...p, forexBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.08" />
-                <Input type="number" step="0.01" min="0" value={form.cryptoBaseLot} onChange={(e) => setForm((p) => ({ ...p, cryptoBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.04" />
-                <Input type="number" step="0.01" min="0" value={form.highVolBaseLot} onChange={(e) => setForm((p) => ({ ...p, highVolBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.02" />
-              </div>
-            </div>
-            <div>
-              <Label>Max open positions (entries)</Label>
-              <Input type="number" step="1" min="1" value={form.maxOpenPositions} onChange={(e) => setForm((p) => ({ ...p, maxOpenPositions: parseInt(e.target.value, 10) || 0 }))} />
-            </div>
-            <div>
-              <Label>Profit share % (0 = none)</Label>
-              <Input type="number" step="1" min="0" max="100" value={form.providerSharePct} onChange={(e) => setForm((p) => ({ ...p, providerSharePct: parseFloat(e.target.value) || 0 }))} />
-            </div>
+            {form.mode === 'funded' ? (
+              <>
+                <div className="col-span-2">
+                  <Label>FundingPips model</Label>
+                  <Select
+                    value={form.fundedModel}
+                    onValueChange={(v) => {
+                      const model = v as FundedModel
+                      // Phases and sizes differ per model. Snap both to a valid
+                      // value so the next render can never show an invalid pair.
+                      const phases = FUNDED_PHASES_FOR[model]
+                      const sizes = FUNDED_SIZES[model]
+                      setForm((p) => ({
+                        ...p,
+                        fundedModel: model,
+                        fundedPhase: phases.includes(p.fundedPhase) ? p.fundedPhase : phases[0],
+                        fundedSize: sizes.includes(p.fundedSize) ? p.fundedSize : sizes[sizes.length - 1],
+                      }))
+                    }}
+                  >
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {FUNDED_MODELS.map((m) => (
+                        <SelectItem key={m} value={m}>{FUNDED_LABELS[m]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Phase</Label>
+                  <Select
+                    value={form.fundedPhase}
+                    onValueChange={(v) => setForm((p) => ({ ...p, fundedPhase: v as FundedPhase }))}
+                  >
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {fundedPhases.map((ph) => (
+                        <SelectItem key={ph} value={ph}>{FUNDED_PHASE_LABELS[ph]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Account size</Label>
+                  <Select
+                    value={String(form.fundedSize)}
+                    onValueChange={(v) => setForm((p) => ({ ...p, fundedSize: Number(v) }))}
+                  >
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {fundedSizes.map((s) => (
+                        <SelectItem key={s} value={String(s)}>${s.toLocaleString()}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {form.fundedModel === '2step_flex' && (
+                  <div className="col-span-2">
+                    <Label>Reward split</Label>
+                    <Select
+                      value={String(form.fundedSplit)}
+                      onValueChange={(v) => setForm((p) => ({ ...p, fundedSplit: Number(v) }))}
+                    >
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="80">80% split</SelectItem>
+                        <SelectItem value="95">95% split</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {fundedPreview && (() => {
+                  const floors = fundedSoftFloors(fundedPreview)
+                  const riskError = validateFundedRisk(fundedPreview, {
+                    risk_per_trade_pct: form.fundedRiskPerTrade,
+                    max_positions: form.fundedMaxPositions,
+                  })
+                  return (
+                    <>
+                      <div className="col-span-2 rounded-lg border bg-muted/40 p-3 text-xs space-y-1">
+                        <p className="font-medium text-sm">
+                          {FUNDED_LABELS[fundedPreview.key]} — {fundedPreview.phase.toUpperCase()}, ${fundedPreview.size.toLocaleString()}
+                        </p>
+                        <p>
+                          Daily loss limit {fundedPreview.dailyLossPct}% · stops at $
+                          {floors.dailyFloor.toLocaleString()} (hard ${floors.dailyHard.toLocaleString()})
+                        </p>
+                        <p>
+                          Max loss {fundedPreview.maxLossPct}%{' '}
+                          {fundedPreview.maxLossMode === 'trailing_lock'
+                            ? `trailing, locking at +${fundedPreview.trailLockProfitPct}%`
+                            : 'static'}{' '}
+                          · stops at ${floors.maxFloor.toLocaleString()} (hard ${floors.maxHard.toLocaleString()})
+                        </p>
+                        {fundedPreview.profitableDaysNeeded != null && (
+                          <p>Needs {fundedPreview.profitableDaysNeeded} profitable days in 30 to pass.</p>
+                        )}
+                        {fundedPreview.targetPct != null && (
+                          <p>Profit target {fundedPreview.targetPct}% — the bot stops once it is reached.</p>
+                        )}
+                        <p>
+                          {fundedPreview.newsRestricted
+                            ? 'High-impact news and speeches are blocked around events.'
+                            : 'News restrictions do not apply on this phase.'}{' '}
+                          {fundedPreview.weekendHoldAllowed
+                            ? 'Weekend holds are allowed.'
+                            : 'Nothing is held over the weekend.'}
+                        </p>
+                        {riskError ? (
+                          <p className="text-red-700 font-medium">{riskError}</p>
+                        ) : (
+                          <p className="text-muted-foreground">
+                            Worst normal day: −${(
+                              fundedPreview.size *
+                              (0.5 + form.fundedMaxPositions * form.fundedRiskPerTrade) / 100
+                            ).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </p>
+                        )}
+                        {fundedPreview.notes.map((n, i) => (
+                          <p key={i} className="text-amber-800">Verify: {n}</p>
+                        ))}
+                      </div>
+                      <div>
+                        <Label>Risk per trade %</Label>
+                        <Input
+                          type="number"
+                          step="0.05"
+                          min="0.05"
+                          value={form.fundedRiskPerTrade}
+                          onChange={(e) =>
+                            setForm((p) => ({ ...p, fundedRiskPerTrade: parseFloat(e.target.value) || 0 }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label>Max open positions</Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="1"
+                          value={form.fundedMaxPositions}
+                          onChange={(e) =>
+                            setForm((p) => ({ ...p, fundedMaxPositions: parseInt(e.target.value, 10) || 0 }))
+                          }
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.fundedAvoidNews}
+                            onChange={(e) => setForm((p) => ({ ...p, fundedAvoidNews: e.target.checked }))}
+                          />
+                          Block entries around high-impact news and speeches
+                        </label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Leave this on unless your firm excludes news trading during the evaluation.
+                        </p>
+                      </div>
+                    </>
+                  )
+                })()}
+              </>
+            ) : (
+              <>
+                <div className="col-span-2">
+                  <Label>Base lots per $100 equity — Forex (0.08), Crypto (0.04), Metals/Oil/Indices (0.02)</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input type="number" step="0.01" min="0" value={form.forexBaseLot} onChange={(e) => setForm((p) => ({ ...p, forexBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.08" />
+                    <Input type="number" step="0.01" min="0" value={form.cryptoBaseLot} onChange={(e) => setForm((p) => ({ ...p, cryptoBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.04" />
+                    <Input type="number" step="0.01" min="0" value={form.highVolBaseLot} onChange={(e) => setForm((p) => ({ ...p, highVolBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.02" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Max open positions (entries)</Label>
+                  <Input type="number" step="1" min="1" value={form.maxOpenPositions} onChange={(e) => setForm((p) => ({ ...p, maxOpenPositions: parseInt(e.target.value, 10) || 0 }))} />
+                </div>
+                <div>
+                  <Label>Profit share % (0 = none)</Label>
+                  <Input type="number" step="1" min="0" max="100" value={form.providerSharePct} onChange={(e) => setForm((p) => ({ ...p, providerSharePct: parseFloat(e.target.value) || 0 }))} />
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLink(false)}>Cancel</Button>
@@ -1193,6 +1508,11 @@ function ConnectionCard({
                 {conn.platform.toUpperCase()}
               </Badge>
               {running && <Badge className="text-[10px] bg-emerald-500/15 text-emerald-600 border-emerald-500/30">LIVE</Badge>}
+              {conn.mode === 'funded' && (
+                <Badge className="text-[10px] bg-sky-500/15 text-sky-600 border-sky-500/30">
+                  <ShieldCheck className="h-3 w-3 mr-1" /> Funded guard
+                </Badge>
+              )}
               {conn.isCopyMaster && (
                 <Badge className="text-[10px] bg-violet-500/15 text-violet-600 border-violet-500/30">
                   <Landmark className="h-3 w-3 mr-1" /> Copy MASTER
