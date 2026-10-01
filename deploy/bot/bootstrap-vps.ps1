@@ -198,12 +198,17 @@ if (Test-Path $Nssm) {
     }
     & $Nssm install ToptierBot $PyReal "-m uvicorn server:app --host 127.0.0.1 --port $Port" | Out-Null
     & $Nssm set ToptierBot AppDirectory      $ServiceDir          | Out-Null
-    & $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_KEY=$ServiceKey | Out-Null
-    & $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_HOST=127.0.0.1  | Out-Null
-    & $Nssm set ToptierBot AppEnvironmentExtra BOT_SERVICE_PORT=$Port        | Out-Null
-    & $Nssm set ToptierBot AppEnvironmentExtra BOT_ENGINE_DIR=$EngineDir     | Out-Null
-    & $Nssm set ToptierBot AppEnvironmentExtra BOT_DATA_DIR=$(Join-Path $ServiceDir "data") | Out-Null
-    & $Nssm set ToptierBot AppEnvironmentExtra BOT_PYTHON=$PyReal            | Out-Null
+    # Every AppEnvironmentExtra value must go in ONE call. nssm stores this as a
+    # REG_MULTI_SZ and a separate `set` call REPLACES the whole list, so calling it
+    # once per variable silently discards all but the last -- which left the
+    # service running without BOT_SERVICE_KEY and rejected every request.
+    & $Nssm set ToptierBot AppEnvironmentExtra `
+        BOT_SERVICE_KEY=$ServiceKey `
+        BOT_SERVICE_HOST=127.0.0.1 `
+        BOT_SERVICE_PORT=$Port `
+        BOT_ENGINE_DIR=$EngineDir `
+        BOT_DATA_DIR=$(Join-Path $ServiceDir "data") `
+        BOT_PYTHON=$PyReal | Out-Null
     & $Nssm set ToptierBot AppStdout (Join-Path $ServiceDir "service.log")   | Out-Null
     & $Nssm set ToptierBot AppStderr (Join-Path $ServiceDir "service.log")   | Out-Null
     & $Nssm set ToptierBot Start SERVICE_AUTO_START | Out-Null
@@ -213,10 +218,16 @@ if (Test-Path $Nssm) {
     & $Nssm set ToptierBot AppThrottle 15000       | Out-Null
     & $Nssm start ToptierBot | Out-Null
 
-    Start-Sleep -Seconds 6
-    $svc = Get-Service -Name ToptierBot -ErrorAction SilentlyContinue
+    # uvicorn needs a moment to bind; a fixed sleep reports a false failure.
+    $deadline = (Get-Date).AddSeconds(45)
+    $svc = $null
+    while ((Get-Date) -lt $deadline) {
+        $svc = Get-Service -Name ToptierBot -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq "Running") { break }
+        Start-Sleep -Seconds 2
+    }
     if ($svc -and $svc.Status -eq "Running") { Write-Ok "ToptierBot running (auto-start + crash-restart)" }
-    else { Write-Bad "ToptierBot did not start." }
+    else { Write-Bad "ToptierBot did not start (status: $(if ($svc) { $svc.Status } else { 'missing' }))." }
 }
 
 # ---------------------------------------------------------------------------
