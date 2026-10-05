@@ -175,11 +175,20 @@ const SYMBOL_MAP: Record<string, string> = {
   // Indices
   'SPX 500': '^GSPC',
   'SPX500': '^GSPC',
-  'NASDAQ': '^IXIC',
+  'SPX': '^GSPC',
+  'NASDAQ': '^NDX',
+  'NAS100': '^NDX',
+  'NDX': '^NDX',
   'DOW': '^DJI',
+  'US30': '^DJI',
+  'US100': '^NDX',
+  'US500': '^GSPC',
   'DAX': '^GDAXI',
+  'GER40': '^GDAXI',
   'FTSE': '^FTSE',
+  'UK100': '^FTSE',
   'NIKKEI': '^N225',
+  'JPX225': '^N225',
   'VIX': '^VIX',
 }
 

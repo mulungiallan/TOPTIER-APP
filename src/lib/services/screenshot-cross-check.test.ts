@@ -63,11 +63,18 @@ describe("normalizeAsset", () => {
     expect(normalizeAsset("SILVER")).toBe("SI=F");
   });
 
-  it("maps index aliases", () => {
-    expect(normalizeAsset("NAS100")).toBe("NQ=F");
-    expect(normalizeAsset("US30")).toBe("DJI");
-    expect(normalizeAsset("US500")).toBe("ES=F");
+  it("maps index aliases to the cash index, not a futures proxy", () => {
+    // The platform quotes cash indices, so a screenshot of the DAX/SPX/NDX
+    // level must be checked against the same series - not NQ=F or ES=F, which
+    // sit a few points away and would fabricate a false mismatch.
+    expect(normalizeAsset("NAS100")).toBe("^NDX");
+    expect(normalizeAsset("NASDAQ")).toBe("^NDX");
+    expect(normalizeAsset("US30")).toBe("^DJI");
+    expect(normalizeAsset("US500")).toBe("^GSPC");
+    expect(normalizeAsset("SPX500")).toBe("^GSPC");
     expect(normalizeAsset("SPX")).toBe("^GSPC");
+    expect(normalizeAsset("GER40")).toBe("^GDAXI");
+    expect(normalizeAsset("UK100")).toBe("^FTSE");
   });
 
   it("returns null for an unmappable asset rather than guessing", () => {

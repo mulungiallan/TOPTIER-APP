@@ -87,9 +87,15 @@ export async function GET(request: NextRequest) {
         include: includeCount,
       })
     } else {
+      // A signal that has already hit TP or SL (or expired) is done - it leaves
+      // the subscriber feed. The row itself stays in the DB so the win-rate
+      // leaderboard and the accept history keep working; only the feed is
+      // narrowed, and only for paying users. Admins keep the full feed above so
+      // they can review every outcome.
+      const userWhere: Record<string, unknown> = { ...where, status: 'active' }
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
       signals = await db.signal.findMany({
-        where: { ...where, createdAt: { gte: since } },
+        where: { ...userWhere, createdAt: { gte: since } },
         orderBy: [{ confidence: 'desc' }, { createdAt: 'desc' }],
         take: FALLBACK_QUOTA,
         include: includeCount,
@@ -99,7 +105,7 @@ export async function GET(request: NextRequest) {
       // subscriber always has at least 2 picks to see.
       if (signals.length < FALLBACK_QUOTA) {
         const newest = await db.signal.findMany({
-          where,
+          where: userWhere,
           orderBy: { createdAt: 'desc' },
           take: FALLBACK_QUOTA - signals.length,
           include: includeCount,
