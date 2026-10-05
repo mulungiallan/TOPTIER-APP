@@ -27,6 +27,7 @@ export interface LivePrice {
   open?: number
   previousClose?: number
   volume?: number
+  currency?: string
   timestamp: Date
   source: 'finnhub' | 'yahoo' | 'mock'
 }
@@ -415,6 +416,7 @@ export class LiveMarketData {
         open: yPrice.open,
         previousClose: yPrice.previousClose,
         volume: yPrice.volume,
+        currency: yPrice.currency,
         timestamp: yPrice.timestamp,
         source: 'yahoo',
       }

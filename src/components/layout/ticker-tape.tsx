@@ -12,7 +12,20 @@ interface TickerData {
     changePct: number
     direction: 'up' | 'down' | 'neutral'
     source: string
+    currency?: string
   }>
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  JPY: '¥',
+}
+
+function currencySymbol(currency?: string): string {
+  if (!currency) return '$'
+  return CURRENCY_SYMBOLS[currency.toUpperCase()] ?? `${currency.toUpperCase()} `
 }
 
 export function TickerTape() {
@@ -49,6 +62,7 @@ export function TickerTape() {
       price: data.prices[t.symbol]?.price,
       changePct: data.prices[t.symbol]?.changePct,
       direction: data.prices[t.symbol]?.direction || 'neutral',
+      currency: data.prices[t.symbol]?.currency,
     }))
     .filter((i) => i.price !== undefined)
 
@@ -58,7 +72,8 @@ export function TickerTape() {
     <div key={key} className="inline-flex items-center gap-1.5 px-4 py-1 text-xs whitespace-nowrap">
       <span className="font-medium">{item.symbol}</span>
       <span className="font-mono tabular-nums text-muted-foreground">
-        ${item.price!.toLocaleString(undefined, { maximumFractionDigits: item.price! < 1 ? 5 : 2 })}
+        {currencySymbol(item.currency)}
+        {item.price!.toLocaleString(undefined, { maximumFractionDigits: item.price! < 1 ? 5 : 2 })}
       </span>
       {item.direction !== 'neutral' && (
         <span className={cn(

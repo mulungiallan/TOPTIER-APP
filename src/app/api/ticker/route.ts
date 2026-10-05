@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch live prices in parallel (with 10ms spacing for rate-limit friendliness)
-    const prices: Record<string, { price: number; change: number; changePct: number; direction: 'up' | 'down' | 'neutral'; source: string }> = {}
+    const prices: Record<string, { price: number; change: number; changePct: number; direction: 'up' | 'down' | 'neutral'; source: string; currency?: string }> = {}
 
     const symbols = tickers.map((t) => t.symbol)
     const chunks: string[][] = []
@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
             changePct: res.value.changePercent || 0,
             direction: (res.value.change || 0) > 0 ? 'up' : (res.value.change || 0) < 0 ? 'down' : 'neutral',
             source: res.value.source || 'unknown',
+            currency: res.value.currency,
           }
         }
       })
