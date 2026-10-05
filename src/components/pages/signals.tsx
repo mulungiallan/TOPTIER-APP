@@ -194,8 +194,20 @@ function StatusBadge({ status }: { status: SignalStatus }) {
   )
 }
 
-function formatTwoDec(price: number): string {
-  return price.toFixed(2)
+/**
+ * Render a stored level (entry / SL / TP) with the SAME asset-aware precision
+ * used for the live price on the same card.
+ *
+ * These used to go through formatTwoDec, which is an unconditional toFixed(2).
+ * That is fine for indices and stocks but destroys anything quoted below ~$10:
+ * ADA/USD 0.2742 rendered as "0.27", DOGE/USD 0.09637 as "0.10", so an entry and
+ * its own targets could print the identical number - and the levels visibly
+ * disagreed with the live price shown beside them, which made real quotes look
+ * fabricated. formatSignalPrice gives 4dp to USD pairs, 2dp to BTC/ETH, and
+ * grouped 2dp above 1000, so the whole card now reads at one consistent scale.
+ */
+function formatLevel(asset: string, price: number): string {
+  return formatSignalPrice(asset, price)
 }
 
 function PipDistance(entry: number, target: number, market: string): string {
@@ -543,7 +555,7 @@ function SignalCard({
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Entry</span>
-            <span className="font-mono font-medium">{formatTwoDec(signal.entryPrice)}</span>
+            <span className="font-mono font-medium">{formatLevel(signal.asset, signal.entryPrice)}</span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground flex items-center gap-1">
@@ -566,7 +578,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Stop Loss</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-red-500">{formatTwoDec(signal.stopLoss)}</span>
+              <span className="font-mono font-medium text-red-500">{formatLevel(signal.asset, signal.stopLoss)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.stopLoss, signal.market)})
               </span>
@@ -595,7 +607,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">TP1</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-emerald-500">{formatTwoDec(signal.takeProfit1)}</span>
+              <span className="font-mono font-medium text-emerald-500">{formatLevel(signal.asset, signal.takeProfit1)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.takeProfit1, signal.market)})
               </span>
@@ -604,7 +616,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">TP2</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-emerald-500">{formatTwoDec(signal.takeProfit2)}</span>
+              <span className="font-mono font-medium text-emerald-500">{formatLevel(signal.asset, signal.takeProfit2)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.takeProfit2, signal.market)})
               </span>
@@ -613,7 +625,7 @@ function SignalCard({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">TP3</span>
             <div className="flex items-center gap-1">
-              <span className="font-mono font-medium text-emerald-500">{formatTwoDec(signal.takeProfit3)}</span>
+              <span className="font-mono font-medium text-emerald-500">{formatLevel(signal.asset, signal.takeProfit3)}</span>
               <span className="text-[9px] text-muted-foreground">
                 ({PipDistance(signal.entryPrice, signal.takeProfit3, signal.market)})
               </span>
