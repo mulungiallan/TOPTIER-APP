@@ -10,6 +10,13 @@ import { initStatusBar } from "@/lib/native/status-bar";
 import { useNotificationsCenter } from "@/hooks/use-notifications-center";
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
+  // Flip the hydration flag once React has mounted. Until this runs the store is
+  // in its SSR-safe state, so consumers must render pre-hydration markup for the
+  // first client render to match the server HTML exactly.
+  useEffect(() => {
+    useStore.getState().setHydrated(true)
+  }, []);
+
   useEffect(() => {
     initStatusBar();
   }, []);

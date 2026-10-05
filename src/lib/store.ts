@@ -137,6 +137,15 @@ interface AppState {
   // Signal Filters
   signalFilters: SignalFilters
 
+  // False during SSR and the first client render, true once React has mounted.
+  // `persist` rehydrates from localStorage synchronously at module init, so on
+  // the client this slice is already populated before the first render while the
+  // server has no localStorage at all. Anything that renders a *different tree*
+  // based on persisted state must wait for this flag or hydration mismatches and
+  // React bails out to client rendering (which surfaces as
+  // "Failed to execute 'removeChild' on 'Node'").
+  hydrated: boolean
+
   // Actions
   login: (user: User, token: string) => void
   logout: () => void
@@ -153,6 +162,7 @@ interface AppState {
   updateUser: (data: Partial<User>) => void
   setSignalFilters: (filters: Partial<SignalFilters>) => void
   setLocale: (locale: string) => void
+  setHydrated: (value: boolean) => void
 }
 
 export const useStore = create<AppState>()(
@@ -183,6 +193,10 @@ export const useStore = create<AppState>()(
         timeframe: '',
         minConfidence: 0,
       },
+
+      // Not persisted — always starts false so the server render and the first
+      // client render agree. Flipped by ClientProviders once React has mounted.
+      hydrated: false,
 
       // Actions
       login: (user, token) =>
@@ -278,6 +292,8 @@ export const useStore = create<AppState>()(
         })),
 
       setLocale: (locale) => set({ locale }),
+
+      setHydrated: (value) => set({ hydrated: value }),
     }),
     {
       name: 'toptier-store',

@@ -626,6 +626,7 @@ export default function Home() {
   const user = useStore((s) => s.user)
   const currentPage = useStore((s) => s.currentPage)
   const setPage = useStore((s) => s.setPage)
+  const hydrated = useStore((s) => s.hydrated)
   const onboardingComplete = user?.onboardingCompleted ?? false
 
   useBackButton()
@@ -660,9 +661,24 @@ export default function Home() {
     }
   }, [isAuthenticated, currentPage, setPage])
 
+  // The branch below renders a completely different tree depending on auth and
+  // the current page, and both come from localStorage via the persisted store.
+  // The server has no localStorage, so rendering that tree during SSR — or during
+  // the first client render, when the store is already rehydrated — guarantees a
+  // hydration mismatch. React then discards the server HTML and client-renders,
+  // which throws "Failed to execute 'removeChild' on 'Node'" whenever anything
+  // else has already touched the DOM (sonner's portal, next-themes' injected
+  // style, the TradingView widget scripts).
+  //
+  // Until hydration completes, treat the visitor as anonymous. That is exactly
+  // the state the server rendered from (it has no localStorage), so the first
+  // client render reproduces the server HTML exactly — and the landing page
+  // stays server-rendered for crawlers instead of collapsing to an empty shell.
+  const authed = hydrated && isAuthenticated
+
   // Not authenticated → Landing page with login/register (unless viewing public pages)
-  if (!isAuthenticated) {
-    if (isPublicPage) {
+  if (!authed) {
+    if (hydrated && isPublicPage) {
       return (
         <AppShell>
           {pageComponents[currentPage]}
