@@ -15,6 +15,7 @@
  */
 
 import { db } from '@/lib/db'
+import type { Prisma } from '@/generated/prisma'
 import { notifyUsers } from '@/lib/services/notifications'
 import { liveMarketData, type HistoricalCandle } from '@/lib/services/live-market-data'
 import {
@@ -298,6 +299,43 @@ export class SignalGenerator {
     return stored > 0
   }
 
+  /**
+   * Upsert a generated signal for `generatedKey` WITHOUT destroying history.
+   *
+   * The old implementation was `deleteMany({ generatedKey })` + `create`, which
+   * wiped every prior row for the key — including signals that had already been
+   * resolved (hit_tp / hit_sl / expired) along with their UserSignal records
+   * (onDelete: Cascade). That silently corrupted the win-rate leaderboard and
+   * every user's accepted-signal history on each 5-minute refresh.
+   *
+   * New behaviour:
+   *   - newest row for the key is still `active` → UPDATE it in place, so the
+   *     row id (and therefore every accept) survives a refresh
+   *   - newest row is already resolved → leave it alone and CREATE a new row for
+   *     the fresh cycle; the resolved row stays as a permanent record
+   *   - no row → CREATE
+   *
+   * Either way there is never more than one unresolved signal per key.
+   */
+  private async upsertGeneratedSignal(
+    generatedKey: string,
+    data: Omit<Prisma.SignalUncheckedCreateInput, 'id' | 'generatedKey' | 'createdAt' | 'updatedAt'>
+  ): Promise<void> {
+    const latest = await db.signal.findFirst({
+      where: { generatedKey },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, status: true },
+    })
+
+    if (latest && latest.status === 'active') {
+      const { createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = data as Record<string, unknown>
+      await db.signal.update({ where: { id: latest.id }, data: rest })
+      return
+    }
+
+    await db.signal.create({ data: { ...data, generatedKey } })
+  }
+
   private async generateForSymbol(target: SignalTarget): Promise<boolean> {
     const { entry: entryRes, confirm: confirmRes } = resolutionsFor(target.style)
 
@@ -342,29 +380,26 @@ export class SignalGenerator {
 
     const generatedKey = `${target.symbol}:${result.direction}:${target.style}`
 
-    // Upsert: remove any prior generation for this key so we never duplicate
-    await db.signal.deleteMany({ where: { generatedKey } })
-    await db.signal.create({
-      data: {
-        generatedKey,
-        type: result.direction,
-        asset: target.symbol,
-        entryPrice: levels.entry,
-        stopLoss: levels.stop,
-        takeProfit1: levels.target1,
-        takeProfit2: levels.target2,
-        takeProfit3: levels.target3,
-        riskRewardRatio: levels.riskReward,
-        confidence,
-        strategy: strategyKey,
-        style: target.style,
-        strategyType: 'confluence',
-        timeframe: cfg.entryLabel,
-        reason: reasonWithStyle,
-        status: 'active',
-        expiryDate: expiry,
-        marketType: target.marketType,
-      },
+    // Upsert in place: refreshes the live trade plan while keeping the row (and
+    // its accept history) intact, and never deletes an already-resolved signal.
+    await this.upsertGeneratedSignal(generatedKey, {
+      type: result.direction,
+      asset: target.symbol,
+      entryPrice: levels.entry,
+      stopLoss: levels.stop,
+      takeProfit1: levels.target1,
+      takeProfit2: levels.target2,
+      takeProfit3: levels.target3,
+      riskRewardRatio: levels.riskReward,
+      confidence,
+      strategy: strategyKey,
+      style: target.style,
+      strategyType: 'confluence',
+      timeframe: cfg.entryLabel,
+      reason: reasonWithStyle,
+      status: 'active',
+      expiryDate: expiry,
+      marketType: target.marketType,
     })
 
     this.scheduleSignalNotification({
@@ -426,31 +461,27 @@ export class SignalGenerator {
 
     const generatedKey = `${target.symbol}:${direction}:${target.style}:amd`
 
-    await db.signal.deleteMany({ where: { generatedKey } })
-    await db.signal.create({
-      data: {
-        generatedKey,
-        type: direction,
-        asset: target.symbol,
-        entryPrice: currentPrice,
-        stopLoss: sniper.stop,
-        takeProfit1: direction === 'BUY' ? currentPrice + targetDist : currentPrice - targetDist,
-        takeProfit2: direction === 'BUY' ? currentPrice + 2.8 * stopDist : currentPrice - 2.8 * stopDist,
-        takeProfit3: direction === 'BUY' ? currentPrice + 4.2 * stopDist : currentPrice - 4.2 * stopDist,
-        riskRewardRatio: 2.0,
-        confidence: Math.max(1, Math.min(99, Math.round(sniper.confidence * 100))),
-        strategy: strategyKey,
-        style: target.style,
-        strategyType: 'amd_sniper',
-        amdPhase: sniper.phase,
-        inMacroWindow: sniper.inMacroWindow,
-        macroWindowName: sniper.macroWindowName || null,
-        timeframe: cfg.entryLabel,
-        reason,
-        status: 'active',
-        expiryDate: expiry,
-        marketType: target.marketType,
-      },
+    await this.upsertGeneratedSignal(generatedKey, {
+      type: direction,
+      asset: target.symbol,
+      entryPrice: currentPrice,
+      stopLoss: sniper.stop,
+      takeProfit1: direction === 'BUY' ? currentPrice + targetDist : currentPrice - targetDist,
+      takeProfit2: direction === 'BUY' ? currentPrice + 2.8 * stopDist : currentPrice - 2.8 * stopDist,
+      takeProfit3: direction === 'BUY' ? currentPrice + 4.2 * stopDist : currentPrice - 4.2 * stopDist,
+      riskRewardRatio: 2.0,
+      confidence: Math.max(1, Math.min(99, Math.round(sniper.confidence * 100))),
+      strategy: strategyKey,
+      style: target.style,
+      strategyType: 'amd_sniper',
+      amdPhase: sniper.phase,
+      inMacroWindow: sniper.inMacroWindow,
+      macroWindowName: sniper.macroWindowName || null,
+      timeframe: cfg.entryLabel,
+      reason,
+      status: 'active',
+      expiryDate: expiry,
+      marketType: target.marketType,
     })
 
     this.scheduleSignalNotification({
