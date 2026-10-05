@@ -31,6 +31,10 @@ import {
   AMD_RANGE_EXCLUDE_RECENT,
 } from '@/lib/services/signal-engine'
 
+// Upper bound on rows touched by the expiry re-anchoring sweep. One active
+// signal per generated key, so this is generous while still bounded.
+const BATCH_LIMIT = 400
+
 // ─── Signal targets ─────────────────────────────────────────────────────────
 
 interface SignalTarget {
@@ -263,10 +267,20 @@ export class SignalGenerator {
   }
 
   private async generateBatch(): Promise<boolean> {
-    await db.signal.updateMany({
+    await this.reanchorInflatedExpiries()
+
+    // Mark every past-deadline signal expired. Expiry only became reachable
+    // once the upsert stopped rewriting expiryDate, so previously-stuck rows are
+    // retired here on the first batch after deploy. resultType/resolvedAt are set
+    // explicitly: the rows must be closed cleanly or they never reach the
+    // retention sweep and the feed counts them as open forever.
+    const expired = await db.signal.updateMany({
       where: { status: 'active', expiryDate: { lte: new Date() } },
-      data: { status: 'expired' },
+      data: { status: 'expired', resultType: 'expired', resolvedAt: new Date() },
     })
+    if (expired.count > 0) {
+      console.log(`[signal-generator] expired ${expired.count} past-deadline signal(s)`)
+    }
 
     let stored = 0
 
@@ -300,6 +314,59 @@ export class SignalGenerator {
   }
 
   /**
+   * Repair rows whose expiryDate was slid forward by the old upsert bug.
+   *
+   * Because every refresh overwrote expiryDate with `now + expiryHours`, an
+   * active signal accumulated a deadline further and further into the future and
+   * could never pass it. Stopping the bleeding (see upsertGeneratedSignal) is not
+   * enough on its own: those rows already carry an inflated deadline, so they
+   * would keep trading for weeks.
+   *
+   * A generated signal is only valid for its own style's window from creation
+   * (scalp 12h, intraday_swing 36h, swing 72h). Any active row whose deadline
+   * sits further out than that was almost certainly inflated, so re-anchor it to
+   * createdAt + window. Signals that already ended inside their true window are
+   * left untouched: their deadline is at most window, so they fail the test.
+   */
+  private async reanchorInflatedExpiries(): Promise<void> {
+    const styles = Object.keys(STYLE_CONFIG) as StyleId[]
+    const maxHours = Math.max(...styles.map((s) => STYLE_CONFIG[s].expiryHours))
+
+    const stale = await db.signal.findMany({
+      where: { status: 'active' },
+      select: { id: true, createdAt: true, expiryDate: true, style: true, strategy: true },
+      take: BATCH_LIMIT,
+    })
+
+    let repaired = 0
+    for (const row of stale) {
+      const hours = this.expiryHoursFor(row.style, row.strategy)
+      const anchored = row.createdAt.getTime() + hours * 60 * 60 * 1000
+      // Only clamp forward-pushed deadlines, and only when they exceed the
+      // longest window the generator issues, so a genuinely-live swing signal
+      // (72h) is never shortened.
+      if (row.expiryDate.getTime() > anchored && row.expiryDate.getTime() > row.createdAt.getTime() + maxHours * 60 * 60 * 1000) {
+        await db.signal.update({ where: { id: row.id }, data: { expiryDate: new Date(anchored) } })
+        repaired++
+      }
+    }
+
+    if (repaired > 0) {
+      console.log(`[signal-generator] re-anchored ${repaired} inflated expiryDate(s)`)
+    }
+  }
+
+  /** Resolve the expiry window for a stored row, tolerating unknown styles. */
+  private expiryHoursFor(style: string | null, strategy: string | null): number {
+    if (style && style in STYLE_CONFIG) {
+      return STYLE_CONFIG[style as StyleId].expiryHours
+    }
+    if (strategy === 'swing') return STYLE_CONFIG.swing.expiryHours
+    if (strategy === 'scalp') return STYLE_CONFIG.scalp.expiryHours
+    return STYLE_CONFIG.swing.expiryHours
+  }
+
+  /**
    * Upsert a generated signal for `generatedKey` WITHOUT destroying history.
    *
    * The old implementation was `deleteMany({ generatedKey })` + `create`, which
@@ -328,7 +395,18 @@ export class SignalGenerator {
     })
 
     if (latest && latest.status === 'active') {
-      const { createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = data as Record<string, unknown>
+      // Refresh the plan in place, but NEVER the expiry. Writing a fresh
+      // expiryDate on every 5-minute refresh slid the deadline forward forever,
+      // so an active signal could never pass it and the expiry sweeps (which
+      // only test expiryDate <= now) never fired - the row stayed 'active'
+      // indefinitely. Expiry is anchored at issuance; only the levels track
+      // price.
+      const {
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        expiryDate: _expiryDate,
+        ...rest
+      } = data as Record<string, unknown>
       await db.signal.update({ where: { id: latest.id }, data: rest })
       return
     }
