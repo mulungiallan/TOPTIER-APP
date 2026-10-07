@@ -35,9 +35,13 @@ function num(value: string | undefined, fallback: number): number {
  * growth, not about keeping a minimal database.
  */
 export const RETENTION_DAYS = {
-  // The signal generator rewrites these on every pass; a few weeks of history
-  // is all the feed and the outcome tracking need.
-  signal: num(process.env.SIGNAL_RETENTION_DAYS, 30),
+  // 72h, per product decision: a signal older than three days is not actionable
+  // any more, so the row is removed outright rather than parked as history. This
+  // cascades - deleting the Signal also deletes its UserSignal (accepted) rows -
+  // which means the Performance win-rate window and a user's accepted-signal
+  // history both only ever span the last three days. EMERGENCY_DAYS already
+  // carried a 3-day signal cut, so this simply makes the routine sweep match it.
+  signal: num(process.env.SIGNAL_RETENTION_DAYS, 3),
   notification: num(process.env.NOTIFICATION_RETENTION_DAYS, 30),
   activityLog: num(process.env.ACTIVITY_LOG_RETENTION_DAYS, 14),
   usageEvent: 60,
