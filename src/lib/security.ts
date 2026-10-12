@@ -22,8 +22,8 @@ export function applySecurityHeaders(res: NextResponse, nonce?: string): NextRes
     "camera=(), microphone=(), geolocation=(), interest-cohort=()"
   );
 
-  // HSTS — only set in production over HTTPS
-  if (process.env.NODE_ENV === "production") {
+  // HSTS — only set in production over HTTPS (disabled due to TLS issues on custom domain)
+  if (process.env.NODE_ENV === "production" && process.env.ENABLE_HSTS === "true") {
     res.headers.set(
       "Strict-Transport-Security",
       "max-age=63072000; includeSubDomains; preload"

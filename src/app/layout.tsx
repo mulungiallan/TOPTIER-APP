@@ -47,7 +47,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier-production.up.railway.app"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://app.toptier.app"),
   title: {
     default: "TOPTIER — AI Trading Signals & Screenshot Analysis",
     template: "%s — TOPTIER",
@@ -98,7 +98,7 @@ export const metadata: Metadata = {
     title: "TOPTIER — AI Trading Signals",
     description: "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER.",
     siteName: "TOPTIER",
-    url: (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier-production.up.railway.app") + "/",
+    url: (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://app.toptier.app") + "/",
     images: [
       {
         url: "/opengraph-image",
