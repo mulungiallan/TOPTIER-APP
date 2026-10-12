@@ -55,7 +55,7 @@ async function main() {
 
   const admin = await prisma.user.create({
     data: {
-      email: 'admin@toptier.app',
+      email: 'admin@toptier.click',
       password: hashPassword(password),
       name: 'TOPTIER Admin',
       role: 'admin',
@@ -77,7 +77,7 @@ async function main() {
   })
 
   console.log('Admin user created:')
-  console.log('  Email: admin@toptier.app')
+  console.log('  Email: admin@toptier.click')
   console.log('  Password: (from ADMIN_PASSWORD env var — not logged for security)')
 
   const strategies = ['scalp', 'swing']

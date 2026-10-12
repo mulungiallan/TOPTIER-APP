@@ -100,7 +100,7 @@ export const PasswordResetEmail: React.FC<PasswordResetEmailProps> = ({ resetUrl
           <Hr style={{ marginTop: '30px' }} />
           <Section>
             <Text style={{ fontSize: '12px', color: '#888', textAlign: 'center' }}>
-              If you didn't request this, please contact us immediately at support@toptier.app
+              If you didn't request this, please contact us immediately at support@toptier.click
             </Text>
           </Section>
         </Container>

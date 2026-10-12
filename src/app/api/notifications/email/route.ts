@@ -185,7 +185,7 @@ export async function GET(request: NextRequest) {
 
   return successResponse({
     configured: !!process.env.RESEND_API_KEY,
-    from: process.env.EMAIL_FROM || 'notifications@toptier.app',
+    from: process.env.EMAIL_FROM || 'notifications@toptier.click',
     actions: ['send_alert', 'send_signal', 'send_welcome', 'send_weekly_report', 'send_password_reset'],
   })
 }

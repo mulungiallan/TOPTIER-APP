@@ -99,7 +99,7 @@ const botResponses: { keywords: string[]; reply: string }[] = [
   },
   {
     keywords: ['support', 'help', 'contact'],
-    reply: 'You can reach us via: 📧 support@toptier.app, or create a ticket from the Support page. Premium users get <4h response time, Free users <24h. How else can I help?',
+    reply: 'You can reach us via: 📧 support@toptier.click, or create a ticket from the Support page. Premium users get <4h response time, Free users <24h. How else can I help?',
   },
 ]
 
@@ -108,7 +108,7 @@ function getBotReply(message: string): string {
   for (const r of botResponses) {
     if (r.keywords.some((k) => lower.includes(k))) return r.reply
   }
-  return "Thanks for reaching out! I've logged your message. A human agent will follow up shortly. For urgent issues, please create a ticket from the Support page or email support@toptier.app."
+  return "Thanks for reaching out! I've logged your message. A human agent will follow up shortly. For urgent issues, please create a ticket from the Support page or email support@toptier.click."
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -428,7 +428,7 @@ export function FloatingSupportWidget() {
                   {/* Contact info */}
                   <div className="space-y-1.5 text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Mail className="size-4" /> support@toptier.app
+                      <Mail className="size-4" /> support@toptier.click
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Clock className="size-4" /> Free: &lt;24h · Premium: &lt;4h

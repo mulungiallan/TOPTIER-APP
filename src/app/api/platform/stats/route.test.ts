@@ -76,7 +76,7 @@ describe('GET /api/platform/stats', () => {
   })
 
   it('includes the user count for an admin', async () => {
-    h.admin = { id: '1', email: 'admin@toptier.app', name: 'Admin', role: 'super_admin' }
+    h.admin = { id: '1', email: 'admin@toptier.click', name: 'Admin', role: 'super_admin' }
     const { body } = await call()
     expect(body.data.traders).toBe(1234)
     expect(h.userCount).toHaveBeenCalledTimes(1)

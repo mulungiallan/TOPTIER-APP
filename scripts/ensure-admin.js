@@ -34,7 +34,7 @@ async function main() {
 
   const prisma = new PrismaClient()
   try {
-    const adminEmail = 'admin@toptier.app'
+    const adminEmail = 'admin@toptier.click'
     const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
 
     if (existing) {

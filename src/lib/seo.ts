@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 // kit recommends. The canonical domain is the custom production domain; every
 // deployment env overrides it through NEXT_PUBLIC_APP_URL.
 export const SITE_URL = (
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") || "https://app.toptier.app"
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") || "https://app.toptier.click"
 );
 
 export const site = {
@@ -63,7 +63,7 @@ export const site = {
   url: SITE_URL,
   ogImage: "/opengraph-image",
   twitterImage: "/twitter-image",
-  supportEmail: "support@toptier.app",
+  supportEmail: "support@toptier.click",
   locale: "en_US",
 } as const;
 

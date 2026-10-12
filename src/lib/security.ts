@@ -49,7 +49,7 @@ export function applySecurityHeaders(res: NextResponse, nonce?: string): NextRes
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https: https://*.tradingview.com",
-      "connect-src 'self' https: wss://*.toptier.app",
+      "connect-src 'self' https: wss://*.toptier.click wss://*.toptier.app",
       "frame-src 'self' https://js.stripe.com https://*.tradingview.com https://pay.pesapal.com https://cybqa.pesapal.com",
       "frame-ancestors 'none'",
       "form-action 'self' https:",

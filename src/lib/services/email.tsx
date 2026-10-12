@@ -17,7 +17,7 @@ import {
 } from '@/components/emails'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
-const EMAIL_FROM = process.env.EMAIL_FROM || 'notifications@toptier.app'
+const EMAIL_FROM = process.env.EMAIL_FROM || 'notifications@toptier.click'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null

@@ -9,7 +9,7 @@ import { db } from '@/lib/db'
 
 const DAY = 24 * 60 * 60 * 1000
 const HOUR = 60 * 60 * 1000
-const SYSTEM_EMAIL = 'admin@toptier.app'
+const SYSTEM_EMAIL = 'admin@toptier.click'
 
 // ─── time helpers ───────────────────────────────────────────────────────────
 

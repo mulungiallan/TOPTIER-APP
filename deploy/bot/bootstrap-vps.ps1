@@ -27,7 +27,7 @@
 
 .EXAMPLE
     # After `cloudflared tunnel login` has been run interactively:
-    .\bootstrap-vps.ps1 -ServiceKey "..." -TunnelName toptier -Hostname bot.toptier.app
+    .\bootstrap-vps.ps1 -ServiceKey "..." -TunnelName toptier -Hostname bot.toptier.click
 #>
 
 [CmdletBinding()]
@@ -276,7 +276,7 @@ if ($SkipTunnel) {
         # Ingress config: public hostname -> local bot service.
         $cfgDir = Split-Path $CloudflaredPath -Parent
         $cfg = Join-Path $cfgDir "config.yml"
-        $origin = if ($Hostname) { $Hostname } else { "bot.toptier.app" }
+        $origin = if ($Hostname) { $Hostname } else { "bot.toptier.click" }
         $cfgText = @"
 tunnel: $TunnelName
 credentials-file: $TunnelCredentials

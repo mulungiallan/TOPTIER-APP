@@ -959,7 +959,7 @@ export default function SupportPage() {
               </div>
               <div>
                 <p className="font-medium text-sm">Email Support</p>
-                <p className="text-sm text-muted-foreground">support@toptier.app</p>
+                <p className="text-sm text-muted-foreground">support@toptier.click</p>
               </div>
             </div>
             <Separator orientation="vertical" className="hidden sm:block h-10" />

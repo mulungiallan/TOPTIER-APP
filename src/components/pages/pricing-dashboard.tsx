@@ -274,7 +274,7 @@ export function PricingDashboardPage() {
 
   const handleCopyReferral = () => {
     if (!data?.referral?.code) return
-    const link = `${typeof window !== 'undefined' ? window.location.origin : 'https://toptier.app'}/?ref=${data.referral.code}`
+    const link = `${typeof window !== 'undefined' ? window.location.origin : 'https://toptier.click'}/?ref=${data.referral.code}`
     navigator.clipboard.writeText(link)
     toast.success('Referral link copied to clipboard!')
   }
@@ -1095,7 +1095,7 @@ function buildFallbackData(): BillingDashboardData {
   return {
     user: {
       id: 'demo',
-      email: 'demo@toptier.app',
+      email: 'demo@toptier.click',
       name: 'Demo Trader',
       tier: 'free',
       tierLabel: 'Free',

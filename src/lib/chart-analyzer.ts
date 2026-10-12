@@ -516,7 +516,7 @@ export class ChartAnalyzer {
               headers: {
                 Authorization: `Bearer ${OPENROUTER_API_KEY}`,
                 'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://app.toptier.app',
+                'HTTP-Referer': 'https://app.toptier.click',
                 'X-Title': 'TOPTIER',
               },
               body: JSON.stringify({

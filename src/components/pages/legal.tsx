@@ -53,7 +53,7 @@ export function UgcPolicyPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">4. In-App Reporting</h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Every post, comment, message, group, and trader profile includes a report option. Tap the flag/more menu on the content, choose a reason, and we receive the report together with the reported content and your account details (kept confidential). You can also report content or users through the Support section or by emailing support@toptier.app. You do not need to be involved in the conversation to report content.
+          Every post, comment, message, group, and trader profile includes a report option. Tap the flag/more menu on the content, choose a reason, and we receive the report together with the reported content and your account details (kept confidential). You can also report content or users through the Support section or by emailing support@toptier.click. You do not need to be involved in the conversation to report content.
         </p>
       </section>
 
@@ -67,7 +67,7 @@ export function UgcPolicyPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">6. Appeals</h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          If you believe a moderation decision was wrong — content you posted was removed in error, or your account was suspended unfairly — you may appeal within 30 days of the decision. Send your appeal to support@toptier.app or via the Support section with the subject &ldquo;Appeal&rdquo; and include your account email, the content or account action in question, and why you believe the decision was incorrect. We will review the appeal with a person who was not involved in the original decision and respond within 30 days. Decisions on appeal are final.
+          If you believe a moderation decision was wrong — content you posted was removed in error, or your account was suspended unfairly — you may appeal within 30 days of the decision. Send your appeal to support@toptier.click or via the Support section with the subject &ldquo;Appeal&rdquo; and include your account email, the content or account action in question, and why you believe the decision was incorrect. We will review the appeal with a person who was not involved in the original decision and respond within 30 days. Decisions on appeal are final.
         </p>
       </section>
 
@@ -88,7 +88,7 @@ export function UgcPolicyPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">9. Contact</h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          For questions about this policy, reporting, or appeals, contact us at support@toptier.app or through the Support section of the app.
+          For questions about this policy, reporting, or appeals, contact us at support@toptier.click or through the Support section of the app.
         </p>
       </section>
     </div>
@@ -148,7 +148,7 @@ export function PrivacyPolicyPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><Bell className="size-4 text-primary" /> 6. Your Rights</h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Depending on your jurisdiction, you may have the right to access and receive a copy of your personal data, rectify inaccurate or incomplete personal data, delete your personal data (subject to legal requirements), restrict or object to the processing of your data, data portability (receive your data in a structured format), and withdraw consent at any time where processing is based on consent. To exercise any of these rights, please contact us through the app settings or at privacy@toptier.app. We will respond to your request within 30 days.
+          Depending on your jurisdiction, you may have the right to access and receive a copy of your personal data, rectify inaccurate or incomplete personal data, delete your personal data (subject to legal requirements), restrict or object to the processing of your data, data portability (receive your data in a structured format), and withdraw consent at any time where processing is based on consent. To exercise any of these rights, please contact us through the app settings or at privacy@toptier.click. We will respond to your request within 30 days.
         </p>
       </section>
 
@@ -165,7 +165,7 @@ export function PrivacyPolicyPage() {
             Or, if you are logged in: <span className="font-medium">Settings → Account → Delete Account</span>
           </li>
           <li>
-            Or email us at <span className="font-medium">privacy@toptier.app</span> with the subject &ldquo;Delete Account&rdquo;
+            Or email us at <span className="font-medium">privacy@toptier.click</span> with the subject &ldquo;Delete Account&rdquo;
           </li>
         </ul>
         <a
@@ -200,7 +200,7 @@ export function PrivacyPolicyPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">10. Contact Us</h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          If you have questions about this Privacy Policy or our data practices, you can contact us at privacy@toptier.app or through the Support section of the app. Our Data Protection Officer can be reached at dpo@toptier.app for privacy-related inquiries and requests.
+          If you have questions about this Privacy Policy or our data practices, you can contact us at privacy@toptier.click or through the Support section of the app. Our Data Protection Officer can be reached at dpo@toptier.click for privacy-related inquiries and requests.
         </p>
       </section>
     </div>
@@ -307,7 +307,7 @@ export function TermsOfServicePage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">12. Contact</h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          For questions about these Terms of Service, please contact us at legal@toptier.app or through the Support section of the app. We recommend reviewing these terms periodically as they may be updated from time to time.
+          For questions about these Terms of Service, please contact us at legal@toptier.click or through the Support section of the app. We recommend reviewing these terms periodically as they may be updated from time to time.
         </p>
       </section>
 

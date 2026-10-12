@@ -36,11 +36,11 @@ npm run db:push      # push schema to SQLite
 4. `railway up -d` from repo root (linked to project `peaceful-contentment`, service `toptier`)
 
 **Railway notes:**
-- Prod URLs: `https://app.toptier.app` (custom domain; NOT reliably reachable from local machine) and `https://toptier-production.up.railway.app` (reachable).
+- Prod URLs: `https://app.toptier.click` (custom domain; NOT reliably reachable from local machine) and `https://toptier-production.up.railway.app` (reachable).
 - Health check: `Invoke-RestMethod -Uri "https://toptier-production.up.railway.app/api/health"` → `{"status":"ok","db":"ok"}`.
 - Deploy config: `railway.toml` (build/start) + `.railway/railway.ts` (domains/env). Start command runs `prisma db push --skip-generate`, `scripts/ensure-admin.js`, `scripts/ensure-packages.js`, then standalone server.
 - DB is SQLite **on a Railway volume** (`file:/data/db/custom.db`, 500MB) — NOT queryable from local machine. Verify via API endpoints, not direct DB access.
-- `NEXT_PUBLIC_APP_URL` and `TOPTIER_BACKEND_URL` point to the Railway URL in `.env`; on Railway they point at `app.toptier.app`.
+- `NEXT_PUBLIC_APP_URL` and `TOPTIER_BACKEND_URL` point to the Railway URL in `.env`; on Railway they point at `app.toptier.click`.
 
 ## Architecture / conventions
 

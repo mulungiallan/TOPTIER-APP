@@ -628,7 +628,7 @@ async function structureWithOpenRouter(
             headers: {
               Authorization: `Bearer ${key}`,
               'Content-Type': 'application/json',
-              'HTTP-Referer': 'https://app.toptier.app',
+              'HTTP-Referer': 'https://app.toptier.click',
               'X-Title': 'TOPTIER',
             },
             body: JSON.stringify({

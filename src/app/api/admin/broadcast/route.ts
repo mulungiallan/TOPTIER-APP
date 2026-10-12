@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
       campaigns: campaigns.map(serializeCampaign),
       config: {
         emailConfigured: emailConfigured(),
-        from: process.env.EMAIL_FROM || 'notifications@toptier.app',
+        from: process.env.EMAIL_FROM || 'notifications@toptier.click',
       },
       audiences: Object.entries(AUDIENCE_LABELS).map(([value, label]) => ({ value, label })),
     })

@@ -110,7 +110,7 @@ export const WelcomeEmail: React.FC<WelcomeEmailProps> = ({ name, dashboardUrl, 
             <Text style={{ fontSize: '12px', color: '#888', textAlign: 'center' }}>
               Trading involves substantial risk. Past performance is not indicative of future results.
               <br />
-              Need help? Contact us at support@toptier.app
+              Need help? Contact us at support@toptier.click
             </Text>
           </Section>
         </Container>

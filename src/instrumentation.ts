@@ -44,7 +44,7 @@ export async function register() {
 
     // Self-heal: keep the app admin account elevated. Railway's start command
     // can drift from repo config, so this runs inside the server process at
-    // every boot to guarantee admin@toptier.app holds the super_admin role.
+    // every boot to guarantee admin@toptier.click holds the super_admin role.
     //
     // It also syncs the PASSWORD from ADMIN_PASSWORD. Previously this block
     // only fixed the role, so the admin account kept whatever password it was
@@ -53,7 +53,7 @@ export async function register() {
     // had any effect in production, because Railway's deployed start command
     // omits the ensure-*.js chain entirely. Result: admin logins returned 403.
     try {
-      const adminUser = await db.user.findUnique({ where: { email: "admin@toptier.app" } });
+      const adminUser = await db.user.findUnique({ where: { email: "admin@toptier.click" } });
       if (adminUser) {
         const data: { role?: string; isEmailVerified?: boolean; password?: string; tokenVersion?: number } = {};
         if (adminUser.role !== "super_admin") {
@@ -75,7 +75,7 @@ export async function register() {
         if (Object.keys(data).length > 0) {
           const updated = await db.user.update({ where: { id: adminUser.id }, data });
           console.log(
-            `[self-heal] admin@toptier.app updated (role=${updated.role}, passwordSync=${Boolean(data.password)})`
+            `[self-heal] admin@toptier.click updated (role=${updated.role}, passwordSync=${Boolean(data.password)})`
           );
         }
       } else {
@@ -90,7 +90,7 @@ export async function register() {
         // the credentials are identical whichever path creates the account.
         const password = process.env.ADMIN_PASSWORD;
         if (!password) {
-          console.warn("[self-heal] admin@toptier.app not found and ADMIN_PASSWORD is unset");
+          console.warn("[self-heal] admin@toptier.click not found and ADMIN_PASSWORD is unset");
         } else {
           const { randomBytes } = await import("crypto");
           let referralCode = "";
@@ -104,7 +104,7 @@ export async function register() {
 
           const created = await db.user.create({
             data: {
-              email: "admin@toptier.app",
+              email: "admin@toptier.click",
               password: rehashPassword(password),
               name: "TOPTIER Admin",
               role: "super_admin",
@@ -117,7 +117,7 @@ export async function register() {
             },
             select: { id: true, role: true },
           });
-          console.log(`[self-heal] admin@toptier.app created (role=${created.role})`);
+          console.log(`[self-heal] admin@toptier.click created (role=${created.role})`);
         }
       }
     } catch (err) {
