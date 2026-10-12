@@ -32,7 +32,9 @@ import { BrandLogo } from '@/components/branding/brand-logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion'
 import { initUsageTracking, trackEvent } from '@/lib/tracking'
+import { faqSchema, site as siteSeo } from '@/lib/seo'
 
 const ScreenshotAnalyzer = dynamic(() => import('@/components/pages/screenshot-analyzer').then(m => m.ScreenshotAnalyzer), { ssr: false })
 const ChatAnalyserPage = dynamic(() => import('@/components/pages/chat-analyser').then(m => m.ChatAnalyserPage), { ssr: false })
@@ -590,6 +592,31 @@ function LandingPage() {
               ))}
             </div>
           </div>
+        </section>
+
+        {/* ─── FAQ ───────────────────────────────────────────────────── */}
+        <section className="mx-auto max-w-7xl px-5 sm:px-6 pb-20">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl font-bold tracking-tight">
+              Frequently Asked Questions
+            </h2>
+            <p className="mt-2 text-muted-foreground max-w-2xl mx-auto">
+              Quick answers about signals, the trading bot, copy trading and getting started.
+            </p>
+          </div>
+          <Accordion type="single" collapsible className="mx-auto max-w-3xl space-y-3">
+            {siteSeo.faq.map((f) => (
+              <AccordionItem key={f.q} value={f.q} className="border rounded-lg px-4">
+                <AccordionTrigger className="text-sm font-medium text-left">{f.q}</AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground leading-relaxed">{f.a}</AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+          {/* JSON-LD matches the visible Q&A above (and stays in sync via lib/seo.ts) */}
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema).replace(/</g, "\\u003c") }}
+          />
         </section>
 
         {/* ─── Footer ─────────────────────────────────────────────────── */}

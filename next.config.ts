@@ -14,9 +14,18 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
+  compress: true,
+  trailingSlash: false,
   typescript: { ignoreBuildErrors: false },
   distDir: ".next",
+  async redirects() {
+    return [
+      // Legacy /index URL → canonical root (permanent 301, no chain)
+      { source: "/index", destination: "/", permanent: true },
+    ];
+  },
   images: {
+    formats: ["image/avif", "image/webp"],
     remotePatterns: [
       { protocol: "https", hostname: "**.tradingview.com" },
       { protocol: "https", hostname: "**.sentry.io" },

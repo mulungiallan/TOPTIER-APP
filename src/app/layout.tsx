@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 import { SplashScreen } from "@/components/brand/splash-screen";
+import { buildMetadata, structuredDataGraph } from "@/lib/seo";
 import { ClientProviders } from "./client-providers";
 import "./globals.css";
 
@@ -46,76 +47,7 @@ export const viewport: Viewport = {
   ],
 };
 
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://app.toptier.app"),
-  title: {
-    default: "TOPTIER — AI Trading Signals & Screenshot Analysis",
-    template: "%s — TOPTIER",
-  },
-  description: "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER, powered by BAGMUL.",
-  keywords: ["trading", "signals", "analyzer", "forex", "crypto", "stocks", "AI", "screenshot", "BAGMUL"],
-  authors: [{ name: "BAGMUL" }],
-  alternates: {
-    canonical: "/",
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
-    },
-  },
-  verification: {
-    google: "google8acd419857671d47.html",
-  },
-  manifest: "/manifest.webmanifest",
-  icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/icons/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/icons/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-    ],
-    apple: [
-      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
-    ],
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "TOPTIER",
-  },
-  formatDetection: {
-    telephone: false,
-    email: false,
-    address: false,
-  },
-  openGraph: {
-    type: "website",
-    title: "TOPTIER — AI Trading Signals",
-    description: "AI-powered trading signals, screenshot analysis, and market intelligence. Trade smarter with TOPTIER.",
-    siteName: "TOPTIER",
-    url: (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://app.toptier.app") + "/",
-    images: [
-      {
-        url: "/opengraph-image",
-        width: 1200,
-        height: 630,
-        alt: "TOPTIER — AI Trading Signals & Screenshot Analysis",
-      },
-    ],
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "TOPTIER — AI Trading Signals",
-    description: "AI-powered trading signals, screenshot analysis, and market intelligence.",
-    images: ["/twitter-image"],
-  },
-};
+export const metadata: Metadata = buildMetadata();
 
 export default async function RootLayout({
   children,
@@ -133,33 +65,12 @@ export default async function RootLayout({
     // fall through — nonce unavailable during static generation
   }
 
-  const siteUrl = (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://toptier-production.up.railway.app") + "/";
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "Organization",
-        "@id": `${siteUrl}#organization`,
-        name: "TOPTIER",
-        url: siteUrl,
-        logo: `${siteUrl}icons/icon-512x512.png`,
-      },
-      {
-        "@type": "WebSite",
-        "@id": `${siteUrl}#website`,
-        name: "TOPTIER",
-        url: siteUrl,
-        publisher: { "@id": `${siteUrl}#organization` },
-      },
-    ],
-  };
-
   return (
     <html lang="en" suppressHydrationWarning nonce={cspNonce}>
       <head>
         <script
           nonce={cspNonce || undefined}
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredDataGraph) }}
           type="application/ld+json"
         />
         <script
@@ -170,6 +81,7 @@ export default async function RootLayout({
         />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="color-scheme" content="light dark" />
         {/* iOS launch screens (apple-touch-startup-image) for the main device sizes */}
         <link rel="apple-touch-startup-image" href="/icons/splash-ios-2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)" />
         <link rel="apple-touch-startup-image" href="/icons/splash-ios-1668x2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)" />
