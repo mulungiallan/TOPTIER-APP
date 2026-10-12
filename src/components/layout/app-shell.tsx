@@ -1,7 +1,6 @@
 'use client'
 
 import React from 'react'
-import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -19,8 +18,6 @@ import {
   CreditCard,
   Settings,
   Shield,
-  Sun,
-  Moon,
   LogOut,
   Search,
   ChevronLeft,
@@ -191,7 +188,6 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
   const logout = useStore((s) => s.logout)
   const toggleSidebarCollapsed = useStore((s) => s.toggleSidebarCollapsed)
   const locale = useStore((s) => s.locale)
-  const { theme, setTheme } = useTheme()
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
 
   const handleNavigate = (page: Page) => {
@@ -202,10 +198,6 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
   const handleLogout = () => {
     logout()
     toast.success(t('common.loggedOut', locale))
-  }
-
-  const handleThemeToggle = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
   const subscriptionBadge = user?.subscriptionTier === 'pro'
@@ -354,25 +346,6 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
             <button onClick={() => handleNavigate('ugc')} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{t('common.ugc', locale)}</button>
           </div>
         )}
-
-        {/* Theme Toggle */}
-        <div className={cn('flex items-center mb-2', collapsed ? 'justify-center' : 'justify-between px-1')}>
-          {!collapsed && (
-            <span className="text-xs text-muted-foreground">{t('common.theme', locale)}</span>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={handleThemeToggle}
-          >
-            {theme === 'dark' ? (
-              <Sun className="size-4" />
-            ) : (
-              <Moon className="size-4" />
-            )}
-          </Button>
-        </div>
 
         <Separator className="mb-2" />
 

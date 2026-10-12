@@ -24,9 +24,6 @@ import {
   LogOut,
   CheckCircle2,
   AlertTriangle,
-  Moon,
-  Sun,
-  MonitorSmartphone,
   ChevronRight,
   FileText,
   Loader2,
@@ -46,7 +43,6 @@ import { AppLockPanel } from '@/components/settings/app-lock-panel'
 import { useStore, type UserPrivacySettings } from '@/lib/store'
 import { api } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
-import { useTheme } from 'next-themes'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -129,7 +125,6 @@ export function SettingsPage() {
   const user = useStore((s) => s.user)
   const updateUser = useStore((s) => s.updateUser)
   const logout = useStore((s) => s.logout)
-  const { theme, setTheme } = useTheme()
 
   // Loading & error states
   const [loading, setLoading] = useState(true)
@@ -1650,20 +1645,6 @@ export function SettingsPage() {
               <CardDescription>Adjust settings to improve your experience</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Dark/Light Mode */}
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Dark Mode</Label>
-                  <p className="text-sm text-muted-foreground">Switch between light and dark themes</p>
-                </div>
-                <Switch
-                  checked={theme === 'dark'}
-                  onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
-                />
-              </div>
-
-              <Separator />
-
               {/* High Contrast */}
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
@@ -1716,35 +1697,6 @@ export function SettingsPage() {
               <CardDescription>Customize the look and feel</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Theme */}
-              <div className="space-y-3">
-                <Label>Theme</Label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { value: 'light', label: 'Light', icon: Sun },
-                    { value: 'dark', label: 'Dark', icon: Moon },
-                    { value: 'system', label: 'System', icon: MonitorSmartphone },
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setTheme(opt.value)}
-                      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                        theme === opt.value
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-primary/30'
-                      }`}
-                    >
-                      <opt.icon className={`size-5 ${theme === opt.value ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <span className={`text-sm font-medium ${theme === opt.value ? 'text-primary' : 'text-muted-foreground'}`}>
-                        {opt.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <Separator />
-
               {/* Primary Color */}
               <div className="space-y-3">
                 <Label>Primary Color</Label>

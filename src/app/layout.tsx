@@ -81,7 +81,7 @@ export default async function RootLayout({
         />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="color-scheme" content="light dark" />
+        <meta name="color-scheme" content="dark" />
         {/* iOS launch screens (apple-touch-startup-image) for the main device sizes */}
         <link rel="apple-touch-startup-image" href="/icons/splash-ios-2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)" />
         <link rel="apple-touch-startup-image" href="/icons/splash-ios-1668x2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)" />
@@ -95,8 +95,8 @@ export default async function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="light"
-          enableSystem
+          defaultTheme="dark"
+          forcedTheme="dark"
           disableTransitionOnChange
         >
           <ClientProviders>{children}</ClientProviders>
