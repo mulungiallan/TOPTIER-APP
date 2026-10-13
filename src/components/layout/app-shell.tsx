@@ -519,13 +519,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-card px-4 lg:px-6">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3 sm:gap-4 sm:px-4 lg:px-6">
           {/* Mobile/tablet menu toggle (visible below md — CSS-driven so it also
               covers tablets that were previously stranded without any menu) */}
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            className="shrink-0 md:hidden"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="size-5" />
@@ -536,27 +536,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Button
               variant="ghost"
               size="icon"
-              className="hidden md:flex"
+              className="hidden shrink-0 md:flex"
               onClick={toggleSidebarCollapsed}
             >
               <Menu className="size-5" />
             </Button>
           )}
 
-          {/* Page Title */}
-          <div className="flex items-center gap-2">
+          {/* Page Title — min-w-0 lets this block shrink so long titles
+              truncate instead of overlapping the right-side controls. */}
+          <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-initial">
             {navHistory.length > 0 && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="flex size-8"
+                className="flex size-8 shrink-0"
                 onClick={goBack}
                 aria-label="Go back"
               >
                 <ChevronLeft className="size-4" />
               </Button>
             )}
-            <h2 className="text-lg font-semibold">{t(`page.${currentPage}`, locale)}</h2>
+            <h2 className="min-w-0 truncate text-base font-semibold sm:text-lg">
+              {t(`page.${currentPage}`, locale)}
+            </h2>
           </div>
 
           {/* Search Bar */}
@@ -620,7 +623,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {/* Quick Action: Analyze Screenshot */}
             <Button
               size="sm"
