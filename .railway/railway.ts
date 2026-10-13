@@ -14,7 +14,7 @@ export default defineRailway(() => {
     // reclaim only runs if it is listed here. The SQLite volume fills up over
     // time and a full disk fails every write (login, screenshot analysis,
     // signal generation) while a read-only health check still looks healthy.
-    start: "mkdir -p /data/db && node scripts/ensure-space.js && npx prisma db push --skip-generate --accept-data-loss && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node scripts/ensure-tickers.js && node scripts/ensure-ebooks.js && node .next/standalone/server.js",
+    start: "mkdir -p /data/db && node scripts/ensure-space.js && npx prisma db push --skip-generate && node scripts/ensure-admin.js && node scripts/ensure-packages.js && node scripts/ensure-tickers.js && node scripts/ensure-ebooks.js && node scripts/ensure-trials.js && node .next/standalone/server.js",
     healthcheck: "/api/health",
     replicas: { "ams": 1 },
     deploy: { restartPolicyMaxRetries: 5 },

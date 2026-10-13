@@ -22,6 +22,14 @@ const nextConfig: NextConfig = {
     return [
       // Legacy /index URL → canonical root (permanent 301, no chain)
       { source: "/index", destination: "/", permanent: true },
+      // Vanity subdomain: bot.toptier.click always lands on the in-app
+      // Trading Bot page. Host-matched so it never affects app.toptier.click.
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "bot.toptier.click" }],
+        destination: "https://app.toptier.click/?page=trading-bot",
+        permanent: true,
+      },
     ];
   },
   images: {

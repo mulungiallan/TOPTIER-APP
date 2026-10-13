@@ -3,6 +3,8 @@ import { db } from '@/lib/db'
 import { verifyPassword, generateToken, generateReferralCode, successResponse, errorResponse, needsRehash, rehashPassword, getRequestIp, getRequestDevice } from '@/lib/auth'
 import { authRouteSchema, validateBody } from '@/lib/validation'
 import { grantReferralCashMilestones } from '@/lib/services/referral-rewards'
+import { notifyUser } from '@/lib/services/notifications'
+import { trialWindow } from '@/lib/trial'
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,6 +34,9 @@ export async function POST(request: NextRequest) {
       }
 
       const hashedPassword = rehashPassword(password)
+      // Every new account starts on a 7-day full-Premium trial.
+      const now = new Date()
+      const trial = trialWindow(now)
       const user = await db.user.create({
         data: {
           email: trimmedEmail,
@@ -40,6 +45,7 @@ export async function POST(request: NextRequest) {
           dateOfBirth: dateOfBirth || null,
           country: country || null,
           referralCode,
+          ...trial,
         },
       })
 
@@ -59,6 +65,13 @@ export async function POST(request: NextRequest) {
           minConfidence: 50,
         },
       })
+
+      // Welcome the new user and tell them about the free trial.
+      await notifyUser(user.id, {
+        type: 'subscription',
+        title: 'Free Trial Activated',
+        message: `Welcome to TOPTIER! Your 7-day Premium trial is active until ${trial.trialEndDate.toLocaleDateString()}. Enjoy signals, the trading bot and an ad-free experience.`,
+      }).catch(() => {})
 
       // Link the referrer if a valid referral code was supplied.
       // Rewards are recorded as "pending" and granted when the referred
@@ -116,6 +129,7 @@ export async function POST(request: NextRequest) {
           name: user.name,
           role: user.role,
           subscriptionTier: user.subscriptionTier,
+          trialEndDate: user.trialEndDate,
           referralCode: user.referralCode,
           referralCount: user.referralCount,
           earnedPremiumDays: user.earnedPremiumDays,
@@ -201,6 +215,7 @@ export async function POST(request: NextRequest) {
           name: user.name,
           role: user.role,
           subscriptionTier: user.subscriptionTier,
+          trialEndDate: user.trialEndDate,
           referralCode: user.referralCode,
           referralCount: user.referralCount,
           earnedPremiumDays: user.earnedPremiumDays,

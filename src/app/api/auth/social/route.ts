@@ -3,6 +3,8 @@ import { db } from '@/lib/db'
 import { generateToken, generateReferralCode, successResponse, errorResponse, getRequestIp, getRequestDevice } from '@/lib/auth'
 import { socialAuthSchema, validateBody } from '@/lib/validation'
 import { verifySocialToken } from '@/lib/auth/social'
+import { notifyUser } from '@/lib/services/notifications'
+import { trialWindow } from '@/lib/trial'
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,6 +61,7 @@ export async function POST(request: NextRequest) {
         codeExists = await db.user.findUnique({ where: { referralCode } })
       }
 
+      const trialed = trialWindow()
       const createData = {
         email: socialUser.email,
         password: '',
@@ -67,6 +70,7 @@ export async function POST(request: NextRequest) {
         profilePicture: socialUser.picture || null,
         isEmailVerified: socialUser.emailVerified,
         ...(provider === 'google' ? { googleId: socialUser.providerId } : { appleId: socialUser.providerId }),
+        ...trialed,
       } as const
 
       user = await db.user.create({ data: createData })
@@ -77,6 +81,12 @@ export async function POST(request: NextRequest) {
       await db.signalFilter.create({
         data: { userId: user.id, minConfidence: 50 },
       })
+
+      await notifyUser(user.id, {
+        type: 'subscription',
+        title: 'Free Trial Activated',
+        message: `Welcome to TOPTIER! Your 7-day Premium trial is active until ${trialed.trialEndDate.toLocaleDateString()}. Enjoy signals, the trading bot and an ad-free experience.`,
+      }).catch(() => {})
     }
 
     if (user.isBanned) {
@@ -121,6 +131,7 @@ export async function POST(request: NextRequest) {
         name: user.name,
         role: user.role,
         subscriptionTier: user.subscriptionTier,
+        trialEndDate: user.trialEndDate,
         referralCode: user.referralCode,
         referralCount: user.referralCount,
         earnedPremiumDays: user.earnedPremiumDays,
