@@ -80,6 +80,23 @@ function extractUserId(token: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Vanity subdomain: bot.toptier.click always lands on the in-app Trading Bot
+  // page. Checked here as well as in next.config redirects() because the host
+  // the proxy forwards can differ. Never affects app.toptier.click.
+  const host = (
+    req.headers.get("x-forwarded-host") ||
+    req.headers.get("host") ||
+    ""
+  )
+    .split(":")[0]
+    .toLowerCase();
+  if (host === "bot.toptier.click") {
+    return NextResponse.redirect(
+      new URL("https://app.toptier.click/?page=trading-bot"),
+      301
+    );
+  }
+
   // Forward the CSP nonce to the layout via a request header so inline
   // <script> tags can bind it (read via headers() in src/app/layout.tsx).
   const forwarded = new Headers(req.headers);
