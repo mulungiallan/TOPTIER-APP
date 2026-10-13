@@ -149,6 +149,32 @@ export const adminBanSchema = z.object({
   duration: z.coerce.number().int().min(1).max(365).optional(),
 });
 
+// ─── Self-hosted bot agents (BotHost) ────────────────────────────────────────
+// The user creates a host in the app (this gets a short-lived pairing code),
+// then runs the agent on their machine and enters that code. The agent calls
+// /register with its public URL + shared key; the app stores the key encrypted
+// and thereafter routes that user's instances to the host.
+export const botHostCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+});
+
+export const botHostRegisterSchema = z.object({
+  pairingCode: z.string().trim().min(4).max(64),
+  url: z.string().trim().url().max(300),
+  key: z.string().min(8).max(200),
+  name: z.string().trim().min(1).max(80).optional(),
+  platform: z.string().trim().max(40).optional(),
+  version: z.string().trim().max(40).optional(),
+  capacity: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const botHostHeartbeatSchema = z.object({
+  hostId: idSchema,
+  url: z.string().trim().url().max(300).optional(),
+  version: z.string().trim().max(40).optional(),
+  capacity: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 // ─── Generic helpers ────────────────────────────────────────────────────────
 export interface ValidationResult<T> {
   success: true;

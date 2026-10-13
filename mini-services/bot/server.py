@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field
 
 import settings
 import instance_util
+import terminal_pool
 
 settings.ensure_dirs()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -51,6 +52,10 @@ def _on_startup():
     # resumes trading without anyone touching the UI.
     n = autostart_instances()
     logger.info("Service startup complete; autostarted %d instance(s).", n)
+    # Keep respawning instances that crash *while the service stays up* - the
+    # app-side reconcile cannot be relied on because it may not be able to reach
+    # this machine. See the supervisor section below.
+    _start_supervisor()
 
 # ---------------------------------------------------------------------------
 # Instance process registry
@@ -210,6 +215,91 @@ def _terminate(inst: InstanceProcess):
 
 
 # ---------------------------------------------------------------------------
+# Instance supervisor
+#
+# An instance that crashes on its own (MT5 disconnect, broker error, unhandled
+# exception) leaves the service healthy but the account idle. The Next.js
+# control plane normally notices and restarts it, but that requires the app to
+# be able to reach this machine - which it cannot if the tunnel is down. This
+# supervisor makes the machine self-healing: any autostart instance whose
+# subprocess exited by itself is respawned after a short backoff.
+#
+# Instances stopped through the API have their process cleared (see
+# _terminate), so they are deliberately left alone - only unexpected exits are
+# restarted.
+# ---------------------------------------------------------------------------
+
+_supervisor_state: dict[str, dict] = {}
+_supervisor_thread: threading.Thread | None = None
+
+
+def _supervisor_enabled() -> bool:
+    return os.environ.get("BOT_SUPERVISOR", "1").strip().lower() not in ("0", "false", "no")
+
+
+def _supervisor_int(name: str, default: int, minimum: int = 0) -> int:
+    try:
+        return max(minimum, int(os.environ.get(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def supervise_once() -> int:
+    """Respawan any autostart instance whose subprocess exited on its own."""
+    restarted = 0
+    now = time.time()
+    for inst in list(manager._instances.values()):
+        proc = inst.process
+        if proc is None or proc.poll() is None:
+            continue  # never started, or still running, or intentionally stopped
+        spec = inst.spec or {}
+        if not _autostart_enabled(spec):
+            continue
+        state = _supervisor_state.setdefault(inst.instance_id, {"count": 0, "last": 0.0})
+        if state["count"] >= _supervisor_int("BOT_SUPERVISOR_MAX_RESTARTS", 1000):
+            continue
+        if now - state["last"] < _supervisor_int("BOT_SUPERVISOR_BACKOFF", 15):
+            continue
+        try:
+            _spawn(inst)
+            state["count"] += 1
+            state["last"] = now
+            restarted += 1
+            logger.warning(
+                "supervisor: restarted instance %s (exit=%s, attempt %d)",
+                inst.instance_id, proc.returncode, state["count"],
+            )
+        except Exception:
+            state["last"] = now
+            logger.exception("supervisor: failed to restart %s", inst.instance_id)
+    return restarted
+
+
+def _supervisor_loop(interval: int):
+    logger.info("instance supervisor running every %ds", interval)
+    while True:
+        try:
+            supervise_once()
+        except Exception:
+            logger.exception("supervisor tick failed")
+        time.sleep(interval)
+
+
+def _start_supervisor():
+    global _supervisor_thread
+    if not _supervisor_enabled():
+        logger.info("instance supervisor disabled (BOT_SUPERVISOR=0)")
+        return
+    if _supervisor_thread is not None and _supervisor_thread.is_alive():
+        return
+    interval = _supervisor_int("BOT_SUPERVISOR_INTERVAL", 20, minimum=5)
+    _supervisor_thread = threading.Thread(
+        target=_supervisor_loop, args=(interval,), name="bot-supervisor", daemon=True
+    )
+    _supervisor_thread.start()
+
+
+# ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
 
@@ -235,6 +325,9 @@ class InstanceSpec(BaseModel):
     password: str = ""
     server: str = ""
     terminalPath: str | None = None
+    # Set by the service when it assigns a pooled terminal; never trusted from
+    # the app. Portable keeps each slot's MT5 data inside its own install dir.
+    portable: bool = False
     webhookUrl: str = ""
     # Accepted for backwards compatibility with older app builds, then dropped:
     # the service holds the key in its own environment and instance_util
@@ -251,7 +344,12 @@ class InstanceSpec(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "toptier-bot", "time": time.time()}
+    return {
+        "status": "ok",
+        "service": "toptier-bot",
+        "time": time.time(),
+        "terminalPool": terminal_pool.summary(),
+    }
 
 
 @app.get("/api/instances")
@@ -268,10 +366,22 @@ def create_instance(spec: InstanceSpec, x_bot_service_key: str | None = Header(d
     if existing and existing.process is not None and existing.process.poll() is None:
         raise HTTPException(status_code=409, detail="Instance is already running")
 
-    instance_util.save_spec(spec.model_dump())
-    inst = manager.create(spec.model_dump())
+    data = spec.model_dump()
+
+    # Multi-tenant hosting: hand this account its own terminal from the pool so
+    # concurrent instances never fight over a single MT5 session. Disabled when
+    # no pool directory is configured - the app-supplied path is used as-is.
+    if terminal_pool.is_enabled() and terminal_pool.discover():
+        assigned = terminal_pool.allocate(spec.instanceId)
+        if not assigned:
+            raise HTTPException(status_code=503, detail="No free MT5 terminal in the pool")
+        data["terminalPath"] = assigned
+        data["portable"] = True
+
+    instance_util.save_spec(data)
+    inst = manager.create(data)
     _spawn(inst)
-    return {"instance": inst.status()}
+    return {"instance": inst.status(), "terminalPool": terminal_pool.summary()}
 
 
 @app.get("/api/instances/{instance_id}")
@@ -314,6 +424,7 @@ def delete_instance(instance_id: str, x_bot_service_key: str | None = Header(def
         _terminate(inst)
     manager.remove(instance_id)
     instance_util.delete_workspace(instance_id)
+    terminal_pool.release(instance_id)
     return {"deleted": True}
 
 

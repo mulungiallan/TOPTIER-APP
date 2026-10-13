@@ -17,6 +17,12 @@ import {
   type CreateInstanceSpec,
   type ServiceInstanceStatus,
 } from '@/lib/services/bot-service'
+import {
+  hostToTarget,
+  ownerHostTarget,
+  resolveInstanceHost,
+  resolveStartHost,
+} from '@/lib/services/bot-hosts'
 
 // Cooldown on auto-restarts: if an instance dies (wrong credentials, broker
 // disconnect, engine crash) reconcile won't hot-spin it. It retries on later
@@ -180,14 +186,18 @@ export const BotInstanceManager = {
     const instance = await this.ensureInstance(connectionId)
     const spec = await buildSpec(connection, instance, connection.platform, connection.login, connection.server, connection.terminalPath, connection.settings)
 
+    // Route to the machine that will run this bot: the instance's pinned host,
+    // or the user's best self-hosted host, or the legacy owner host.
+    const target = await resolveStartHost(instance.id, connection.userId)
+
     await db.botInstance.update({
       where: { id: instance.id },
-      data: { status: 'starting', lastError: null, lastHeartbeatAt: new Date() },
+      data: { status: 'starting', lastError: null, lastHeartbeatAt: new Date(), hostId: target?.hostId ?? null },
     })
 
     let serviceStatus: ServiceInstanceStatus
     try {
-      const res = await botService.createInstance(spec)
+      const res = await botService.createInstance(spec, target)
       serviceStatus = res.instance
     } catch (err) {
       await db.botInstance.update({
@@ -218,7 +228,8 @@ export const BotInstanceManager = {
   async refreshStatus(instanceId: string): Promise<{ instance: any; online: boolean }> {
     let serviceStatus: ServiceInstanceStatus | null = null
     try {
-      const res = await botService.status(instanceId)
+      const target = await resolveInstanceHost(instanceId)
+      const res = await botService.status(instanceId, target)
       serviceStatus = res.instance
     } catch (err) {
       if (err instanceof BotServiceOfflineError) {
@@ -252,7 +263,8 @@ export const BotInstanceManager = {
       data: { status: 'stopping', lastHeartbeatAt: new Date() },
     })
     try {
-      const res = await botService.stop(instanceId)
+      const target = await resolveInstanceHost(instanceId)
+      const res = await botService.stop(instanceId, target)
       await db.botInstance.update({
         where: { id: instanceId },
         data: {
@@ -293,7 +305,7 @@ export const BotInstanceManager = {
 async function reconcile({ onlyUserId }: { onlyUserId?: string } = {}): Promise<ReconcileSummary> {
   const instances = await db.botInstance.findMany({
     where: onlyUserId ? { userId: onlyUserId } : {},
-    include: { connection: true },
+    include: { connection: true, host: true },
   })
 
   const summary: ReconcileSummary = { healed: 0, stoppedExpired: 0, skipped: 0, errors: 0 }
@@ -347,7 +359,8 @@ async function reconcile({ onlyUserId }: { onlyUserId?: string } = {}): Promise<
 
     let serviceStatus: ServiceInstanceStatus
     try {
-      const res = await botService.status(inst.id)
+      const target = inst.host ? hostToTarget(inst.host) : ownerHostTarget()
+      const res = await botService.status(inst.id, target)
       serviceStatus = res.instance
     } catch (err) {
       if (err instanceof BotServiceOfflineError) {

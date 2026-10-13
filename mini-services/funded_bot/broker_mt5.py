@@ -24,6 +24,8 @@ class MT5Broker:
     def connect(self):
         m, c = self.mt5, self.cfg
         kw = {k: c[k] for k in ("path",) if c.get(k)}
+        if c.get("portable"):
+            kw["portable"] = True
         if c.get("login"):
             kw.update(login=int(c["login"]), password=c["password"], server=c["server"])
         if not m.initialize(**kw):

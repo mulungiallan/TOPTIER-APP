@@ -206,6 +206,8 @@ def mt5_cfg_from_env(base: Optional[dict] = None) -> dict:
         value = os.environ.get(env_key, "").strip()
         if value:
             cfg[cfg_key] = value
+    if os.environ.get("MT5_PORTABLE", "").strip().lower() in ("1", "true", "yes"):
+        cfg["portable"] = True
     return cfg
 
 

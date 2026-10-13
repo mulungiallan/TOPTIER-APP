@@ -71,6 +71,16 @@ BOT_CREDENTIALS_SECRET = os.environ.get("BOT_CREDENTIALS_SECRET", "")
 # the MetaTrader5 package installed.
 BOT_PYTHON = os.environ.get("BOT_PYTHON", "python")
 
+# --- Multi-tenant terminal pool -------------------------------------------
+# MetaTrader5 is Windows-only and one terminal is one session, so hosting many
+# accounts needs one terminal install per concurrent instance. When
+# BOT_TERMINAL_POOL_DIR points at a directory of slots (term01, term02, ... each
+# holding terminal64.exe), server.py assigns each instance its own slot and runs
+# it in portable mode. Unset (the default) disables the pool: every instance
+# uses the single path the app supplies (see instance_util.write_config).
+TERMINAL_POOL_DIR = os.environ.get("BOT_TERMINAL_POOL_DIR", "").strip()
+TERMINAL_POOL_ENABLED = os.environ.get("BOT_TERMINAL_POOL", "1").strip().lower() not in ("0", "false", "no")
+
 # How many seconds to wait for an instance process to exit after a stop request
 # before force-killing it.
 STOP_GRACE_SECONDS = int(os.environ.get("BOT_STOP_GRACE_SECONDS", "15"))

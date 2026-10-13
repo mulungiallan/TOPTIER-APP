@@ -34,6 +34,7 @@ import settings
 # a live MT5 terminal.
 INSTANCE_OVERRIDES = {
     "MT5_PATH": None,
+    "MT5_PORTABLE": False,
     "PLATFORM": None,
     "BOT_MAGIC_NUMBER": None,
     "INSTANCE_ID": None,
@@ -168,6 +169,9 @@ def write_config(spec: dict, config_py: Path):
 
     overrides = INSTANCE_OVERRIDES.copy()
     overrides["MT5_PATH"] = spec.get("terminalPath", "")
+    # Portable mode keeps each pooled terminal's data inside its own install
+    # directory, so instances never share an MT5 profile on a multi-tenant host.
+    overrides["MT5_PORTABLE"] = bool(spec.get("portable"))
     overrides["PLATFORM"] = spec.get("platform", "mt5")
     overrides["BOT_MAGIC_NUMBER"] = derive_magic(spec["instanceId"])
     overrides["INSTANCE_ID"] = spec["instanceId"]

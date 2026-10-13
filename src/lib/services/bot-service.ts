@@ -1,11 +1,14 @@
 // src/lib/services/bot-service.ts
 // HTTP client for the TOPTIER Python bot service (mini-services/bot/server.py).
 //
-// The service runs on the same machine as the app (default 127.0.0.1:8765)
-// and controls one isolated bot subprocess per linked MetaTrader account.
-// All requests require the shared `x-bot-service-key` secret. When the
-// service is unreachable we raise BotServiceOfflineError so callers can show
-// a friendly message instead of a raw fetch failure.
+// Historically the service ran on the same machine as the app (default
+// 127.0.0.1:8765). With self-hosted agents the app now routes each request to
+// the machine that actually runs the user's instances: callers pass a
+// BotHostTarget (the paired user host) and every call falls back to the legacy
+// owner host from BOT_SERVICE_URL when none is given. All requests require the
+// per-host `x-bot-service-key` secret. When the service is unreachable we raise
+// BotServiceOfflineError so callers can show a friendly message instead of a
+// raw fetch failure.
 
 import { env } from '@/lib/env'
 
@@ -14,6 +17,15 @@ export class BotServiceOfflineError extends Error {
     super(message)
     this.name = 'BotServiceOfflineError'
   }
+}
+
+// A resolved execution host: where to send the request (url) and the shared
+// secret that host expects (key). `hostId` is the BotHost row for self-hosted
+// agents, or undefined for the legacy owner host.
+export interface BotHostTarget {
+  hostId?: string
+  url: string
+  key: string
 }
 
 export interface ServiceInstanceStatus {
@@ -73,16 +85,17 @@ function serviceKey(): string {
   return env.botServiceKey
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, target?: BotHostTarget | null): Promise<T> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 10000)
+  const baseUrl = (target?.url || serviceUrl()).replace(/\/+$/, '')
   try {
-    const res = await fetch(`${serviceUrl()}${path}`, {
+    const res = await fetch(`${baseUrl}${path}`, {
       ...init,
       signal: controller.signal,
       headers: {
         'content-type': 'application/json',
-        'x-bot-service-key': serviceKey(),
+        'x-bot-service-key': target?.key || serviceKey(),
         ...(init?.headers || {}),
       },
     })
@@ -107,35 +120,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const botService = {
-  async health(): Promise<{ status: string; terminalPool?: TerminalPoolStatus }> {
-    return request('/api/health')
+  async health(target?: BotHostTarget | null): Promise<{ status: string; terminalPool?: TerminalPoolStatus }> {
+    return request('/api/health', undefined, target)
   },
 
   /** Create the instance spec and start the subprocess (POST does both). */
-  async createInstance(spec: CreateInstanceSpec): Promise<{ instance: ServiceInstanceStatus }> {
+  async createInstance(spec: CreateInstanceSpec, target?: BotHostTarget | null): Promise<{ instance: ServiceInstanceStatus }> {
     return request('/api/instances', {
       method: 'POST',
       body: JSON.stringify(spec),
-    })
+    }, target)
   },
 
-  async start(instanceId: string): Promise<{ instance: ServiceInstanceStatus }> {
-    return request(`/api/instances/${encodeURIComponent(instanceId)}/start`, { method: 'POST' })
+  async start(instanceId: string, target?: BotHostTarget | null): Promise<{ instance: ServiceInstanceStatus }> {
+    return request(`/api/instances/${encodeURIComponent(instanceId)}/start`, { method: 'POST' }, target)
   },
 
-  async stop(instanceId: string): Promise<{ instance: ServiceInstanceStatus }> {
-    return request(`/api/instances/${encodeURIComponent(instanceId)}/stop`, { method: 'POST' })
+  async stop(instanceId: string, target?: BotHostTarget | null): Promise<{ instance: ServiceInstanceStatus }> {
+    return request(`/api/instances/${encodeURIComponent(instanceId)}/stop`, { method: 'POST' }, target)
   },
 
-  async delete(instanceId: string): Promise<{ deleted: boolean }> {
-    return request(`/api/instances/${encodeURIComponent(instanceId)}`, { method: 'DELETE' })
+  async delete(instanceId: string, target?: BotHostTarget | null): Promise<{ deleted: boolean }> {
+    return request(`/api/instances/${encodeURIComponent(instanceId)}`, { method: 'DELETE' }, target)
   },
 
-  async status(instanceId: string): Promise<{ instance: ServiceInstanceStatus }> {
-    return request(`/api/instances/${encodeURIComponent(instanceId)}`)
+  async status(instanceId: string, target?: BotHostTarget | null): Promise<{ instance: ServiceInstanceStatus }> {
+    return request(`/api/instances/${encodeURIComponent(instanceId)}`, undefined, target)
   },
 
-  async logs(instanceId: string, tail = 300): Promise<{ lines: string[] }> {
-    return request(`/api/instances/${encodeURIComponent(instanceId)}/logs?tail=${tail}`)
+  async logs(instanceId: string, tail = 300, target?: BotHostTarget | null): Promise<{ lines: string[] }> {
+    return request(`/api/instances/${encodeURIComponent(instanceId)}/logs?tail=${tail}`, undefined, target)
   },
 }

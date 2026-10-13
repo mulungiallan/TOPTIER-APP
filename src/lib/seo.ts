@@ -105,9 +105,10 @@ export function buildMetadata(overrides: Metadata = {}): Metadata {
         "max-video-preview": -1,
       },
     },
-    verification: {
-      google: "google8acd419857671d47.html",
-    },
+    // Domain ownership is verified with the HTML file served from /public
+    // (google8acd419857671d47.html). We deliberately emit no
+    // google-site-verification meta tag: that tag expects a Search Console
+    // token, not the verification file name.
     manifest: "/manifest.webmanifest",
     icons: {
       icon: [

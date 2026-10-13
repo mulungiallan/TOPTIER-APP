@@ -45,6 +45,9 @@ MT5_LOGIN = int(os.environ.get("MT5_LOGIN", "0"))       # your account number, e
 MT5_PASSWORD = os.environ.get("MT5_PASSWORD", "")        # your account password
 MT5_SERVER = os.environ.get("MT5_SERVER", "")            # e.g. "ICMarketsSC-Demo"
 MT5_PATH = os.environ.get("MT5_PATH", "")                # optional: full path to terminal64.exe
+# Portable mode: run the terminal from MT5_PATH without touching the shared
+# %APPDATA% profile. Set per-instance by the bot service's terminal pool.
+MT5_PORTABLE = os.environ.get("MT5_PORTABLE", "0").strip().lower() in ("1", "true", "yes")
 
 # ----------------------------------------------------------------------
 # INSTRUMENTS & TIMEFRAMES

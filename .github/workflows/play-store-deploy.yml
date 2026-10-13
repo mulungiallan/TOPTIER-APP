@@ -42,6 +42,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default (`packages: tools platform-tools`) now fails:
+          # Google removed the legacy `tools` package from the SDK repo, so
+          # `sdkmanager tools` exits 1 and the whole job dies here. Install only
+          # packages that still exist, matching compileSdk/targetSdk 36.
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Set up Node + sync Capacitor
         uses: actions/setup-node@v4

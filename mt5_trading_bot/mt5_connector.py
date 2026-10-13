@@ -49,6 +49,8 @@ def connect() -> bool:
     init_kwargs = {}
     if config.MT5_PATH:
         init_kwargs["path"] = config.MT5_PATH
+    if getattr(config, "MT5_PORTABLE", False):
+        init_kwargs["portable"] = True
 
     if not mt5.initialize(**init_kwargs):
         logger.error(f"MT5 initialize() failed: {mt5.last_error()}")

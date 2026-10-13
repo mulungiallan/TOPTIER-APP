@@ -39,26 +39,26 @@ model User {
   // `plan` is the authoritative field for the new packages system
   // (free | starter | premium | pro | enterprise | unlimited)
   // `subscriptionTier` (above) is kept for legacy compat / older UI flows.
-  plan             String     @default("free")
-  analysesLimit    Int        @default(5) // 0 = unlimited
-  analysesUsed     Int        @default(0)
-  analysesResetAt  DateTime?
-  planExpiresAt    DateTime?
+  plan            String    @default("free")
+  analysesLimit   Int       @default(5) // 0 = unlimited
+  analysesUsed    Int       @default(0)
+  analysesResetAt DateTime?
+  planExpiresAt   DateTime?
 
   // ─── A-la-carte feature entitlements ─────────────────────────────────
   // Feature purchases (see /api/subscriptions PLANS): signals_monthly
   // $20/mo, bot_quarterly $100/3mo, remove_ads $5 one-time.
-  signalsUnlocked   Boolean   @default(false)
-  signalsExpiresAt  DateTime?
-  botExpiresAt      DateTime?
-  adsRemoved        Boolean   @default(false)
-  adsRemovedAt      DateTime?
+  signalsUnlocked     Boolean    @default(false)
+  signalsExpiresAt    DateTime?
+  botExpiresAt        DateTime?
+  adsRemoved          Boolean    @default(false)
+  adsRemovedAt        DateTime?
   // 1-on-1 mentoring access (mentorship_physical $150 / mentorship_online $100, 2 months)
   mentorshipExpiresAt DateTime?
-  mentorshipType     String? // physical | online
-  stripeCustomerId String?
-  orders           Order[]
-  analyses         Analysis[]
+  mentorshipType      String? // physical | online
+  stripeCustomerId    String?
+  orders              Order[]
+  analyses            Analysis[]
 
   tradingStyle      String? // scalp, swing, both
   riskLevel         String? // conservative, moderate, aggressive
@@ -126,6 +126,7 @@ model User {
   botTrades      BotTrade[]
   botSnapshots   BotSnapshot[]
   botSettlements BotProfitShare[]
+  botHosts       BotHost[]
 
   // ─── App usage tracking ────────────────────────────────────────────────
   usageSessions UsageSession[]
@@ -135,9 +136,9 @@ model User {
   copySettlements   CopySettlement[]
 
   // ─── Wallet (cash + crypto + double-entry ledger) ──────────────────────
-  walletAccounts           WalletAccount[]
-  cryptoDepositAddresses   CryptoDepositAddress[]
-  cryptoDeposits           CryptoDeposit[]
+  walletAccounts         WalletAccount[]
+  cryptoDepositAddresses CryptoDepositAddress[]
+  cryptoDeposits         CryptoDeposit[]
 
   // ─── E-Books (paid digital library, $1.50/book) ───────────────────────────
   ebooks UserEBook[]
@@ -157,8 +158,8 @@ model Signal {
   riskRewardRatio Float
   confidence      Int // 0-100
   strategy        String // scalp, swing (DB filter key)
-  style           String?  // scalp | intraday_swing | swing (confluence engine style)
-  strategyType    String?  @default("confluence") // confluence | amd_sniper (files-5 engine)
+  style           String? // scalp | intraday_swing | swing (confluence engine style)
+  strategyType    String?   @default("confluence") // confluence | amd_sniper (files-5 engine)
   amdPhase        String? // accumulation | distribution | manipulation_only (AMD sniper signals only)
   inMacroWindow   Boolean? // price-and-time filter (files-6): fired inside a session kill zone?
   macroWindowName String? // london_macro_1 | london_macro_2 | ny_am_macro_1 | ny_am_macro_2
@@ -175,10 +176,10 @@ model Signal {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  userId    String?
-  user      User?            @relation(fields: [userId], references: [id])
-  comments  SignalComment[]
-  reactions SignalReaction[]
+  userId     String?
+  user       User?            @relation(fields: [userId], references: [id])
+  comments   SignalComment[]
+  reactions  SignalReaction[]
   acceptedBy UserSignal[]
 
   @@index([userId])
@@ -493,13 +494,13 @@ model ConsentRecord {
 // public web form by an email address; intentionally NOT linked to the User
 // table so requests can be made after account deletion or before login.
 model DataDeletionRequest {
-  id        String   @id @default(cuid())
-  email     String
-  requestType String @default("delete") // delete, export
-  reason    String?
-  status    String   @default("pending") // pending, in_progress, completed
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  email       String
+  requestType String   @default("delete") // delete, export
+  reason      String?
+  status      String   @default("pending") // pending, in_progress, completed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([email, status])
 }
@@ -1100,6 +1101,47 @@ model TickerSymbol {
 // both long and short — with no high-water mark or loss carry-forward.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ─── Bot hosts (execution machines) ────────────────────────────────────────
+// Historically the control plane reached the Python bot service through one
+// built-in host (BOT_SERVICE_URL). A BotHost lets a user pair their OWN machine
+// (the self-hosted agent) and lets the app route that user's instances to it,
+// which is how the platform scales past a single box. An instance with no
+// hostId keeps using the legacy BOT_SERVICE_URL owner host.
+model BotHost {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String @default("My PC")
+
+  // Public base URL the control plane calls (e.g. a tunnel hostname). Null
+  // until the agent reports one during pairing.
+  url String?
+
+  // Shared secret the agent expects as `x-bot-service-key`, stored as
+  // AES-256-GCM ciphertext (see src/lib/bot-crypto.ts). Never plaintext.
+  keyEnc String
+
+  // Pairing handshake: the user generates a short-lived code in the app and
+  // types it into the agent, which then claims this row. Cleared on claim.
+  pairingCode      String?   @unique
+  pairingExpiresAt DateTime?
+
+  platform   String    @default("windows")
+  version    String?
+  capacity   Int       @default(1) // how many bot instances this host can run
+  status     String    @default("offline") // offline | online | disabled
+  lastSeenAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  instances BotInstance[]
+
+  @@index([userId])
+  @@index([status])
+}
+
 model BotConnection {
   id     String @id @default(cuid())
   userId String
@@ -1176,6 +1218,11 @@ model BotInstance {
   userId       String
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Which BotHost (execution machine) runs this instance. Null = legacy
+  // single-host mode (the owner host from BOT_SERVICE_URL).
+  hostId String?
+  host   BotHost? @relation(fields: [hostId], references: [id], onDelete: SetNull)
+
   status          String    @default("stopped") // stopped | starting | running | stopping | error
   pid             Int? // OS process id of the python runner on the bot service
   lastHeartbeatAt DateTime?
@@ -1189,19 +1236,20 @@ model BotInstance {
   // on manual stop or subscription expiry. Reconciliation restarts instances
   // with shouldRun=true that the bot service reports as stopped, and stops
   // instances whose subscription has ended.
-  shouldRun           Boolean   @default(false)
-  stoppedReason       String? // manual | subscription_expired | error
+  shouldRun            Boolean   @default(false)
+  stoppedReason        String? // manual | subscription_expired | error
   lastRestartAttemptAt DateTime? // cooldown guard against restart loops
-  autoStarted         Boolean   @default(false) // bot was launched right after linking
+  autoStarted          Boolean   @default(false) // bot was launched right after linking
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   snapshots BotSnapshot[]
 
   @@index([connectionId])
   @@index([userId, status])
   @@index([shouldRun])
+  @@index([hostId])
 }
 
 model BotSnapshot {
@@ -1332,23 +1380,23 @@ model PayoutAccount {
 }
 
 model PayoutRequest {
-  id            String        @id @default(cuid())
+  id            String         @id @default(cuid())
   userId        String?
-  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   accountId     String?
   account       PayoutAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   method        String // binance | bank (snapshot)
   destination   String // snapshot: USDT address or masked bank account
   amount        Float
-  currency      String        @default("USD")
-  asset         String        @default("USDT") // asset actually sent on the payout rail
-  fee           Float         @default(0)
+  currency      String         @default("USD")
+  asset         String         @default("USDT") // asset actually sent on the payout rail
+  fee           Float          @default(0)
   netAmount     Float
-  status        String        @default("pending") // pending | processing | paid | failed | cancelled
+  status        String         @default("pending") // pending | processing | paid | failed | cancelled
   txHash        String?
   failureReason String?
   paidAt        DateTime?
-  createdAt     DateTime      @default(now())
+  createdAt     DateTime       @default(now())
 
   @@index([status])
   @@index([createdAt])
@@ -1522,7 +1570,7 @@ model WalletAccount {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  asset       String   // USD, BTC, ETH, USDT …
+  asset       String // USD, BTC, ETH, USDT …
   accountType String   @default("user") // user | house (clearing)
   createdAt   DateTime @default(now())
 
@@ -1533,13 +1581,13 @@ model WalletAccount {
 }
 
 model WalletTransaction {
-  id        String          @id @default(cuid())
-  txType    String          // deposit | withdrawal | transfer | trade_settlement | fee
-  reference String?         // external provider ref
-  status    String          @default("posted") // pending | posted | failed | reversed
+  id        String    @id @default(cuid())
+  txType    String // deposit | withdrawal | transfer | trade_settlement | fee
+  reference String? // external provider ref
+  status    String    @default("posted") // pending | posted | failed | reversed
   memo      String?
   postedAt  DateTime?
-  createdAt DateTime        @default(now())
+  createdAt DateTime  @default(now())
 
   entries WalletEntry[]
 }
@@ -1550,7 +1598,7 @@ model WalletEntry {
   transaction   WalletTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   accountId     String
   account       WalletAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  amount        Float             // +ve credit / -ve debit
+  amount        Float // +ve credit / -ve debit
   createdAt     DateTime          @default(now())
 
   @@index([transactionId])
@@ -1600,20 +1648,20 @@ model CryptoDeposit {
 // authenticated /api/ebooks/:id endpoint; the in-app reader enforces DRM
 // (watermarks, blocked copy/selection/context-menu, FLAG_SECURE on Android).
 model EBook {
-  id          String    @id @default(cuid())
-  slug        String    @unique
+  id          String   @id @default(cuid())
+  slug        String   @unique
   title       String
-  author      String    @default("TOPTIER")
-  coverColor  String    @default("indigo") // cover theme key: indigo | cyan | emerald | amber | rose ...
+  author      String   @default("TOPTIER")
+  coverColor  String   @default("indigo") // cover theme key: indigo | cyan | emerald | amber | rose ...
   emoji       String? // cover art (emoji as a lightweight cover; no image upload)
   description String
-  category    String    @default("trading") // trading | strategy | psychology | guides
-  level       String    @default("beginner") // beginner | intermediate | advanced
-  price       Float     @default(1.5)
-  isActive    Boolean   @default(true)
+  category    String   @default("trading") // trading | strategy | psychology | guides
+  level       String   @default("beginner") // beginner | intermediate | advanced
+  price       Float    @default(1.5)
+  isActive    Boolean  @default(true)
   content     String // markdown; chapters begin at lines starting with "## "
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   purchases UserEBook[]
 
@@ -1666,14 +1714,14 @@ model BroadcastCampaign {
 }
 
 model BroadcastRecipient {
-  id         String    @id @default(cuid())
+  id         String            @id @default(cuid())
   campaignId String
   campaign   BroadcastCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   email      String
-  status     String    @default("pending") // pending | sent | failed
+  status     String            @default("pending") // pending | sent | failed
   error      String?
   sentAt     DateTime?
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime          @default(now())
 
   @@unique([campaignId, email])
   @@index([campaignId, status])
@@ -1691,12 +1739,12 @@ model BroadcastRecipient {
 // updates every acceptor's history at once with no sync job to drift.
 
 model UserSignal {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   signalId   String
-  signal     Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
-  acceptedAt DateTime @default(now())
+  signal     Signal    @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  acceptedAt DateTime  @default(now())
   closedAt   DateTime? // when the user stopped tracking it early (optional)
 
   @@unique([userId, signalId])
