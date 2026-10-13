@@ -24,7 +24,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 # Second pass — adds the named tunnel as a service, DNS route, watchdog.
 .\deploy\bot\bootstrap-vps.ps1 -ServiceKey "<key>" `
-    -TunnelName toptier -Hostname bot.toptier.app
+    -TunnelName toptier -Hostname bot.toptier.click
 ```
 
 It performs: preflight (admin, Python, disk, clock) → pip deps → `ToptierBot`
@@ -60,6 +60,24 @@ mini-services/bot/         FastAPI control plane (spawns one bot per account)
     chart — see `mini-services/bot/mt4_bridge/README.md`.
 - One MetaTrader terminal per **running** bot instance (each instance uses its
   own terminal via `terminalPath`).
+
+### Hosting many accounts (terminal pool)
+
+MetaTrader5 is Windows-only and one terminal is one session, so serving several
+users from one box means one terminal install per concurrent account. Provision
+them once with the pool script:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup-terminal-pool.ps1 -Count 10 -InstallService
+```
+
+This clones a MetaTrader install into `C:\MT5\term01 … termNN` and sets
+`BOT_TERMINAL_POOL_DIR=C:\MT5`. From then on the bot service hands each linked
+account its own slot (`ping /api/health` → `terminalPool` shows `free/total`) and
+runs it in portable mode, so instances never share an MT5 session. Leave
+`BOT_TERMINAL_POOL_DIR` unset to run every instance off the single path the app
+supplies (developer / single-user mode).
 
 ## Install
 
@@ -130,9 +148,9 @@ tunnel at port 8765 and set `BOT_SERVICE_URL` to its stable hostname:
 ```yaml
 # cloudflared config.yml -- alongside the existing app ingress rule
 ingress:
-  - hostname: bot.toptier.app
+  - hostname: bot.toptier.click
     service: http://localhost:8765
-  - hostname: app.toptier.app
+  - hostname: app.toptier.click
     service: https://localhost:3000
   - service: http_status:404
 ```

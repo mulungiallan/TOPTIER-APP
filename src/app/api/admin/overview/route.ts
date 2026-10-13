@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { successResponse, errorResponse } from '@/lib/auth'
 import { requireAdmin } from '@/lib/admin-guard'
 import { referralLockEnabled, getReferralLockCode, getReferralUrl } from '@/lib/referral-gate'
+import { botService } from '@/lib/services/bot-service'
 
 // GET /api/admin/overview — comprehensive, real, read-only monitoring data.
 // Every number here comes straight from the database. No mock values.
@@ -177,6 +178,17 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
+    // Terminal-pool capacity (multi-tenant hosting): how many MT5 terminals the
+    // bot service has and how many are still free for new accounts. Best-effort:
+    // a service that is down, or has no pool configured, just reports null.
+    let terminalPool: Awaited<ReturnType<typeof botService.health>>['terminalPool'] = undefined
+    try {
+      const health = await botService.health()
+      terminalPool = health?.terminalPool
+    } catch {
+      terminalPool = undefined
+    }
+
     // Revenue by month (confirmed PesaPal transactions, last 12 months)
     const completedInWindow = await db.paymentTransaction.findMany({
       where: { status: 'completed', paymentProvider: 'pesapal', createdAt: { gte: twelveMonthsAgo } },
@@ -266,7 +278,7 @@ export async function GET(request: NextRequest) {
         },
         support: { openTickets },
         analyses: { total: analysesCount, today: analysesToday },
-        bots: { connections: botConnections, running: botInstancesRunning },
+        bots: { connections: botConnections, running: botInstancesRunning, terminalPool: terminalPool ?? null },
         copyTrading: {
           traders: copyTraders,
           followers: copyFollowers,

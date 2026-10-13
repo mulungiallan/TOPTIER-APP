@@ -137,6 +137,8 @@ BOT.txt
 deploy-bot-local.ps1
 cf-token.txt
 *.cf-token
+# Cloudflare API token + R2 keys (account-scoped)
+CLOUD.txt
 
 # Scratch notes kept on the workstation
 CORRECT.txt

@@ -328,10 +328,16 @@ export function TradingBotPage() {
   }
 
   const handleLink = async () => {
-    if (!form.label || !form.login || !form.password || !form.server) {
-      toast.error('Label, login, password and server are required')
+    if (!form.login || !form.password || !form.server) {
+      toast.error('Login, password and server are required')
       return
     }
+    // Self-serve: the user only has to give broker credentials. If they skip the
+    // name, derive one so the account list stays readable.
+    const label =
+      form.label.trim() ||
+      form.brokerName.trim() ||
+      `${form.platform === 'mt4' ? 'MT4' : 'MT5'} ${form.login.trim()}`
 
     // Fail before the request if the selected risk cannot stay inside the
     // firm's limits, so the user is told why rather than watching the bot
@@ -359,7 +365,7 @@ export function TradingBotPage() {
       }>('/bot/connections', {
         mode: form.mode,
         platform: form.platform,
-        label: form.label,
+        label,
         brokerName: form.brokerName || undefined,
         login: form.login,
         password: form.password,
@@ -525,19 +531,19 @@ export function TradingBotPage() {
 
   return (
     <div className="space-y-5 p-3 md:p-4 max-w-6xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
-        <div>
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
             <Bot className="h-7 w-7 text-[#1b4f9c]" />
             Trading Bot
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Link your MetaTrader 5/4 account and let the AI bot trade it 24/7. You keep 100% of the account and 100% of the profit — there is no profit share.
+            Connect your own MetaTrader 5/4 account and let the AI bot trade it 24/7. You keep 100% of the account and 100% of the profit — there is no profit share.
           </p>
         </div>
-        <Button onClick={() => setShowLink(true)}>
+        <Button onClick={() => setShowLink(true)} className="shrink-0">
           <Link2 className="h-4 w-4 mr-1.5" />
-          Link MT5 / MT4
+          Connect broker
         </Button>
       </motion.div>
 
@@ -579,11 +585,11 @@ export function TradingBotPage() {
         <Card>
           <CardContent className="py-14 text-center text-muted-foreground">
             <Bot className="h-10 w-10 mx-auto mb-2 opacity-40" />
-            <p className="font-medium text-foreground">No MetaTrader accounts linked yet</p>
-            <p className="text-sm mt-1">Link your MT5 or MT4 account to let the bot trade for you.</p>
+            <p className="font-medium text-foreground">No broker accounts connected yet</p>
+            <p className="text-sm mt-1">Connect your MT5 or MT4 broker login and let the bot trade it for you.</p>
             <div className="flex flex-col items-center gap-2 mt-4">
               <Button onClick={() => setShowLink(true)}>
-                <Plus className="h-4 w-4 mr-1.5" /> Link your first account
+                <Plus className="h-4 w-4 mr-1.5" /> Connect your broker account
               </Button>
               <a
                 href={process.env.NEXT_PUBLIC_BROKER_REFERRAL_URL || '#'}
@@ -742,8 +748,11 @@ export function TradingBotPage() {
       <Dialog open={showLink} onOpenChange={setShowLink}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Link MetaTrader Account</DialogTitle>
+            <DialogTitle>Connect your broker account</DialogTitle>
           </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Enter your own MetaTrader login. The bot trades your account directly — nothing is shared with other users.
+          </p>
           {process.env.NEXT_PUBLIC_BROKER_REFERRAL_URL && (
             <a
               href={process.env.NEXT_PUBLIC_BROKER_REFERRAL_URL}
@@ -754,7 +763,7 @@ export function TradingBotPage() {
               Don&apos;t have an account yet? Open one with our broker partner <ExternalLink className="h-3 w-3" />
             </a>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto pr-1">
             <div className="col-span-2">
               <Label>What are you trading?</Label>
               <div className="grid grid-cols-2 gap-2 mt-1">
@@ -816,29 +825,34 @@ export function TradingBotPage() {
               </Select>
             </div>
             <div>
-              <Label>Label</Label>
-              <Input value={form.label} onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))} placeholder="e.g. My JustMarkets demo" />
-            </div>
-            <div>
               <Label>Broker (optional)</Label>
-              <Input value={form.brokerName} onChange={(e) => setForm((p) => ({ ...p, brokerName: e.target.value }))} placeholder="JustMarkets" />
+              <Input value={form.brokerName} onChange={(e) => setForm((p) => ({ ...p, brokerName: e.target.value }))} placeholder="e.g. JustMarkets" />
             </div>
             <div>
-              <Label>Login</Label>
-              <Input value={form.login} onChange={(e) => setForm((p) => ({ ...p, login: e.target.value }))} placeholder="Account number" />
+              <Label>Account name (optional)</Label>
+              <Input value={form.label} onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))} placeholder="Auto-named if left blank" />
+            </div>
+            <div>
+              <Label>Login / account number</Label>
+              <Input value={form.login} onChange={(e) => setForm((p) => ({ ...p, login: e.target.value }))} placeholder="e.g. 44559901" />
             </div>
             <div>
               <Label>Password</Label>
-              <Input type="password" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} placeholder="Investor/trader password" />
+              <Input type="password" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} placeholder="Trader or investor password" />
             </div>
             <div className="col-span-2">
               <Label>Server</Label>
-              <Input value={form.server} onChange={(e) => setForm((p) => ({ ...p, server: e.target.value }))} placeholder="JustMarkets-Demo" />
+              <Input value={form.server} onChange={(e) => setForm((p) => ({ ...p, server: e.target.value }))} placeholder="e.g. JustMarkets-Demo" />
             </div>
-            <div className="col-span-2">
-              <Label>Terminal path (MT4 only, optional)</Label>
-              <Input value={form.terminalPath} onChange={(e) => setForm((p) => ({ ...p, terminalPath: e.target.value }))} placeholder="C:\Program Files\MetaTrader 4\terminal.exe" />
-            </div>
+            <details className="col-span-2 rounded-lg border p-3">
+              <summary className="text-xs cursor-pointer text-muted-foreground select-none">
+                Advanced (optional) — custom MT4 terminal path
+              </summary>
+              <div className="mt-3">
+                <Label>Terminal path (MT4 only)</Label>
+                <Input value={form.terminalPath} onChange={(e) => setForm((p) => ({ ...p, terminalPath: e.target.value }))} placeholder="Leave blank to use our hosted terminal" />
+              </div>
+            </details>
             {form.mode === 'funded' ? (
               <>
                 <div className="col-span-2">
@@ -1003,31 +1017,36 @@ export function TradingBotPage() {
                 })()}
               </>
             ) : (
-              <>
-                <div className="col-span-2">
-                  <Label>Base lots per $100 equity — Forex (0.08), Crypto (0.04), Metals/Oil/Indices (0.02)</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Input type="number" step="0.01" min="0" value={form.forexBaseLot} onChange={(e) => setForm((p) => ({ ...p, forexBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.08" />
-                    <Input type="number" step="0.01" min="0" value={form.cryptoBaseLot} onChange={(e) => setForm((p) => ({ ...p, cryptoBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.04" />
-                    <Input type="number" step="0.01" min="0" value={form.highVolBaseLot} onChange={(e) => setForm((p) => ({ ...p, highVolBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.02" />
+              <details className="col-span-2 rounded-lg border p-3">
+                <summary className="text-xs cursor-pointer text-muted-foreground select-none">
+                  Advanced trading settings (optional) — sensible defaults are already applied
+                </summary>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <div className="col-span-2">
+                    <Label>Base lots per $100 equity — Forex (0.08), Crypto (0.04), Metals/Oil/Indices (0.02)</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input type="number" step="0.01" min="0" value={form.forexBaseLot} onChange={(e) => setForm((p) => ({ ...p, forexBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.08" />
+                      <Input type="number" step="0.01" min="0" value={form.cryptoBaseLot} onChange={(e) => setForm((p) => ({ ...p, cryptoBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.04" />
+                      <Input type="number" step="0.01" min="0" value={form.highVolBaseLot} onChange={(e) => setForm((p) => ({ ...p, highVolBaseLot: parseFloat(e.target.value) || 0 }))} placeholder="0.02" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Max open positions (entries)</Label>
+                    <Input type="number" step="1" min="1" value={form.maxOpenPositions} onChange={(e) => setForm((p) => ({ ...p, maxOpenPositions: parseInt(e.target.value, 10) || 0 }))} />
+                  </div>
+                  <div>
+                    <Label>Profit share % (0 = none)</Label>
+                    <Input type="number" step="1" min="0" max="100" value={form.providerSharePct} onChange={(e) => setForm((p) => ({ ...p, providerSharePct: parseFloat(e.target.value) || 0 }))} />
                   </div>
                 </div>
-                <div>
-                  <Label>Max open positions (entries)</Label>
-                  <Input type="number" step="1" min="1" value={form.maxOpenPositions} onChange={(e) => setForm((p) => ({ ...p, maxOpenPositions: parseInt(e.target.value, 10) || 0 }))} />
-                </div>
-                <div>
-                  <Label>Profit share % (0 = none)</Label>
-                  <Input type="number" step="1" min="0" max="100" value={form.providerSharePct} onChange={(e) => setForm((p) => ({ ...p, providerSharePct: parseFloat(e.target.value) || 0 }))} />
-                </div>
-              </>
+              </details>
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLink(false)}>Cancel</Button>
             <Button onClick={handleLink} disabled={linking}>
               {linking && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-              Link Account
+              Connect account
             </Button>
           </DialogFooter>
         </DialogContent>

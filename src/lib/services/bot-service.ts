@@ -25,6 +25,14 @@ export interface ServiceInstanceStatus {
   login: string | null
 }
 
+export interface TerminalPoolStatus {
+  enabled: boolean
+  dir: string
+  total: number
+  assigned: number
+  free: number
+}
+
 export interface CreateInstanceSpec {
   instanceId: string
   platform: string
@@ -99,7 +107,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const botService = {
-  async health(): Promise<{ status: string }> {
+  async health(): Promise<{ status: string; terminalPool?: TerminalPoolStatus }> {
     return request('/api/health')
   },
 

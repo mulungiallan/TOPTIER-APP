@@ -177,7 +177,11 @@ interface OverviewData {
     }
     support: { openTickets: number }
     analyses: { total: number; today: number }
-    bots: { connections: number; running: number }
+    bots: {
+      connections: number
+      running: number
+      terminalPool: { enabled: boolean; dir: string; total: number; assigned: number; free: number } | null
+    }
     copyTrading: {
       traders: number
       followers: number
@@ -2708,10 +2712,19 @@ export default function AdminPage() {
 
         {/* ─── Bots ─────────────────────────────────────────────────── */}
         <TabsContent value="bots" className="space-y-4 mt-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard title="Active Connections" value={(overview?.stats.bots.connections ?? 0).toLocaleString()} icon={Bot} />
             <StatCard title="Running Instances" value={(overview?.stats.bots.running ?? 0).toLocaleString()} icon={Cpu} />
             <StatCard title="Recent Trades" value={(overview?.recentBotTrades?.length ?? 0).toLocaleString()} icon={TrendingUp} />
+            <StatCard
+              title="Terminal Slots Free"
+              value={
+                overview?.stats.bots.terminalPool
+                  ? `${overview.stats.bots.terminalPool.free}/${overview.stats.bots.terminalPool.total}`
+                  : '—'
+              }
+              icon={Cpu}
+            />
           </div>
           <Card>
             <CardHeader><CardTitle className="text-lg">Bot Connections</CardTitle><CardDescription>MT5/MT4 engine connections</CardDescription></CardHeader>
