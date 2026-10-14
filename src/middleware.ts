@@ -97,6 +97,14 @@ export function middleware(req: NextRequest) {
     );
   }
 
+  // www.toptier.click collapses to the canonical root domain.
+  if (host === "www.toptier.click") {
+    return NextResponse.redirect(
+      new URL(`https://toptier.click${pathname}${req.nextUrl.search}`),
+      301
+    );
+  }
+
   // Forward the CSP nonce to the layout via a request header so inline
   // <script> tags can bind it (read via headers() in src/app/layout.tsx).
   const forwarded = new Headers(req.headers);

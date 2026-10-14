@@ -30,6 +30,13 @@ const nextConfig: NextConfig = {
         destination: "https://app.toptier.click/?page=trading-bot",
         permanent: true,
       },
+      // www collapses to the canonical root domain.
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.toptier.click" }],
+        destination: "https://toptier.click/:path*",
+        permanent: true,
+      },
     ];
   },
   images: {

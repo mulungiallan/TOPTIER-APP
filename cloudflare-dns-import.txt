@@ -1,11 +1,22 @@
 ; DNS records for toptier.click
 ; Import in Cloudflare: toptier.click -> DNS -> Records -> Import and Export -> Import
-; Proxy is set to DNS only (grey cloud) for both records.
+; Proxy is set to DNS only (grey cloud) for all Railway records below.
+;
+; BEFORE importing, DELETE these old records (they point at Railway domains that
+; no longer exist and would override the wildcard):
+;   - CNAME  app
+;   - TXT    _railway-verify.app
+;   - CNAME  bot
+;   - TXT    _railway-verify.bot
 
-app 3600 IN CNAME b4elo9tt.up.railway.app.
-_railway-verify.app 3600 IN TXT "railway-verify=fb1fc9088e495f101d5f262f35c70cc2368bd9c7151c8255c8de594fc6b7139f"
+; Apex — serves the web app directly at https://toptier.click
+@ 3600 IN CNAME b2bv1t3j.up.railway.app.
+_railway-verify 3600 IN TXT "railway-verify=f71fbd1030ddfbd12d8ebc8d4953a0cbc3f7eeb649e46fce5d1ce04139462859"
 
-; bot.toptier.click — vanity subdomain that redirects to the in-app Trading Bot
-; page (app.toptier.click?page=trading-bot). Serve it from the same Railway service.
-bot 3600 IN CNAME szjcggmt.up.railway.app.
-_railway-verify.bot 3600 IN TXT "railway-verify=591c05b58e5616364c3c38bd7be982f0322e18d8af97e7f728002836691cfda8"
+; Wildcard — one Railway custom domain covers every subdomain:
+;   app.toptier.click  -> mobile app + web
+;   bot.toptier.click  -> in-app redirect to https://app.toptier.click/?page=trading-bot
+;     (handled by src/middleware.ts + next.config.ts redirects)
+;   www.toptier.click  -> in-app redirect to https://toptier.click
+* 3600 IN CNAME fymo0xtm.up.railway.app.
+_acme-challenge 3600 IN CNAME fymo0xtm.authorize.railwaydns.net.
