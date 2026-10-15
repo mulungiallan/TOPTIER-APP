@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 const STRATEGIES = [
   { id: 'sma_cross', name: 'SMA Crossover', desc: 'Buy when SMA20 crosses above SMA50; sell on opposite cross.' },
@@ -242,6 +243,9 @@ export function BacktestingPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Sponsored in-feed card */}
+      <NativeAd forceShow />
     </div>
   )
 }

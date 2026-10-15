@@ -33,6 +33,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 // --- Types ---
 
@@ -772,6 +773,8 @@ export default function CommunityPage() {
                 <DiscussionThread key={d.id} discussion={d} onRefresh={fetchCommunityData} />
               ))
             )}
+            {/* Sponsored in-feed card */}
+            <NativeAd forceShow />
           </div>
         </TabsContent>
 

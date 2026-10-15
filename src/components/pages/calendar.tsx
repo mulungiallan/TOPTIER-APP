@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { NativeAd } from '@/components/ads'
 import {
   Select,
   SelectContent,
@@ -760,6 +761,8 @@ export function CalendarPage() {
             )
           })
         )}
+        {/* Sponsored in-feed card */}
+        <NativeAd forceShow />
       </div>
     </div>
   )

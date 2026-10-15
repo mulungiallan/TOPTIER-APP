@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface PaperTrade {
   id: string
@@ -179,6 +180,9 @@ export function PaperTradingPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Sponsored in-feed card */}
+      <NativeAd forceShow />
 
       <Dialog open={showOpen} onOpenChange={setShowOpen}>
         <DialogContent>

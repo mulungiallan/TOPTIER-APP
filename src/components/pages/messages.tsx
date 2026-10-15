@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface Conversation {
   id: string
@@ -156,6 +157,10 @@ export function MessagesPage() {
                   )
                 })
               )}
+              {/* Sponsored in-feed card */}
+              <div className="p-3">
+                <NativeAd forceShow />
+              </div>
             </div>
           </CardContent>
         </Card>

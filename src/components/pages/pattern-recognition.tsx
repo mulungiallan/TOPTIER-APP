@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface Pattern {
   symbol: string
@@ -150,6 +151,9 @@ export function PatternRecognitionPage() {
           })}
         </div>
       )}
+
+      {/* Sponsored in-feed card */}
+      <NativeAd forceShow />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Detection History</CardTitle></CardHeader>
