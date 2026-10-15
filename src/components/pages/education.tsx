@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { NativeAd } from '@/components/ads'
 
 // ─── Types (mirror of the /education API content) ───────────────────────────
 
@@ -424,6 +425,8 @@ export default function EducationPage() {
             </div>
           ) : (
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* Sponsored in-feed card */}
+            <NativeAd className="sm:col-span-2" forceShow />
             {guides.map((guide) => (
               <Card key={guide.id} className="transition-shadow hover:shadow-md">
                 <CardHeader className="pb-3">

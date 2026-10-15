@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { enableScreenSecurity, disableScreenSecurity } from '@/lib/screen-security'
+import { NativeAd } from '@/components/ads'
 
 interface EBookInfo {
   id: string
@@ -486,6 +487,8 @@ export function EBooksPage() {
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Sponsored in-feed card */}
+            <NativeAd className="sm:col-span-2 lg:col-span-3" forceShow />
             {catalog.map((book) => (
               <BookCard
                 key={book.id}

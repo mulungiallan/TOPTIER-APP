@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface Prediction {
   symbol: string
@@ -184,6 +185,9 @@ export function AIPredictionsPage() {
           </Card>
         </motion.div>
       )}
+
+      {/* Sponsored in-feed card */}
+      <NativeAd forceShow />
 
       {/* History */}
       <Card>

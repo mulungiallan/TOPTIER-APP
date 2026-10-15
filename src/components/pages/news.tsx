@@ -35,6 +35,7 @@ import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -834,6 +835,9 @@ export function NewsPage() {
                   />
                 ))}
               </AnimatePresence>
+
+              {/* Sponsored in-feed card */}
+              <NativeAd forceShow />
 
               {/* Load More */}
               {visibleCount < filteredArticles.length && (

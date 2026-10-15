@@ -44,6 +44,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useRewardedUnlock } from '@/lib/ads/useAds'
+import { useAnalysisAdGate } from '@/lib/ads/analysis-gate'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -945,6 +947,12 @@ export function ScreenshotAnalyzer() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pageTopRef = useRef<HTMLDivElement>(null)
 
+  // Ad gate: free users (native app) get FREE_DAILY_ANALYSES free analyses/day,
+  // then each extra analysis costs one rewarded ad. Premium/remove-ads users and
+  // the web build are ungated (useAnalysisAdGate reports gated=false).
+  const { unlock } = useRewardedUnlock()
+  const { gated, remaining, needsAd, consume } = useAnalysisAdGate()
+
   // Fetch analysis history on mount
   const fetchHistory = useCallback(async () => {
     try {
@@ -1226,12 +1234,21 @@ export function ScreenshotAnalyzer() {
     }
   }, [selectedFile, previewUrl, fetchHistory])
 
-  // Analyses run immediately with no forced-ad interstitial. Reaching the result
-  // only depends on a successful API call, not on completing an ad phase.
+  // Every analysis goes through the ad gate: the first FREE_DAILY_ANALYSES each
+  // day run free, then each further analysis requires a completed rewarded ad.
+  // The gate only engages for free users on the native app (see useAnalysisAdGate).
   const handleAnalyze = useCallback(async () => {
     if (pendingAnalyze) return
+    if (needsAd) {
+      const rewarded = await unlock()
+      if (!rewarded) {
+        toast.error("Ad wasn't completed — watch the full ad to unlock this analysis.")
+        return
+      }
+    }
+    consume()
     runAnalysis()
-  }, [pendingAnalyze, runAnalysis])
+  }, [pendingAnalyze, needsAd, unlock, consume, runAnalysis])
 
   // Save to history
   const handleSave = useCallback(() => {
@@ -1311,7 +1328,11 @@ export function ScreenshotAnalyzer() {
         </div>
         <Badge variant="outline" className="gap-1.5">
           <Zap className="size-3 text-amber-500" />
-          Unlimited · Ad-supported
+          {gated
+            ? needsAd
+              ? 'Watch an ad to analyze more'
+              : `${remaining} free left today`
+            : 'Unlimited · Ad-supported'}
         </Badge>
       </div>
 
@@ -1446,7 +1467,7 @@ export function ScreenshotAnalyzer() {
               {!isAnalyzing ? (
                 <Button size="lg" className="w-full gap-2" onClick={handleAnalyze}>
                   <Zap className="size-5" />
-                  Analyze Chart
+                  {needsAd ? 'Watch ad to analyze' : 'Analyze Chart'}
                 </Button>
               ) : (
                 <Card className="border-primary/20">

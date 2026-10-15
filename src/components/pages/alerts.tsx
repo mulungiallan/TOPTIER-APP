@@ -50,6 +50,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1222,6 +1223,9 @@ export function AlertsPage() {
                   <AlertCardRow key={alert.id} alert={alert} onCancel={cancelAlert} actionLoading={actionLoading} />
                 ))}
               </AnimatePresence>
+
+              {/* Sponsored in-feed card */}
+              <NativeAd forceShow />
             </div>
           )}
         </TabsContent>

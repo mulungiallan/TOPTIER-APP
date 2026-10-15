@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface Group {
   id: string
@@ -150,6 +151,8 @@ export function GroupsPage() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {/* Sponsored in-feed card */}
+          <NativeAd className="md:col-span-2 lg:col-span-3" forceShow />
           {list.map((g, idx) => (
             <motion.div
               key={g.id}

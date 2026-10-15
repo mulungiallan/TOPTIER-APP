@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { NativeAd } from '@/components/ads';
 import { cn } from '@/lib/utils';
 
 interface Trader {
@@ -135,6 +136,9 @@ export function LeaderboardsPage() {
                 </div>
               ))}
             </motion.div>
+
+            {/* Sponsored in-feed card */}
+            <NativeAd forceShow />
 
             {/* Rest of the board — flat hairline rows, one simultaneous
                 entrance rather than a staggered fade per row. */}

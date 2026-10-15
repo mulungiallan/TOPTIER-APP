@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface Post {
   id: string
@@ -211,6 +212,8 @@ export function SocialFeedPage() {
               </Card>
             </motion.div>
           ))}
+          {/* Sponsored in-feed card */}
+          <NativeAd forceShow />
         </div>
       )}
     </div>

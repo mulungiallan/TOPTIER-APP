@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface FollowEntry {
   id: string
@@ -904,6 +905,8 @@ export function CopyTradingPage() {
                   </Card>
                 </motion.div>
               ))}
+              {/* Sponsored in-feed card */}
+              <NativeAd forceShow />
             </div>
           )}
         </div>

@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -856,6 +857,9 @@ export function WatchlistPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Sponsored in-feed card */}
+          <NativeAd forceShow />
         </>
       )}
 

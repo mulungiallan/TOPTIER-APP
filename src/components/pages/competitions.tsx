@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { NativeAd } from '@/components/ads'
 
 interface Competition {
   id: string
@@ -183,6 +184,8 @@ export function CompetitionsPage() {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {/* Sponsored in-feed card */}
+              <NativeAd className="md:col-span-2 lg:col-span-3" forceShow />
               {competitions.map((c, idx) => (
                 <motion.div
                   key={c.id}

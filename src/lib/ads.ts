@@ -78,6 +78,21 @@ export function applyAdSettings(s: AdSettings): void {
       gradient: s.rewardedGradient || 'from-indigo-500 via-purple-500 to-pink-500',
       duration: Math.max(1, s.rewardedDuration || 4),
     })
+
+    // In-feed native card. Sourced from the same owner-configured sponsored
+    // creative so feeds carry a real (never fabricated) sponsored card on every
+    // service. Registered separately so NativeAd has content to render.
+    creatives.push({
+      id: 'native_sponsored',
+      type: 'native',
+      title: s.rewardedTitle || 'Sponsored',
+      description: s.rewardedDescription || '',
+      cta: s.rewardedCta || 'Learn More',
+      link: s.rewardedLink || '/',
+      emoji: s.rewardedEmoji || '📈',
+      gradient: s.rewardedGradient || 'from-indigo-500 via-purple-500 to-pink-500',
+      sponsor: 'Sponsored',
+    })
   }
 
   adService.setRealCreatives(creatives)
