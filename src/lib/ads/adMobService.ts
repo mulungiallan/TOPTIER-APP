@@ -1,16 +1,27 @@
 /**
  * src/lib/ads/adMobService.ts
  *
- * Central AdMob service for the Toptier Android app (Capacitor wrapper).
- * Uses @admob-plus/capacitor v2 class API (BannerAd / InterstitialAd / RewardedAd).
- * Native-advanced and app-open ads are not supported by the installed plugin
- * version; those surfaces are intentionally no-ops.
+ * Central AdMob service for the Toptier Android/iOS app (Capacitor wrapper).
+ * Uses @capacitor-community/admob v8 (Banner / Interstitial / Rewarded / App Open).
+ * Replaced @admob-plus/capacitor (2.0.0-alpha) which was incompatible with the
+ * Capacitor 8 runtime and crashed the native app.
  *
- * On web builds every method is a safe no-op (Capacitor.isNativePlatform() === false).
+ * On web builds every method is a safe no-op (Capacitor.isNativePlatform()
+ * is false), so the web app and the desktop browser build are unaffected.
+ *
+ * Safety contract: no AdMob call may ever throw into the app. Every native
+ * call is wrapped so an SDK failure degrades to "no ad shown", never a crash.
+ * NEXT_PUBLIC_ADMOB_DISABLED=true keeps the SDK completely untouched.
  */
 
-import { AdMobPlus, BannerAd, InterstitialAd, RewardedAd } from '@admob-plus/capacitor';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import {
+  AdMob,
+  AdmobConsentStatus,
+  BannerAdPosition,
+  BannerAdSize,
+  RewardAdPluginEvents,
+} from '@capacitor-community/admob';
 
 // ---------------------------------------------------------------------------
 // Ad unit IDs
@@ -22,20 +33,20 @@ const TEST_IDS = {
   banner: 'ca-app-pub-3940256099942544/6300978111',
   interstitial: 'ca-app-pub-3940256099942544/1033173712',
   rewarded: 'ca-app-pub-3940256099942544/5224354917',
+  appOpen: 'ca-app-pub-3940256099942544/9257395921',
 };
 
 const PROD_IDS = {
   banner: process.env.NEXT_PUBLIC_ADMOB_BANNER_ID ?? '',
   interstitial: process.env.NEXT_PUBLIC_ADMOB_INTERSTITIAL_ID ?? '',
   rewarded: process.env.NEXT_PUBLIC_ADMOB_REWARDED_ID ?? '',
+  appOpen: process.env.NEXT_PUBLIC_ADMOB_APP_OPEN_ID ?? '',
 };
 
 export const AD_UNIT_IDS = IS_PROD ? PROD_IDS : TEST_IDS;
 
-// Master switch: when NEXT_PUBLIC_ADMOB_DISABLED=true, the native AdMob
-// plugin is NEVER touched (no AdMobPlus.start(), no banner/interstitial/
-// rewarded calls). Used to ship a crash-free build while the alpha plugin
-// (@admob-plus/capacitor 2.0.0-alpha.4) is incompatible with this runtime.
+// Master switch: when NEXT_PUBLIC_ADMOB_DISABLED=true the native AdMob plugin
+// is NEVER touched. Used to ship a crash-free build if the SDK ever misbehaves.
 const ADMOB_DISABLED = process.env.NEXT_PUBLIC_ADMOB_DISABLED === 'true';
 
 // ---------------------------------------------------------------------------
@@ -82,19 +93,10 @@ export function registerPremiumStatusGetter(fn: PremiumStatusGetter) {
   getIsPremium = fn;
 }
 
-// ---------------------------------------------------------------------------
-// Ad instances (lazily created singletons)
-// ---------------------------------------------------------------------------
-
-let bannerAd: BannerAd | null = null;
-
-function getBannerAd(): BannerAd {
-  if (!bannerAd) bannerAd = new BannerAd({ adUnitId: AD_UNIT_IDS.banner, position: 'bottom' });
-  return bannerAd;
-}
+const usable = () => Capacitor.isNativePlatform() && !ADMOB_DISABLED && !getIsPremium();
 
 // ---------------------------------------------------------------------------
-// Init
+// Init (SDK + consent)
 // ---------------------------------------------------------------------------
 
 let initialized = false;
@@ -103,11 +105,19 @@ export async function initAds(): Promise<void> {
   if (!Capacitor.isNativePlatform() || initialized || ADMOB_DISABLED) return;
 
   try {
-    await AdMobPlus.start();
-    if (!IS_PROD) {
-      // Expose test device IDs so taps never count as invalid traffic.
-      await AdMobPlus.configRequest({ testDeviceIds: [] }).catch(() => {});
+    await AdMob.initialize({ initializeForTesting: !IS_PROD });
+
+    // UMP consent. If the user is in a region that requires a form, show it.
+    // Never blocks the app if consent fails — we just skip ads for this launch.
+    try {
+      let consent = await AdMob.requestConsentInfo();
+      if (consent.isConsentFormAvailable && consent.status === AdmobConsentStatus.REQUIRED) {
+        consent = await AdMob.showConsentForm();
+      }
+    } catch {
+      /* consent is best-effort */
     }
+
     initialized = true;
   } catch {
     // A native ad SDK failure must NEVER take down the app.
@@ -119,9 +129,15 @@ export async function initAds(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function showBanner(): Promise<void> {
-  if (!Capacitor.isNativePlatform() || ADMOB_DISABLED || getIsPremium()) return;
+  if (!usable()) return;
   try {
-    await getBannerAd().show();
+    await AdMob.showBanner({
+      adId: AD_UNIT_IDS.banner,
+      adSize: BannerAdSize.ADAPTIVE_BANNER,
+      position: BannerAdPosition.BOTTOM_CENTER,
+      margin: 0,
+      isTesting: !IS_PROD,
+    });
   } catch {
     /* no-op */
   }
@@ -130,7 +146,7 @@ export async function showBanner(): Promise<void> {
 export async function hideBanner(): Promise<void> {
   if (!Capacitor.isNativePlatform() || ADMOB_DISABLED) return;
   try {
-    await bannerAd?.hide();
+    await AdMob.hideBanner();
   } catch {
     /* no-op */
   }
@@ -141,7 +157,7 @@ export async function hideBanner(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function maybeShowInterstitialOnTransition(currentPath: string): Promise<boolean> {
-  if (!Capacitor.isNativePlatform() || ADMOB_DISABLED || getIsPremium()) return false;
+  if (!usable()) return false;
   if (INTERSTITIAL_BLOCKED_ROUTES.some((p) => currentPath.startsWith(p))) return false;
 
   const timing = loadTiming();
@@ -150,9 +166,8 @@ export async function maybeShowInterstitialOnTransition(currentPath: string): Pr
   if (now - timing.lastRewardedAt < MIN_REWARDED_TO_INTERSTITIAL_GAP_MS) return false;
 
   try {
-    const ad = new InterstitialAd({ adUnitId: AD_UNIT_IDS.interstitial });
-    await ad.load();
-    await ad.show();
+    await AdMob.prepareInterstitial({ adId: AD_UNIT_IDS.interstitial, isTesting: !IS_PROD });
+    await AdMob.showInterstitial();
     timing.lastInterstitialAt = now;
     saveTiming(timing);
     return true;
@@ -174,31 +189,28 @@ export async function showRewardedForAnalysisUnlock(): Promise<RewardedResult> {
   if (getIsPremium()) return { watched: false, rewarded: true };
   if (!Capacitor.isNativePlatform() || ADMOB_DISABLED) return { watched: false, rewarded: false };
 
+  const handles: PluginListenerHandle[] = [];
   try {
-    const ad = new RewardedAd({ adUnitId: AD_UNIT_IDS.rewarded });
+    await AdMob.prepareRewardVideoAd({ adId: AD_UNIT_IDS.rewarded, isTesting: !IS_PROD });
 
     const rewarded = await new Promise<boolean>((resolve) => {
-      const handles: Array<Promise<PluginListenerHandle> & PluginListenerHandle> = [];
-      let cleaned = false;
+      let done = false;
       const finish = (val: boolean) => {
-        if (cleaned) return;
-        cleaned = true;
-        handles.forEach((h) => h.remove().catch(() => {}));
+        if (done) return;
+        done = true;
         resolve(val);
       };
 
-      const matches = (event: any) => event?.id === ad.id || event?.adUnitId === AD_UNIT_IDS.rewarded;
+      // Reward earned → true. Dismissed without earning → false.
+      AdMob.addListener(RewardAdPluginEvents.Rewarded, () => finish(true)).then((h) =>
+        handles.push(h)
+      );
+      AdMob.addListener(RewardAdPluginEvents.Dismissed, () => finish(false)).then((h) =>
+        handles.push(h)
+      );
 
-      handles.push(AdMobPlus.addListener('rewarded.reward', (event: any) => {
-        if (matches(event)) finish(true);
-      }));
-      handles.push(AdMobPlus.addListener('rewarded.dismiss', () => finish(false)));
-      handles.push(AdMobPlus.addListener('rewarded.showfail', () => finish(false)));
-      handles.push(AdMobPlus.addListener('rewarded.loadfail', () => finish(false)));
-
-      ad
-        .load()
-        .then(() => ad.show())
+      AdMob.showRewardVideoAd()
+        .then(() => finish(true))
         .catch(() => finish(false));
     });
 
@@ -211,19 +223,32 @@ export async function showRewardedForAnalysisUnlock(): Promise<RewardedResult> {
     return { watched: true, rewarded };
   } catch {
     return { watched: false, rewarded: false };
+  } finally {
+    handles.forEach((h) => h.remove().catch(() => {}));
   }
 }
 
 // ---------------------------------------------------------------------------
-// App open — not supported by @admob-plus/capacitor v2; kept as a no-op
+// App open — shown on cold start by the caller
 // ---------------------------------------------------------------------------
 
 export async function maybeShowAppOpenAd(): Promise<boolean> {
-  return false;
+  if (!usable()) return false;
+  try {
+    const loaded = await AdMob.isAppOpenLoaded();
+    if (!loaded.value) {
+      await AdMob.loadAppOpen({ adId: AD_UNIT_IDS.appOpen });
+    }
+    await AdMob.showAppOpen();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Native advanced — not supported by @admob-plus/capacitor v2
+// Native advanced — available in @capacitor-community/admob (Preview); the app
+// uses the web HTML NativeAd component instead, so this stays a null stub.
 // ---------------------------------------------------------------------------
 
 export const NativeAdMobClient = null as any;
