@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { isSignalsPromoActive } from '@/lib/signals-promo'
 
 // A-la-carte feature entitlements.
 //
@@ -71,8 +72,11 @@ export function deriveEntitlements(u: EntitlementRow): Entitlements {
   const legacy = isLegacyPremiumActive(u)
   const trial = isTrialActive(u)
   return {
+    // During the free-signals promotion every user gets the full feed, just
+    // like admins. It expires on FREE_SIGNALS_UNTIL and the normal paid rules
+    // take over again without a deploy.
     signals:
-      admin || legacy || trial ||
+      isSignalsPromoActive() || admin || legacy || trial ||
       (u.signalsUnlocked === true && u.signalsExpiresAt != null && isActiveEndDate(u.signalsExpiresAt)),
     bot: admin || legacy || trial || (u.botExpiresAt != null && isActiveEndDate(u.botExpiresAt)),
     adFree: admin || legacy || trial || u.adsRemoved === true,

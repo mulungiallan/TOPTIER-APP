@@ -277,6 +277,8 @@ export function SubscriptionsPage() {
   const [referralRewards, setReferralRewards] = useState<Array<{ id: string; status: string; rewardType: string; rewardAmount: number; createdAt: string; referredUser?: { name?: string | null } }>>([])
   const [pesapalCheckoutUrl, setPesapalCheckoutUrl] = useState<string | null>(null)
   const pesapalIframeRef = useRef<HTMLIFrameElement>(null)
+  // Free-signals promotion: while active every user sees the full signal feed.
+  const [signalsPromo, setSignalsPromo] = useState<{ active: boolean; endDate: string | null }>({ active: false, endDate: null })
 
   const currentPlan = user?.subscriptionTier || 'free'
   const referralCode = user?.referralCode || 'TRADE123'
@@ -291,7 +293,7 @@ export function SubscriptionsPage() {
   const trialActive = currentPlan === 'trial'
   const signalsExpiry = user?.signalsExpiresAt ? new Date(user.signalsExpiresAt).getTime() : 0
   const botExpiry = user?.botExpiresAt ? new Date(user.botExpiresAt).getTime() : 0
-  const hasSignals = isAdmin || legacyAccess || trialActive || (!!user?.signalsUnlocked && signalsExpiry > Date.now())
+  const hasSignals = signalsPromo.active || isAdmin || legacyAccess || trialActive || (!!user?.signalsUnlocked && signalsExpiry > Date.now())
   const hasBot = isAdmin || legacyAccess || trialActive || botExpiry > Date.now()
   const hasAds = isAdmin || !!user?.adsRemoved
   const mentorshipExpiry = user?.mentorshipExpiresAt ? new Date(user.mentorshipExpiresAt).getTime() : 0
@@ -313,8 +315,11 @@ export function SubscriptionsPage() {
           updateUser({ subscriptionTier: sub.tier as string })
         }
       }
-      const rewards = (billingResult?.data as any)?.referral?.recentRewards
+      const billingData = (billingResult?.data as any) ?? {}
+      const rewards = billingData?.referral?.recentRewards
       if (Array.isArray(rewards)) setReferralRewards(rewards)
+      const promo = billingData?.signalsPromo
+      if (promo) setSignalsPromo({ active: !!promo.active, endDate: promo.endDate ?? null })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load subscription data')
     } finally {
@@ -853,6 +858,29 @@ export function SubscriptionsPage() {
             : 'Subscriptions are temporarily unavailable — join the waitlist below'}
         </p>
       </div>
+
+      {/* Free-signals promotion */}
+      {signalsPromo.active && (
+        <Card className="border-primary/40 bg-gradient-to-br from-primary/10 to-transparent">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Gift className="size-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-semibold">All signals unlocked — free this month</h3>
+                  <Badge variant="default" className="text-xs">Limited time</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Every account sees the full signal feed — no 2-signal daily cap.
+                  {signalsPromo.endDate ? ` Ends ${new Date(signalsPromo.endDate).toLocaleDateString()}.` : ''}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Current Plan Banner */}
       <Card className="border-primary/30 bg-primary/5">

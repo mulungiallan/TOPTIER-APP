@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getUserIdFromRequest, successResponse, errorResponse } from '@/lib/auth'
 import { grantReferralCashMilestones } from '@/lib/services/referral-rewards'
 import { deriveEntitlements } from '@/lib/entitlements'
+import { isSignalsPromoActive, signalsPromoEnd } from '@/lib/signals-promo'
 
 // ─── Plan catalogue (kept in sync with /api/subscriptions) ─────────────────
 const PLAN_CATALOG = [
@@ -316,6 +317,10 @@ export async function GET(request: NextRequest) {
         mentorship: entitlements.mentorship,
         mentorshipExpiresAt: entitlements.mentorship ? user.mentorshipExpiresAt : null,
         mentorshipType: user.mentorshipType,
+      },
+      signalsPromo: {
+        active: isSignalsPromoActive(),
+        endDate: signalsPromoEnd(),
       },
       usage: {
         analysesLimit,

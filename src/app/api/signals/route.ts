@@ -6,6 +6,7 @@ import { signalGenerator } from '@/lib/services/signal-generator'
 import { signalOutcomes } from '@/lib/services/signal-outcomes'
 import { liveMarketData } from '@/lib/services/live-market-data'
 import { hasSignalsAccess, isAdminUser, SIGNALS_PAYWALL_MESSAGE, type EntitlementRow } from '@/lib/entitlements'
+import { isSignalsPromoActive } from '@/lib/signals-promo'
 import type { Signal } from '@/generated/prisma'
 
 interface SignalWithLive extends Signal {
@@ -74,12 +75,18 @@ export async function GET(request: NextRequest) {
     })
     const isAdmin = isAdminUser(adminUser as EntitlementRow)
 
+    // Free-signals promotion: non-admins get the FULL feed (no 2/day cap) for
+    // the promo window, exactly like admins. It ends on FREE_SIGNALS_UNTIL and
+    // the normal quota resumes automatically.
+    const promo = isSignalsPromoActive()
+    const fullFeed = isAdmin || promo
+
     const includeCount = { _count: { select: { comments: true, reactions: true } } }
     const FALLBACK_QUOTA = 2
     const ADMIN_FEED_CAP = 500
 
     let signals: Signal[] = []
-    if (isAdmin) {
+    if (fullFeed) {
       signals = await db.signal.findMany({
         where,
         orderBy: [{ confidence: 'desc' }, { createdAt: 'desc' }],
@@ -150,7 +157,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return successResponse({ signals: enriched, total: enriched.length, limit: isAdmin ? null : FALLBACK_QUOTA, offset: 0 })
+    return successResponse({ signals: enriched, total: enriched.length, limit: fullFeed ? null : FALLBACK_QUOTA, offset: 0, promo })
   } catch (error) {
     console.error('Signals GET error:', error)
     return errorResponse('Failed to fetch signals', 500)
