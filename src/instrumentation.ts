@@ -139,6 +139,7 @@ export async function register() {
       ["ensure-packages", () => import("@scripts/ensure-packages")],
       ["ensure-tickers", () => import("@scripts/ensure-tickers")],
       ["ensure-ebooks", () => import("@scripts/ensure-ebooks")],
+      ["ensure-coupons", () => import("@scripts/ensure-coupons")],
     ];
     for (const [name, load] of seeds) {
       try {
