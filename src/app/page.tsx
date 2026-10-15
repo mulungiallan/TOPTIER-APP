@@ -636,8 +636,23 @@ function LandingPage() {
                 Trading involves substantial risk. Past performance is not indicative of future results.
               </p>
             </div>
-            <div className="mt-5 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-center gap-2">
+            <div className="mt-5 pt-4 border-t border-border/60 flex flex-col sm:flex-row items-center justify-center gap-3">
               <PoweredBy />
+              <a
+                href="https://smollaunch.com"
+                target="_blank"
+                rel="noopener"
+                className="shrink-0"
+              >
+                <img
+                  src="https://smollaunch.com/badges/featured.svg"
+                  alt="TOPTIER — Featured on Smol Launch"
+                  loading="lazy"
+                  width={250}
+                  height={60}
+                  className="h-[60px] w-[250px]"
+                />
+              </a>
             </div>
           </div>
         </footer>
