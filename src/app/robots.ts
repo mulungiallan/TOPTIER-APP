@@ -34,6 +34,11 @@ export default function robots(): MetadataRoute.Robots {
         ],
         allow: "/",
       },
+      // app-ads.txt crawler — explicitly allowed so AdMob can fetch /app-ads.txt.
+      {
+        userAgent: ["Google-adstxt", "Mediapartners-Google"],
+        allow: "/",
+      },
       // AI search/answer engines — allowed so TOPTIER can surface in AI answers.
       // Flip to Disallow to opt out.
       {
